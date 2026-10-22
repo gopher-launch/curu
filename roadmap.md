@@ -10,7 +10,7 @@ updated: 2026-10-22
 
 This is the approved initial product baseline and task backlog for the new Curu repository. It was prepared from `curu-product-roadmap-draft.md` (SHA-256 `e8d6131c6917840ae93e54c303057ce99bd9884b54ff2e8dda9a0ff31e2dc901`). CURU-001 and CURU-014 have delivered the documentation and integration-contract baseline; no application runtime capability has been delivered yet.
 
-Chris and Chappie own product direction. The accepted baseline below incorporates the October 19 decisions. Detailed authentication defaults, recovery-draft mechanics and template field mapping are reviewable design work, not silently accepted implementation choices.
+Chris and Chappie own product direction. The accepted baseline below incorporates the October 19 decisions and the CURU-014 authentication contract. Recovery-draft mechanics and template field mapping remain reviewable design work, not silently accepted implementation choices.
 
 Start from scratch. The old Curu prototype is an excluded thought experiment, not a compatibility target or source to mine. Reuse only the explicitly supplied library/seed reference inputs. No existing application repository needs an architectural salvage assessment.
 
@@ -42,14 +42,15 @@ Timing semantics: count a block once, using its explicit allocation if supplied,
 
 Accepted direction: the gateway handles third-party authentication and presents a signed token intended for Curu. Curu verifies it, maps a principal, then applies its own permissions. It does not accept arbitrary identity headers or treat any valid JWT as authority over the dataset.
 
-Recommended contract details for CURU-014 review:
-- Configured trust for signing keys/rotation, issuer, Curu audience, algorithms and required lifetime checks. Never select trust locations from an unverified token.
+The accepted CURU-014 contract in `doc/integration-contract.md` specifies:
+
+- A distinct `curu+jwt` token type and dedicated Curu audience, plus configured trust for signing keys/rotation, issuer, algorithms and required lifetime checks. Never select trust locations from an unverified token.
 - Stable external identity based on issuer/subject, mapped to an internal principal. A configured single-owner binding is enough for MVP; changing provider bindings should not require changing application content identity.
 - A small application policy authorizes read/mutate/archive/recovery actions. Keep raw JWT claims and third-party role names outside domain behavior.
 - Gateway owns login, refresh and browser session/logout mechanics. Curu enforces the presented token's validity and handles expiry safely. The browser CSRF/origin/proxy contract must be explicit even if the gateway injects Authorization.
 - Values such as deployment issuer URL, audience and keys are configuration, not reasons to bake AWS or one identity provider into the model. No new token issuer, password database or policy engine is required in Curu.
 
-Technical references: [JWT BCP, RFC 8725](https://www.rfc-editor.org/rfc/rfc8725.html) and [conditional updates, RFC 9110 §13.1.1](https://www.rfc-editor.org/rfc/rfc9110.html#section-13.1.1). HTTP conditional requests are one transport option; database compare-and-update is still required to prevent a lost update.
+Technical references: JWT explicit typing and mutually exclusive profiles in RFC 8725 [§3.11](https://www.rfc-editor.org/rfc/rfc8725.html#section-3.11) and [§3.12](https://www.rfc-editor.org/rfc/rfc8725.html#section-3.12), [HTTP authentication challenges, RFC 9110 §15.5.2](https://www.rfc-editor.org/rfc/rfc9110.html#section-15.5.2), [Bearer challenges, RFC 6750 §3](https://www.rfc-editor.org/rfc/rfc6750.html#section-3), and [conditional updates, RFC 9110 §13.1.1](https://www.rfc-editor.org/rfc/rfc9110.html#section-13.1.1). HTTP conditional requests are one transport option; database compare-and-update is still required to prevent a lost update.
 
 ## Data-service contract
 
@@ -240,7 +241,7 @@ CURU-009, CURU-026, CURU-010 and CURU-027 deliver independent duplication and te
 - Specify external Postgres/backup/restore responsibilities and Curu's migrations, initialization, compatibility, credentials, runtime privileges, and recovery obligations. No cloud provider is selected by application code.
 - Make any material unresolved choice explicit for Chris; documentation may propose details, but must not report them as accepted or implemented. Accepted integration of this design candidate is the record of the chosen contract.
 
-**Verification:** Review positive/negative JWT and access examples, data lifecycle scenarios, and clear responsibilities. No live identity provider or AWS resources are required.
+**Verification:** Review positive/negative JWT typing, trust/rotation, challenge and access examples, data lifecycle scenarios, and clear responsibilities. No live identity provider or AWS resources are required.
 
 ## CURU-002 — Create the minimal runnable Go application
 
@@ -330,12 +331,12 @@ CURU-009, CURU-026, CURU-010 and CURU-027 deliver independent duplication and te
 
 **Acceptance criteria:**
 
-- Validate cryptographic signature, configured issuer/audience, allowed algorithms and required temporal claims before mapping a principal.
-- Resolve signing keys only through configured trusted material/endpoints with bounded rotation/failure behavior. Reject unsigned, substituted, malformed, expired and untrusted tokens.
+- Validate the explicit Curu token type, cryptographic signature, configured issuer/audience, allowed algorithms and required temporal claims before mapping a principal.
+- Resolve signing keys only through configured trusted material/endpoints with bounded rotation/failure behavior. Reject unsigned, substituted, wrong-type, malformed, expired and untrusted tokens.
 - Keep raw JWTs/provider claim names outside application/domain behavior. Use stable external identity rather than editable email/display names.
 - Do not implement login, JWT issuance, token exchange, a production signer, or an identity-provider integration inside Curu.
 
-**Verification:** Local signing fixtures prove success, wrong issuer/audience/key/algorithm, expiry and rotation behavior. No real login or cloud resource is needed.
+**Verification:** Local signing fixtures prove success, missing/wrong type, wrong issuer/audience/key/algorithm, expiry and rotation-overlap behavior. No real login or cloud resource is needed.
 
 ## CURU-020 — Enforce Curu's single-owner authorization policy
 
@@ -370,10 +371,10 @@ CURU-009, CURU-026, CURU-010 and CURU-027 deliver independent duplication and te
 
 - Implement the accepted CSRF/origin/proxy-trust contract for browser traffic, including when the gateway injects Authorization. GET is read-only.
 - Use escaped templates and safely rendered Markdown, bounded validated inputs, parameterized queries, and secret-safe logging/errors.
-- Handle authentication expiration without disguising it as a successful save or silently discarding an open editor.
+- Handle missing, invalid and expired authentication with the contract status and Bearer challenge, without disguising an expired-token save as successful or silently discarding an open editor.
 - Document gateway responsibilities for TLS, cookies, login/logout, identity-token forwarding and stripping conflicting client headers; no provider-specific gateway deployment.
 
-**Verification:** Normal and HTMX request tests cover rejected cross-origin/invalid mutations, safe content rendering, input errors, expiration and secret-free output.
+**Verification:** Normal and HTMX request tests cover rejected cross-origin/invalid mutations, safe content rendering, input errors, missing/invalid/expired authentication with the required challenge, preserved editor input, and secret-free output.
 
 ## CURU-013 — Demonstrate the application data recovery contract
 

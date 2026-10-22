@@ -8,15 +8,18 @@ The public browser authenticates to a gateway. The gateway owns third-party logi
 
 Curu accepts a token only from the single `Authorization` header. Duplicate headers, a non-Bearer scheme, a malformed compact token, or token material in a query parameter or application cookie are rejected. Curu never logs the header or token. TLS on the public hop is mandatory; protection of the gateway-to-Curu hop and prevention of direct access are platform responsibilities documented by the deployment.
 
-The initial trust configuration names exactly one issuer, one Curu audience, an allowlist containing `RS256` and/or `ES256`, one HTTPS JWKS endpoint, and one owner binding. Trust configuration is deployment input, not token input: Curu never follows `jku`/`x5u`, discovers an issuer, or selects an algorithm from an unverified token. Symmetric JWT algorithms and `none` are not accepted. The configured JWKS endpoint may be on a different host from the issuer only as an explicit operator choice.
+The initial trust configuration names exactly one issuer, one dedicated Curu audience, an allowlist containing `RS256` and/or `ES256`, one HTTPS JWKS endpoint, and one owner binding. The gateway constructs Curu tokens as a distinct JWT profile with the exact case-sensitive protected-header value `typ: curu+jwt`; it must not use that type-and-audience combination for ID tokens, access tokens intended for another service, or any other JWT kind. Trust configuration is deployment input, not token input: Curu never follows `jku`/`x5u`, discovers an issuer, or selects an algorithm from an unverified token. Symmetric JWT algorithms and `none` are not accepted. The configured JWKS endpoint may be on a different host from the issuer only as an explicit operator choice.
 
 Validation completes before principal mapping and requires all of the following:
 
+- an exact protected-header `typ` value of `curu+jwt` before the token is considered for this validation profile;
 - a signature made by a currently trusted JWKS key, an allowed algorithm that matches the key type, and a non-empty `kid` selecting exactly one key;
 - exact string equality for `iss`, the configured audience present in `aud`, and non-empty string `sub`;
 - numeric `iat` and `exp`, with `exp` later than `iat`, total lifetime no greater than a configured maximum (15 minutes by default), and current time before `exp`;
 - `iat` not unreasonably in the future and `nbf`, when present, already reached, allowing at most 60 seconds of configured clock skew; and
 - structurally valid claims with no duplicate JSON claim names.
+
+The explicit type and dedicated audience make this profile mutually exclusive from other JWT kinds as recommended by RFC 8725 [§3.11](https://www.rfc-editor.org/rfc/rfc8725.html#section-3.11) and [§3.12](https://www.rfc-editor.org/rfc/rfc8725.html#section-3.12).
 
 JWKS responses are accepted only over HTTPS, with bounded response size and fetch time. A successful set follows its HTTP freshness, defaults to a five-minute cache lifetime when no freshness is supplied, and is always capped at 15 minutes. An unknown `kid` can trigger one rate-limited refresh. Refresh failure does not extend an expired cache and fails the request closed; a still-fresh cached key may continue to validate tokens. Key removal takes effect no later than cache expiry, so emergency revocation also requires the platform to block or shorten the affected sessions. Initial startup may be healthy at the process level while identity-key retrieval is unavailable, but protected requests fail closed and readiness reports the dependency unavailable unless a still-fresh usable key set is cached.
 
@@ -34,10 +37,12 @@ HTTP outcomes are stable:
 
 | Condition | Result |
 | --- | --- |
-| Missing, malformed, untrusted, not-yet-valid, or expired token | `401 Unauthorized`, `Cache-Control: no-store`, no token detail |
+| Missing, malformed, untrusted, not-yet-valid, or expired token | `401 Unauthorized`, `WWW-Authenticate: Bearer`, `Cache-Control: no-store`, no token detail |
 | Valid token for an identity other than the configured owner | `403 Forbidden`, `Cache-Control: no-store`, no object existence detail |
 | Authenticated owner requesting an absent object | `404 Not Found` |
 | Dependency prevents authentication from being evaluated safely | `503 Service Unavailable`, fail closed |
+
+Every server-generated `401` carries the minimal `WWW-Authenticate: Bearer` challenge required by [RFC 9110 §15.5.2](https://www.rfc-editor.org/rfc/rfc9110.html#section-15.5.2). Curu does not add token error details to that challenge or the response body.
 
 Security failures are logged only as a coarse reason code and request correlation ID. Issuer, subject, claims, keys, tokens, cookies, form content, and database credentials are excluded from routine logs and error pages.
 
@@ -89,12 +94,12 @@ An incompatible, partial, or semantically invalid restore is not promoted. Curu 
 
 These scenarios are normative review examples for later focused tests:
 
-- A correctly signed, unexpired token with the configured issuer, Curu audience, and exact owner subject maps to the internal owner and may enter an authorized use case.
-- The same token signed by another key, using a disallowed algorithm, missing `exp`/`iat`, exceeding maximum lifetime, or naming another issuer/audience is `401`; its claims never reach authorization.
+- A correctly typed, signed, and unexpired token with the configured issuer, dedicated Curu audience, and exact owner subject maps to the internal owner and may enter an authorized use case.
+- A missing token, or a token with a missing or different `typ`, a key absent from or ineligible under the current trusted JWKS, a disallowed algorithm, missing `exp`/`iat`, excessive lifetime, another issuer/audience, or expiry is `401`; the response includes `WWW-Authenticate: Bearer` and token claims never reach authorization.
 - A valid token for a different subject is authenticated but receives `403` for list pages, guessed object URLs, HTMX fragments, archive actions, and recovery drafts.
 - A cross-origin form post carrying valid gateway authentication is rejected even if it guesses a CSRF value; a same-origin unsafe request still fails without the matching cookie/form token.
 - When a token expires while an editor is open, the attempted save is not replayed or reported as successful and entered content remains visible for deliberate sign-in and retry.
-- Rotation accepts a new configured-issuer key after bounded refresh; an unknown key during a failed refresh never falls back to unchecked claims or an expired key cache.
+- During a planned rotation overlap, both old and new eligible keys in a still-fresh trusted JWKS are accepted. An unknown key can be accepted after a bounded refresh makes it eligible; a key that remains unknown during a failed refresh never falls back to unchecked claims or an expired key cache.
 - Server startup with the runtime role cannot create or alter tables. A migration uses its separate owner role, retains existing content, and advances explicit version state.
 - Repeating completed initialization is a no-op; restoring a database retains bootstrap identity, edits, archive/revision state, owner mapping, and recovery content, while gateway secrets are supplied anew.
 
