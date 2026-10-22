@@ -1,14 +1,14 @@
 ---
 version: 1
 project: curu
-updated: 2026-10-21
+updated: 2026-10-22
 ---
 
 # Curu product roadmap
 
 ## Roadmap status and source
 
-This is the approved initial product baseline and task backlog for the new Curu repository. It was prepared from `curu-product-roadmap-draft.md` (SHA-256 `e8d6131c6917840ae93e54c303057ce99bd9884b54ff2e8dda9a0ff31e2dc901`). CURU-001 has delivered the documentation baseline; no application runtime capability has been delivered yet.
+This is the approved initial product baseline and task backlog for the new Curu repository. It was prepared from `curu-product-roadmap-draft.md` (SHA-256 `e8d6131c6917840ae93e54c303057ce99bd9884b54ff2e8dda9a0ff31e2dc901`). CURU-001 and CURU-014 have delivered the documentation and integration-contract baseline; no application runtime capability has been delivered yet.
 
 Chris and Chappie own product direction. The accepted baseline below incorporates the October 19 decisions. Detailed authentication defaults, recovery-draft mechanics and template field mapping are reviewable design work, not silently accepted implementation choices.
 
@@ -66,7 +66,7 @@ Recovery drafts preserve attempted user content separately from authoritative re
 ## Delivery rules
 
 - Execute/review one bounded Task at a time. Epics and Features organize work; only Kind: task entries can be selected. A milestone captures delivery scope across parents, not permission to implement a whole range.
-- CURU-001 was the only initially ready Task. Its documentation baseline makes CURU-014 ready. Other Tasks remain planned. Promote the next eligible Task through reviewed candidate reconciliation when its concrete prerequisites and acceptance are satisfied; do not promote unresolved product choices automatically.
+- CURU-001 made CURU-014 ready. Their documentation and reviewed integration-contract baselines make CURU-002 ready. Other Tasks remain planned. Promote the next eligible Task through reviewed candidate reconciliation when its concrete prerequisites and acceptance are satisfied; do not promote unresolved product choices automatically.
 - Every candidate includes relevant documentation, focused verification, and concise roadmap reconciliation. Source is the truth of implemented behavior. Preserve existing IDs; no Task is delivered solely because it appears in this document.
 - CURU-001 through CURU-018 retain their draft identities. CURU-019 through CURU-027 split broad scopes/add explicit authorization, recovery and template-boundary work; detailed outcomes below are authoritative.
 - Product choices remain with Chris/Chappie. Design Tasks may produce explicit proposals for operator review. Do not invent approvals, fabricate human field results or silently turn a design question into code.
@@ -225,7 +225,7 @@ CURU-009, CURU-026, CURU-010 and CURU-027 deliver independent duplication and te
 ## CURU-014 — Specify the JWT, authorization and data-service contracts
 
 - Kind: task
-- Status: ready
+- Status: delivered
 - Priority: high
 - Parent: none
 - Depends on: CURU-001
@@ -245,7 +245,7 @@ CURU-009, CURU-026, CURU-010 and CURU-027 deliver independent duplication and te
 ## CURU-002 — Create the minimal runnable Go application
 
 - Kind: task
-- Status: planned
+- Status: ready
 - Priority: high
 - Parent: CURU-F001
 - Depends on: CURU-014
@@ -720,6 +720,6 @@ CURU-009, CURU-026, CURU-010 and CURU-027 deliver independent duplication and te
 
 ## Next task boundary
 
-CURU-001 delivered the first product and architecture baseline documents without claiming application behavior. CURU-014 is the only ready Task and is the next bounded design review.
+CURU-001 delivered the first product and architecture baseline documents without claiming application behavior. CURU-014 delivered the reviewed gateway/JWT, authorization, browser-security, and data-service contract without claiming application behavior. CURU-002 is the only ready Task and is the next bounded implementation task.
 
-CURU-001 records accepted product boundaries; CURU-014 turns JWT/authZ and data-service details into an explicit design candidate. Template context conversion is deliberately resolved later by CURU-026 before CURU-010. No unfinished template decision blocks the library/session work.
+CURU-001 records accepted product boundaries; CURU-014's accepted design contract is recorded in `doc/integration-contract.md`. Template context conversion is deliberately resolved later by CURU-026 before CURU-010. No unfinished template decision blocks the library/session work.

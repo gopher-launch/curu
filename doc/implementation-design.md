@@ -29,7 +29,7 @@ Initialization is a separate, one-shot operator action. It applies a determinist
 
 The deployment gateway terminates the public browser and owns third-party authentication and session lifecycle. Curu verifies a configured signed JWT intended for Curu, maps issuer/subject identity to an internal principal, and then authorizes application use cases under a deny-by-default single-owner policy. Provider claims do not enter domain behavior and authentication alone does not grant dataset access.
 
-CURU-014 must produce the reviewed contract for token delivery, trusted signing material and rotation, issuer/audience, allowed algorithms, required lifetime checks, stable owner binding, error behavior, CSRF/origin protections, trusted proxy handling, token expiry, logout, and data-service responsibilities. Until that contract is accepted, implementation tasks must not guess these material policies. No Curu password database, token issuer, public signup, arbitrary identity headers, token-controlled role system, or provider-specific cloud coupling is implied.
+[`integration-contract.md`](integration-contract.md) defines the CURU-014 contract for token delivery, trusted signing material and rotation, issuer/audience, allowed algorithms, lifetime checks, stable owner binding, error behavior, CSRF/origin protections, trusted proxy handling, token expiry, logout, and data-service responsibilities. Dependent implementation tasks implement it without moving provider claims into the domain. No Curu password database, token issuer, public signup, arbitrary identity headers, token-controlled role system, or provider-specific cloud coupling is implied.
 
 All data-backed pages and mutations use shared authentication, authorization, request, and rendering protections. GET remains read-only. Templates are escaped, Markdown is safely rendered, inputs are bounded and validated, queries are parameterized, and logs/errors exclude secrets. Authentication expiration must not be presented as a successful save or silently destroy open editor content.
 
@@ -61,6 +61,6 @@ Every delivered task adds focused verification and keeps the documented build/te
 
 ## Deferred reviewed decisions
 
-- CURU-014 owns the detailed JWT, authorization, browser-security, and data-service contract. Chris accepts material product/integration choices; this baseline records only the already accepted boundary.
+- CURU-014's detailed JWT, authorization, browser-security, and data-service contract is recorded in [`integration-contract.md`](integration-contract.md). Later implementation tasks own the explicitly identified mechanics.
 - CURU-026 classifies implemented session, block, and placement fields for template conversion. Date is already excluded, but group/context and note handling are not guessed in advance.
 - Later tasks may refine package and schema details within this architecture, but must not broaden into microservices, a SPA, recursive planning structures, multi-tenancy, automatic conflict merging, or the roadmap's other explicit non-goals.
