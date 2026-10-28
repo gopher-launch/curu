@@ -1,0 +1,36 @@
+package main
+
+import (
+	"context"
+	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/gopher-launch/curu/internal/app"
+	"github.com/gopher-launch/curu/internal/config"
+)
+
+func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+
+	cfg, err := config.Load(os.LookupEnv)
+	if err != nil {
+		logger.Error("configuration invalid", "error", err)
+		os.Exit(2)
+	}
+
+	application, err := app.New(cfg, logger)
+	if err != nil {
+		logger.Error("application initialization failed", "error", err)
+		os.Exit(1)
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	if err := application.Run(ctx); err != nil {
+		logger.Error("application stopped with an error", "error", err)
+		os.Exit(1)
+	}
+}
