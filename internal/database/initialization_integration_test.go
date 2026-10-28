@@ -165,7 +165,11 @@ func TestPostgresDatasetInitialization(t *testing.T) {
 	}
 	retry, err := initialization.InitializeSeed(ctx, initializer, ownerID, library)
 	if err != nil || retry.Outcome != initialization.OutcomeAlreadyInitialized {
-		t.Fatalf("InitializeSeed(retry) = %+v, %v", retry, err)
+		t.Fatalf("InitializeSeed(same-owner retry) = %+v, %v", retry, err)
+	}
+	const differentOwnerID = "77777777-7777-4777-8777-777777777777"
+	if _, err := initialization.InitializeSeed(ctx, initializer, differentOwnerID, library); !errors.Is(err, initialization.ErrAlreadyInitialized) {
+		t.Fatalf("InitializeSeed(different-owner retry) error = %v, want ErrAlreadyInitialized", err)
 	}
 	var retainedTitle string
 	if err := admin.Raw("SELECT title FROM curu.activities WHERE id = ?", library.Activities[0].ID).Scan(&retainedTitle).Error; err != nil {
@@ -173,6 +177,16 @@ func TestPostgresDatasetInitialization(t *testing.T) {
 	}
 	if retainedTitle != editedTitle {
 		t.Fatalf("edited title = %q, want %q", retainedTitle, editedTitle)
+	}
+	var originalOwnerCount, differentOwnerCount int64
+	if err := admin.Table("curu.activities").Where("owner_id = ?", ownerID).Count(&originalOwnerCount).Error; err != nil {
+		t.Fatalf("count original-owner activities: %v", err)
+	}
+	if err := admin.Table("curu.activities").Where("owner_id = ?", differentOwnerID).Count(&differentOwnerCount).Error; err != nil {
+		t.Fatalf("count different-owner activities: %v", err)
+	}
+	if originalOwnerCount != seed.ExpectedActivities || differentOwnerCount != 0 {
+		t.Fatalf("owner activity counts original/different = %d/%d, want %d/0", originalOwnerCount, differentOwnerCount, seed.ExpectedActivities)
 	}
 	if _, err := initialization.InitializeEmpty(ctx, initializer); !errors.Is(err, initialization.ErrAlreadyInitialized) {
 		t.Fatalf("InitializeEmpty(after seed) error = %v, want ErrAlreadyInitialized", err)

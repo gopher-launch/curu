@@ -2,7 +2,7 @@ package initialization
 
 import "testing"
 
-func TestMatchesOnlyExactCompletedRequest(t *testing.T) {
+func TestMatchesInitializationRecord(t *testing.T) {
 	t.Parallel()
 	identity, version := "library", "1"
 	cases := []struct {

@@ -49,7 +49,7 @@ CURU_OWNER_ID='00000000-0000-4000-8000-000000000001' \
 go run ./cmd/curu-initialize --mode=seed
 ```
 
-For an intentionally empty installation, omit `CURU_OWNER_ID` and use `--mode=empty`. Completed exact retries report `already_initialized`; a different initialization choice or unrecorded existing content is refused. Initialization is never performed by migration or server startup. Required privileges, disposable verification, and isolated reset are documented in [`doc/database-operations.md`](doc/database-operations.md).
+For an intentionally empty installation, omit `CURU_OWNER_ID` and use `--mode=empty`. Completed exact retries report `already_initialized`; seed retries must supply the same owner UUID, seed identity, and seed version. A different owner or initialization choice, or unrecorded existing content, is refused. Initialization is never performed by migration or server startup. Required privileges, disposable verification, and isolated reset are documented in [`doc/database-operations.md`](doc/database-operations.md).
 
 ## Container
 

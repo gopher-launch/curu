@@ -61,8 +61,9 @@ func InitializeEmpty(ctx context.Context, db *gorm.DB) (Result, error) {
 }
 
 // InitializeSeed atomically inserts the supplied validated library and records
-// its identity and version. Once any initialization has completed, this never
-// reconciles or replaces working content.
+// its identity and version. A completed retry also establishes the supplied
+// owner from every deterministic seeded activity. It never reconciles or
+// replaces working content.
 func InitializeSeed(ctx context.Context, db *gorm.DB, ownerID string, library seed.Library) (Result, error) {
 	if strings.TrimSpace(ownerID) == "" {
 		return Result{}, errors.New("owner ID is required for seed initialization")
@@ -99,6 +100,11 @@ func initialize(ctx context.Context, db *gorm.DB, desired request) (Result, erro
 		}
 		if query.RowsAffected != 0 {
 			if matches(existing, desired) {
+				if desired.kind == KindSeed {
+					if err := verifySeedOwner(tx, desired); err != nil {
+						return err
+					}
+				}
 				result.Outcome = OutcomeAlreadyInitialized
 				return nil
 			}
@@ -129,6 +135,26 @@ func initialize(ctx context.Context, db *gorm.DB, desired request) (Result, erro
 		return Result{}, err
 	}
 	return result, nil
+}
+
+func verifySeedOwner(tx *gorm.DB, desired request) error {
+	activityIDs := make([]string, 0, len(desired.activities))
+	for _, activity := range desired.activities {
+		activityIDs = append(activityIDs, activity.ID)
+	}
+	var counts struct {
+		Total int64
+		Owned int64
+	}
+	if err := tx.Table("curu.activities").
+		Select("count(*) AS total, count(*) FILTER (WHERE owner_id = ?) AS owned", desired.ownerID).
+		Where("id IN ?", activityIDs).Scan(&counts).Error; err != nil {
+		return fmt.Errorf("establish initialized seed owner: %w", err)
+	}
+	if counts.Total != int64(len(activityIDs)) || counts.Owned != counts.Total {
+		return fmt.Errorf("%w: seed owner does not match the completed initialization", ErrAlreadyInitialized)
+	}
+	return nil
 }
 
 func matches(existing record, desired request) bool {

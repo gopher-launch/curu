@@ -66,7 +66,7 @@ CURU_INITIALIZATION_DATABASE_URL='postgres://curu_initializer:...@db.example/cur
 go run ./cmd/curu-initialize --mode=empty
 ```
 
-The application image includes `/curu-initialize` with the same flags and settings. The command first performs the read-only schema compatibility check, then takes a transaction-scoped PostgreSQL advisory lock. A seed initialization inserts all 44 activities and 110 progressions and the `curu-coaching-library` version `1` completion record in one transaction. Empty mode records the empty choice without inserting content. An exact completed retry is a no-op; a different recorded choice or any activity without initialization metadata is refused. The completion record is authoritative: retries do not compare, repair, replace, or synchronize edited content, and startup never invokes this command.
+The application image includes `/curu-initialize` with the same flags and settings. The command first performs the read-only schema compatibility check, then takes a transaction-scoped PostgreSQL advisory lock. A seed initialization inserts all 44 activities and 110 progressions and the `curu-coaching-library` version `1` completion record in one transaction. Empty mode records the empty choice without inserting content. An exact completed retry is a no-op. For seed mode, exact means the recorded seed identity/version match and every deterministic seeded activity still establishes the supplied owner UUID; a different owner or missing ownership evidence is refused without rewriting content. A different recorded choice or any activity without initialization metadata is also refused. Retries never compare, repair, replace, or synchronize editable coaching content, and startup never invokes this command.
 
 ## Start the server
 
@@ -88,7 +88,7 @@ CURU_TEST_DATABASE_URL='postgres://postgres:...@127.0.0.1:5432/curu_test?sslmode
 go test ./internal/database -run 'TestPostgres(MigrationAndRuntimeRestrictions|DatasetInitialization)' -count=1
 ```
 
-The tests change database-wide `PUBLIC` temporary privileges, drop and recreate the `curu` schema, and create disposable roles named with `curu_runtime_test` or `curu_initializer_test`; never point them at retained data. They prove the migration and runtime boundary plus the narrow initializer grants, fresh seed and empty initialization, exact retries, concurrent serialization, rollback after a mid-seed failure, refusal of unrecorded content, and preservation of a coach edit through retry and startup compatibility. Cleanup restores the usual `PUBLIC` temporary privilege.
+The tests change database-wide `PUBLIC` temporary privileges, drop and recreate the `curu` schema, and create disposable roles named with `curu_runtime_test` or `curu_initializer_test`; never point them at retained data. They prove the migration and runtime boundary plus the narrow initializer grants, fresh seed and empty initialization, same-owner no-op and different-owner refusal, concurrent serialization, rollback after a mid-seed failure, refusal of unrecorded content, and preservation of a coach edit through retry and startup compatibility. Cleanup restores the usual `PUBLIC` temporary privilege.
 
 ## Reset a named disposable target
 
