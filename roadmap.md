@@ -721,6 +721,6 @@ CURU-009, CURU-026, CURU-010 and CURU-027 deliver independent duplication and te
 
 ## Next task boundary
 
-CURU-001 delivered the first product and architecture baseline documents without claiming application behavior. CURU-014 delivered the reviewed gateway/JWT, authorization, browser-security, and data-service contract without claiming application behavior. CURU-002 is the only ready Task and is the next bounded implementation task.
+CURU-001 delivered the first product and architecture baseline documents without claiming application behavior. CURU-014 delivered the reviewed gateway/JWT, authorization, browser-security, and data-service contract without claiming application behavior. CURU-002 delivered the minimal runnable application shell. CURU-019 is the only ready Task and is the next bounded implementation task.
 
 CURU-001 records accepted product boundaries; CURU-014's accepted design contract is recorded in `doc/integration-contract.md`. Template context conversion is deliberately resolved later by CURU-026 before CURU-010. No unfinished template decision blocks the library/session work.
