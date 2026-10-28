@@ -1,6 +1,6 @@
 # Bounded coaching-library seed
 
-CURU-003 adapted the three supplied reference inputs into the committed [`internal/seed/library.json`](../internal/seed/library.json) asset. The asset identifies itself as `curu-coaching-library` version `1`, records the SHA-256 digest of each reference, and contains exactly 44 activities and 110 progressions. It is data for the explicit initialization command owned by CURU-004; loading the package does not write a database, and server startup and migrations do not apply it.
+CURU-003 adapted the three supplied reference inputs into the committed [`internal/seed/library.json`](../internal/seed/library.json) asset. The asset identifies itself as `curu-coaching-library` version `1`, records the SHA-256 digest of each reference, and contains exactly 44 activities and 110 progressions. CURU-004's explicit initialization command applies it atomically; loading the package does not write a database, and server startup and migrations do not apply it.
 
 ## Schema mapping
 
@@ -14,4 +14,4 @@ The adapted counts match the 44 activity and 110 progression inputs, so there ar
 
 ## Verification
 
-`go test ./internal/seed` validates identity/version, counts, deterministic decoding, UUID and source-identity uniqueness, progression order, seconds-based durations, and representative ranged, short, scoring, and constraint content. The disposable PostgreSQL check documented in [`database-operations.md`](database-operations.md) also inserts the complete asset into schema version 2 and verifies the 44/110 database counts. It never initializes a retained dataset.
+`go test ./internal/seed` validates identity/version, counts, deterministic decoding, UUID and source-identity uniqueness, progression order, seconds-based durations, and representative ranged, short, scoring, and constraint content. The disposable PostgreSQL checks documented in [`database-operations.md`](database-operations.md) verify complete atomic initialization and its 44/110 database counts. They never initialize a retained dataset.

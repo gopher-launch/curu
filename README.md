@@ -39,6 +39,18 @@ curl --fail http://127.0.0.1:8080/health/ready
 
 Stop it with `Ctrl-C`; `SIGINT` and `SIGTERM` both initiate graceful shutdown. See [`doc/configuration.md`](doc/configuration.md) for runtime settings.
 
+## Initialize a dataset
+
+After migration, explicitly choose either the bounded coaching library or an intentionally empty installation. Seed mode also requires the stable internal owner UUID that the later authorization configuration will use:
+
+```sh
+CURU_INITIALIZATION_DATABASE_URL='postgres://curu_initializer:...@db.example/curu?sslmode=require' \
+CURU_OWNER_ID='00000000-0000-4000-8000-000000000001' \
+go run ./cmd/curu-initialize --mode=seed
+```
+
+For an intentionally empty installation, omit `CURU_OWNER_ID` and use `--mode=empty`. Completed exact retries report `already_initialized`; a different initialization choice or unrecorded existing content is refused. Initialization is never performed by migration or server startup. Required privileges, disposable verification, and isolated reset are documented in [`doc/database-operations.md`](doc/database-operations.md).
+
 ## Container
 
 Build a minimal image whose runtime process is non-root:
@@ -56,4 +68,4 @@ docker run --rm \
   -p 127.0.0.1:8080:8080 curu:local
 ```
 
-This runtime implements explicit PostgreSQL migrations and read-only startup compatibility checks. The bounded coaching-library asset is documented in [`doc/seed-library.md`](doc/seed-library.md), but no bootstrap command applies it yet. JWT authentication, authorization, product pages, and initialization remain with their owning roadmap tasks.
+This runtime implements explicit PostgreSQL migrations, read-only startup compatibility checks, and separate explicit dataset initialization. The bounded coaching-library asset is documented in [`doc/seed-library.md`](doc/seed-library.md). JWT authentication, authorization, and product pages remain with their owning roadmap tasks.

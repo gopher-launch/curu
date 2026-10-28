@@ -7,6 +7,7 @@ Curu uses PostgreSQL as its authoritative store. The platform provisions the dat
 Provision distinct PostgreSQL login roles:
 
 - The migration owner owns the `curu` schema and its objects. Its URL is supplied only to the migration command as `CURU_MIGRATION_DATABASE_URL`.
+- A one-shot initialization operator receives only the data privileges listed below. Its URL is supplied only to the initialization command as `CURU_INITIALIZATION_DATABASE_URL`.
 - The restricted runtime role is named by `CURU_RUNTIME_DATABASE_ROLE`. Migrations grant it schema usage, read-only migration and initialization metadata, non-destructive activity access, and progression access. It cannot create or alter schema objects, change migration history or initialization state, or permanently delete activities.
 - The server receives the runtime role's URL as `CURU_DATABASE_URL`.
 
@@ -36,7 +37,36 @@ The application image also includes `/curu-migrate`; a deployment can run that b
 
 The command takes a PostgreSQL advisory lock, verifies the checksum and order of existing migration history, applies pending migrations transactionally, reconciles the documented runtime grants, and validates the effective runtime role boundary. Repeating it at the current version leaves schema and content unchanged while rechecking grants and restrictions. This build supports schema version 2.
 
-The initial schema contains owner-scoped activities, their ordered progressions, dataset-initialization metadata, archive timestamps, and positive revision tokens. The bounded seed asset is documented in [`seed-library.md`](seed-library.md), but dataset initialization remains a separate future command; migration never seeds or replaces activities.
+The initial schema contains owner-scoped activities, their ordered progressions, dataset-initialization metadata, archive timestamps, and positive revision tokens. Migration never seeds or replaces activities.
+
+## Initialize the dataset
+
+Provision a login role for the one-shot initializer without elevated attributes, role memberships, database or schema creation, or temporary-table access. After migration, the schema owner grants it only the implemented initialization surface (substitute the actual quoted role name):
+
+```sql
+GRANT USAGE ON SCHEMA curu TO curu_initializer;
+GRANT SELECT ON curu.schema_migrations TO curu_initializer;
+GRANT SELECT, INSERT ON curu.dataset_initializations TO curu_initializer;
+GRANT SELECT, INSERT ON curu.activities TO curu_initializer;
+GRANT INSERT ON curu.activity_progressions TO curu_initializer;
+```
+
+The initializer does not need schema ownership, update/delete privileges, or the runtime credential. Supply its secret only to this one-shot command. Seed mode requires the stable internal owner UUID selected for the deployment:
+
+```sh
+CURU_INITIALIZATION_DATABASE_URL='postgres://curu_initializer:...@db.example/curu?sslmode=require' \
+CURU_OWNER_ID='00000000-0000-4000-8000-000000000001' \
+go run ./cmd/curu-initialize --mode=seed
+```
+
+To record a deliberately empty installation instead:
+
+```sh
+CURU_INITIALIZATION_DATABASE_URL='postgres://curu_initializer:...@db.example/curu?sslmode=require' \
+go run ./cmd/curu-initialize --mode=empty
+```
+
+The application image includes `/curu-initialize` with the same flags and settings. The command first performs the read-only schema compatibility check, then takes a transaction-scoped PostgreSQL advisory lock. A seed initialization inserts all 44 activities and 110 progressions and the `curu-coaching-library` version `1` completion record in one transaction. Empty mode records the empty choice without inserting content. An exact completed retry is a no-op; a different recorded choice or any activity without initialization metadata is refused. The completion record is authoritative: retries do not compare, repair, replace, or synchronize edited content, and startup never invokes this command.
 
 ## Start the server
 
@@ -55,7 +85,18 @@ The mandatory local suite skips the database integration case unless an explicit
 
 ```sh
 CURU_TEST_DATABASE_URL='postgres://postgres:...@127.0.0.1:5432/curu_test?sslmode=disable' \
-go test ./internal/database -run TestPostgresMigrationAndRuntimeRestrictions -count=1
+go test ./internal/database -run 'TestPostgres(MigrationAndRuntimeRestrictions|DatasetInitialization)' -count=1
 ```
 
-The test changes database-wide `PUBLIC` temporary privileges, drops and recreates the `curu` schema, and creates roles named `curu_runtime_test` and `curu_runtime_assumable_test`; never point it at retained data. It first proves migration fails closed while inherited temporary, database/schema creation, or `SET ROLE` authority is available. It then proves startup compatibility is read-only, applies migration 1, inserts an existing fixture, applies migration 2, verifies retained content and repeatability, loads the complete bounded seed asset and checks its 44/110 counts, and confirms the runtime role can edit activity data but cannot create persistent or temporary tables, alter migration/initialization state, or permanently delete activities. Cleanup restores the usual `PUBLIC` temporary privilege.
+The tests change database-wide `PUBLIC` temporary privileges, drop and recreate the `curu` schema, and create disposable roles named with `curu_runtime_test` or `curu_initializer_test`; never point them at retained data. They prove the migration and runtime boundary plus the narrow initializer grants, fresh seed and empty initialization, exact retries, concurrent serialization, rollback after a mid-seed failure, refusal of unrecorded content, and preservation of a coach edit through retry and startup compatibility. Cleanup restores the usual `PUBLIC` temporary privilege.
+
+## Reset a named disposable target
+
+Reset is not a web route or an initialization mode. It is a destructive operator action only for an explicitly named isolated database. For the disposable database named `curu_test`, first verify the selected URL resolves to that exact database, then drop only Curu's schema and rerun migration and initialization:
+
+```sh
+test "$(psql "$CURU_DISPOSABLE_DATABASE_URL" -Atqc 'select current_database()')" = 'curu_test' && \
+  psql "$CURU_DISPOSABLE_DATABASE_URL" -v ON_ERROR_STOP=1 -c 'DROP SCHEMA IF EXISTS curu CASCADE'
+```
+
+Do not set `CURU_DISPOSABLE_DATABASE_URL` to a retained, shared, staging, or production database. Curu does not provision or destroy the database service itself.
