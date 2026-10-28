@@ -120,11 +120,14 @@ func (a *Authenticator) Validate(ctx context.Context, compact string) (Principal
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
 		return Principal{}, ErrInvalidCredentials
 	}
-	if _, err := base64.RawURLEncoding.Strict().DecodeString(parts[1]); err != nil {
+	headerBytes, ok := decodeBase64URLSegment(parts[0])
+	if !ok {
 		return Principal{}, ErrInvalidCredentials
 	}
-	headerBytes, err := base64.RawURLEncoding.Strict().DecodeString(parts[0])
-	if err != nil {
+	if _, ok := decodeBase64URLSegment(parts[1]); !ok {
+		return Principal{}, ErrInvalidCredentials
+	}
+	if _, ok := decodeBase64URLSegment(parts[2]); !ok {
 		return Principal{}, ErrInvalidCredentials
 	}
 	header, err := decodeUniqueObject(headerBytes)
@@ -164,6 +167,14 @@ func (a *Authenticator) Validate(ctx context.Context, compact string) (Principal
 		return Principal{}, ErrInvalidCredentials
 	}
 	return a.validateClaims(claims)
+}
+
+func decodeBase64URLSegment(segment string) ([]byte, bool) {
+	decoded, err := base64.RawURLEncoding.Strict().DecodeString(segment)
+	if err != nil || base64.RawURLEncoding.EncodeToString(decoded) != segment {
+		return nil, false
+	}
+	return decoded, true
 }
 
 func validJWTEncodingHeaders(header map[string]json.RawMessage) bool {
@@ -516,9 +527,7 @@ func responseAge(header http.Header, requestTime, responseTime, now time.Time) (
 	ageValue := time.Duration(0)
 	if values := header.Values("Age"); len(values) > 0 {
 		first := strings.TrimSpace(strings.Split(values[0], ",")[0])
-		if seconds, err := strconv.ParseUint(first, 10, 63); err == nil {
-			ageValue = secondsDuration(seconds)
-		}
+		ageValue = ageDuration(first)
 	}
 	correctedAge := ageValue + responseDelay
 	if correctedAge < ageValue {
@@ -536,6 +545,24 @@ func responseAge(header http.Header, requestTime, responseTime, now time.Time) (
 		return time.Duration(math.MaxInt64), true
 	}
 	return currentAge, true
+}
+
+func ageDuration(value string) time.Duration {
+	seconds, err := strconv.ParseUint(value, 10, 64)
+	if err == nil {
+		return secondsDuration(seconds)
+	}
+	if value == "" {
+		return 0
+	}
+	for _, char := range value {
+		if char < '0' || char > '9' {
+			return 0
+		}
+	}
+	// RFC 9111 requires syntactically numeric delta-seconds that overflow
+	// local representation to saturate rather than wrap or become zero.
+	return secondsDuration(1 << 31)
 }
 
 func secondsDuration(seconds uint64) time.Duration {

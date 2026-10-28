@@ -6,6 +6,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -186,6 +187,15 @@ func TestCacheFreshnessUsesHTTPPrecedenceAndCurrentAge(t *testing.T) {
 	if got := cacheTTL(http.Header{"Cache-Control": {"no-store"}}, responseTime, responseTime, responseTime, 5*time.Minute); got != 0 {
 		t.Errorf("no-store cache TTL = %v", got)
 	}
+	if got := cacheTTL(http.Header{"Cache-Control": {"max-age=300"}, "Age": {"invalid"}, "Date": {date}}, responseTime, responseTime, responseTime, 5*time.Minute); got != 5*time.Minute {
+		t.Errorf("invalid Age cache TTL = %v", got)
+	}
+	if got := cacheTTL(http.Header{"Cache-Control": {"max-age=300"}, "Age": {"999999999999999999999999999999999999"}, "Date": {date}}, responseTime, responseTime, responseTime, 5*time.Minute); got > 0 {
+		t.Errorf("overflowing Age cache TTL = %v", got)
+	}
+	if got := ageDuration("999999999999999999999999999999999999"); got != time.Duration(1<<31)*time.Second {
+		t.Errorf("overflowing Age duration = %v", got)
+	}
 }
 
 func TestCacheFreshnessRejectsAmbiguousOrInvalidExplicitMetadata(t *testing.T) {
@@ -270,6 +280,49 @@ func TestStandardProfileRejectsUnencodedPayloadAndUnsupportedCriticalHeaders(t *
 	}
 	if _, err := fixture.auth.Validate(context.Background(), string(critical)); !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("unsupported critical header Validate() error = %v", err)
+	}
+}
+
+func TestStandardProfileRejectsNonCanonicalSignatureEncoding(t *testing.T) {
+	fixture := newFixture(t, []string{"RS256"})
+	var parts []string
+	var standardBase64 string
+	for attempt := range 10 {
+		claims := fixture.claims()
+		claims["jti"] = "encoding-probe-" + strconv.Itoa(attempt)
+		parts = strings.Split(fixture.signRSA(t, claims, "at+jwt", "rsa-1", fixture.rsaKey), ".")
+		if len(parts) != 3 {
+			t.Fatalf("signed token has %d segments", len(parts))
+		}
+		signature, err := base64.RawURLEncoding.DecodeString(parts[2])
+		if err != nil {
+			t.Fatal(err)
+		}
+		standardBase64 = base64.RawStdEncoding.EncodeToString(signature)
+		if standardBase64 != parts[2] {
+			break
+		}
+	}
+	if standardBase64 == parts[2] {
+		t.Fatal("could not generate a signature exercising the base64 alphabet difference")
+	}
+	tests := map[string]string{
+		"padded":           parts[2] + "==",
+		"non-URL alphabet": standardBase64,
+	}
+	for name, signatureSegment := range tests {
+		t.Run(name, func(t *testing.T) {
+			malformed := strings.Join([]string{parts[0], parts[1], signatureSegment}, ".")
+			if _, err := fixture.auth.Validate(context.Background(), malformed); !errors.Is(err, ErrInvalidCredentials) {
+				t.Fatalf("Validate() error = %v, want ErrInvalidCredentials", err)
+			}
+		})
+	}
+	fixture.keys.mu.Lock()
+	requests := fixture.keys.requests
+	fixture.keys.mu.Unlock()
+	if requests != 0 {
+		t.Errorf("JWKS requests = %d, want malformed tokens rejected before key lookup", requests)
 	}
 }
 
