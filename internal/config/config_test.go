@@ -9,7 +9,7 @@ import (
 func TestLoadDefaults(t *testing.T) {
 	t.Parallel()
 
-	cfg, err := Load(func(string) (string, bool) { return "", false })
+	cfg, err := Load(lookupWithDatabase(nil))
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
@@ -25,6 +25,7 @@ func TestLoadOverrides(t *testing.T) {
 	t.Parallel()
 
 	values := map[string]string{
+		"CURU_DATABASE_URL":        "postgres://curu_runtime:secret@db.example/curu?sslmode=require",
 		"CURU_LISTEN_ADDRESS":      "0.0.0.0:9000",
 		"CURU_SHUTDOWN_TIMEOUT":    "20s",
 		"CURU_READ_HEADER_TIMEOUT": "7s",
@@ -46,16 +47,21 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]map[string]string{
-		"missing port":      {"CURU_LISTEN_ADDRESS": "localhost"},
-		"out of range port": {"CURU_LISTEN_ADDRESS": "localhost:70000"},
-		"empty address":     {"CURU_LISTEN_ADDRESS": ""},
-		"bad duration":      {"CURU_IDLE_TIMEOUT": "soon"},
-		"zero duration":     {"CURU_SHUTDOWN_TIMEOUT": "0s"},
+		"missing database":    {},
+		"bad database scheme": {"CURU_DATABASE_URL": "mysql://curu@db.example/curu"},
+		"missing port":        {"CURU_LISTEN_ADDRESS": "localhost"},
+		"out of range port":   {"CURU_LISTEN_ADDRESS": "localhost:70000"},
+		"empty address":       {"CURU_LISTEN_ADDRESS": ""},
+		"bad duration":        {"CURU_IDLE_TIMEOUT": "soon"},
+		"zero duration":       {"CURU_SHUTDOWN_TIMEOUT": "0s"},
 	}
 	for name, values := range tests {
 		values := values
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+			if name != "missing database" {
+				values["CURU_DATABASE_URL"] = valueOr(values, "CURU_DATABASE_URL", "postgres://curu@db.example/curu")
+			}
 			_, err := Load(func(key string) (string, bool) {
 				value, ok := values[key]
 				return value, ok
@@ -65,4 +71,23 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 			}
 		})
 	}
+}
+
+func lookupWithDatabase(values map[string]string) func(string) (string, bool) {
+	return func(name string) (string, bool) {
+		if value, ok := values[name]; ok {
+			return value, true
+		}
+		if name == "CURU_DATABASE_URL" {
+			return "postgres://curu@db.example/curu", true
+		}
+		return "", false
+	}
+}
+
+func valueOr(values map[string]string, key, fallback string) string {
+	if value, ok := values[key]; ok {
+		return value
+	}
+	return fallback
 }

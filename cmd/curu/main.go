@@ -9,6 +9,7 @@ import (
 
 	"github.com/gopher-launch/curu/internal/app"
 	"github.com/gopher-launch/curu/internal/config"
+	"github.com/gopher-launch/curu/internal/database"
 )
 
 func main() {
@@ -18,6 +19,16 @@ func main() {
 	if err != nil {
 		logger.Error("configuration invalid", "error", err)
 		os.Exit(2)
+	}
+	db, err := database.Open(context.Background(), cfg.DatabaseURL)
+	if err != nil {
+		logger.Error("database connection failed", "error", err)
+		os.Exit(1)
+	}
+	defer database.Close(db)
+	if err := database.CheckCompatibility(context.Background(), db); err != nil {
+		logger.Error("database schema incompatible", "error", err)
+		os.Exit(1)
 	}
 
 	application, err := app.New(cfg, logger)

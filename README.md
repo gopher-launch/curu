@@ -1,13 +1,14 @@
 # Curu
 
-Curu is a greenfield Go application for maintaining activities and planning practical coaching sessions. The current runtime is deliberately only an application shell: it exposes coarse health checks and no product data or mutation routes.
+Curu is a greenfield Go application for maintaining activities and planning practical coaching sessions. The current runtime exposes coarse health checks and no product data or mutation routes. It requires a compatible migrated PostgreSQL schema and never mutates that schema at startup.
 
 ## Requirements
 
 - Go 1.27 or later
+- PostgreSQL
 - Docker or another OCI builder/runtime only when building the container
 
-No database or identity provider is needed for the current shell.
+No identity provider is needed for the current shell. Database provisioning and migration are described in [`doc/database-operations.md`](doc/database-operations.md).
 
 ## Build, test, and start
 
@@ -23,10 +24,10 @@ Run the mandatory local test suite:
 go test ./...
 ```
 
-Start the server on its safe loopback default:
+After applying migrations, start the server with its restricted runtime connection on the safe loopback default:
 
 ```sh
-go run ./cmd/curu
+CURU_DATABASE_URL='postgres://curu-runtime:...@db.example/curu?sslmode=require' go run ./cmd/curu
 ```
 
 The process logs structured JSON to standard output. In another terminal, check its minimal endpoints:
@@ -49,7 +50,10 @@ docker build -t curu:local .
 The default application bind is loopback. A container deployment must explicitly select its internal listener and publish it only behind the intended gateway or platform network:
 
 ```sh
-docker run --rm -e CURU_LISTEN_ADDRESS=0.0.0.0:8080 -p 127.0.0.1:8080:8080 curu:local
+docker run --rm \
+  -e CURU_LISTEN_ADDRESS=0.0.0.0:8080 \
+  -e CURU_DATABASE_URL='postgres://curu-runtime:...@db.example/curu?sslmode=require' \
+  -p 127.0.0.1:8080:8080 curu:local
 ```
 
-This task does not implement JWT authentication, authorization, product pages, PostgreSQL, migrations, or bootstrap commands. Their exact interfaces remain with their owning roadmap tasks.
+This runtime implements explicit PostgreSQL migrations and read-only startup compatibility checks. It does not implement JWT authentication, authorization, product pages, or bootstrap commands; those remain with their owning roadmap tasks.

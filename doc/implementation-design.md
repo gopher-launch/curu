@@ -19,7 +19,7 @@ Task-specific packages should be introduced only with the behavior that needs th
 
 PostgreSQL is the authoritative application store. Curu supplies ordered, explicit, forward migrations and a compatibility check; a schema-owning migration credential is distinct from the restricted runtime credential. The external data service operates storage, backups, retention, and restore execution. Curu documents compatible application/schema versions and verifies application data after an isolated restore.
 
-Schema work begins in CURU-019 and must cover only then-current activities, content/progressions as needed, bootstrap metadata, and revision tokens. The later session and template tasks extend that schema. GORM maps and queries the explicit schema; it does not infer or mutate production structure at application startup.
+CURU-019 established explicit schema version 2 for owner-scoped activities, ordered progressions, dataset-initialization metadata, archive state, and revision tokens. The later session and template tasks extend that schema. GORM maps and queries the explicit schema; it does not infer or mutate production structure at application startup.
 
 Mutations use transactions and compare-and-update revision checks at the relevant aggregate boundary. A stale write leaves authoritative data unchanged. Recovery drafts store bounded owner-scoped submitted content separately and require explicit reopen/discard actions; their exact durable representation and retention are designed before implementation. Activity content copied into a placement is an owned snapshot, with source identity retained only as provenance.
 

@@ -48,6 +48,7 @@ func TestRunReportsBindFailure(t *testing.T) {
 func newTestConfig(address string) config.Config {
 	return config.Config{
 		ListenAddress:     address,
+		DatabaseURL:       "postgres://curu@db.example/curu",
 		ShutdownTimeout:   time.Second,
 		ReadHeaderTimeout: time.Second,
 		IdleTimeout:       time.Second,

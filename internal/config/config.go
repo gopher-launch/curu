@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -15,11 +16,11 @@ const (
 	defaultIdleTimeout       = 60 * time.Second
 )
 
-// Config contains the settings owned by the minimal HTTP runtime. Security,
-// identity, and database settings arrive with the roadmap tasks that implement
-// those boundaries.
+// Config contains the settings owned by the current HTTP runtime. Additional
+// security and identity settings arrive with their owning roadmap tasks.
 type Config struct {
 	ListenAddress     string
+	DatabaseURL       string
 	ShutdownTimeout   time.Duration
 	ReadHeaderTimeout time.Duration
 	IdleTimeout       time.Duration
@@ -30,6 +31,7 @@ type Config struct {
 func Load(lookup func(string) (string, bool)) (Config, error) {
 	cfg := Config{
 		ListenAddress:     valueOrDefault(lookup, "CURU_LISTEN_ADDRESS", defaultListenAddress),
+		DatabaseURL:       valueOrDefault(lookup, "CURU_DATABASE_URL", ""),
 		ShutdownTimeout:   defaultShutdownTimeout,
 		ReadHeaderTimeout: defaultReadHeaderTimeout,
 		IdleTimeout:       defaultIdleTimeout,
@@ -48,8 +50,31 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	if err := validateListenAddress(cfg.ListenAddress); err != nil {
 		return Config{}, fmt.Errorf("CURU_LISTEN_ADDRESS: %w", err)
 	}
+	if err := validateDatabaseURL(cfg.DatabaseURL); err != nil {
+		return Config{}, fmt.Errorf("CURU_DATABASE_URL: %w", err)
+	}
 
 	return cfg, nil
+}
+
+func validateDatabaseURL(value string) error {
+	if value == "" {
+		return fmt.Errorf("is required")
+	}
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return fmt.Errorf("must be a valid PostgreSQL URL")
+	}
+	if parsed.Scheme != "postgres" && parsed.Scheme != "postgresql" {
+		return fmt.Errorf("scheme must be postgres or postgresql")
+	}
+	if parsed.User == nil || parsed.User.Username() == "" {
+		return fmt.Errorf("must include a database user")
+	}
+	if parsed.Host == "" || strings.TrimPrefix(parsed.Path, "/") == "" {
+		return fmt.Errorf("must include a host and database name")
+	}
+	return nil
 }
 
 func valueOrDefault(lookup func(string) (string, bool), name, fallback string) string {
