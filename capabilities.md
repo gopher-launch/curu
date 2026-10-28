@@ -10,7 +10,7 @@
 ## Integration and data-service contract
 
 - Delivery: CURU-014
-- Integration contract: [`doc/integration-contract.md`](doc/integration-contract.md) defines the gateway/JWT transport and validation defaults, stable single-owner mapping, deny-by-default application authorization, browser/CSRF/proxy behavior, and safe authentication-expiry outcomes.
+- Integration contract: [`doc/integration-contract.md`](doc/integration-contract.md) defines gateway/JWT transport, deployment-selected access-token profiles, validation defaults, stable single-owner mapping, deny-by-default application authorization, browser/CSRF/proxy behavior, and safe authentication-expiry outcomes. It prefers the standard OAuth JWT access-token profile, permits suitable existing tokens without custom Curu typing or gateway reissuance, and requires explicit wrong-kind rejection rules before provider-specific profiles are supported.
 - Data-service contract: the same document assigns PostgreSQL provisioning, backup, and restore execution to the platform while assigning migrations, initialization, compatibility, restricted runtime access, and post-restore semantic verification to Curu.
 - Runtime capability: none. CURU-014 is a design delivery; authentication, authorization, browser protections, migrations, and recovery checks remain assigned to the implementation tasks identified in the roadmap.
 

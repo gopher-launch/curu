@@ -44,13 +44,13 @@ Accepted direction: the gateway handles third-party authentication and presents 
 
 The accepted CURU-014 contract in `doc/integration-contract.md` specifies:
 
-- A distinct `curu+jwt` token type and dedicated Curu audience, plus configured trust for signing keys/rotation, issuer, algorithms and required lifetime checks. Never select trust locations from an unverified token.
+- A deployment-selected access-token validation profile and dedicated Curu resource audience, plus configured trust for signing keys/rotation, issuer, algorithms and required lifetime checks. Prefer the standard OAuth JWT access-token profile; a suitable existing token may be forwarded without a custom Curu type or reissuance. Never select trust or validation profiles from an unverified token, and never fall back to accepting generic signed JWTs.
 - Stable external identity based on issuer/subject, mapped to an internal principal. A configured single-owner binding is enough for MVP; changing provider bindings should not require changing application content identity.
 - A small application policy authorizes read/mutate/archive/recovery actions. Keep raw JWT claims and third-party role names outside domain behavior.
 - Gateway owns login, refresh and browser session/logout mechanics. Curu enforces the presented token's validity and handles expiry safely. The browser CSRF/origin/proxy contract must be explicit even if the gateway injects Authorization.
 - Values such as deployment issuer URL, audience and keys are configuration, not reasons to bake AWS or one identity provider into the model. No new token issuer, password database or policy engine is required in Curu.
 
-Technical references: JWT explicit typing and mutually exclusive profiles in RFC 8725 [§3.11](https://www.rfc-editor.org/rfc/rfc8725.html#section-3.11) and [§3.12](https://www.rfc-editor.org/rfc/rfc8725.html#section-3.12), [HTTP authentication challenges, RFC 9110 §15.5.2](https://www.rfc-editor.org/rfc/rfc9110.html#section-15.5.2), [Bearer challenges, RFC 6750 §3](https://www.rfc-editor.org/rfc/rfc6750.html#section-3), and [conditional updates, RFC 9110 §13.1.1](https://www.rfc-editor.org/rfc/rfc9110.html#section-13.1.1). HTTP conditional requests are one transport option; database compare-and-update is still required to prevent a lost update.
+Technical references: the standard [OAuth JWT access-token profile, RFC 9068](https://www.rfc-editor.org/rfc/rfc9068.html), JWT explicit typing and mutually exclusive profiles in RFC 8725 [§3.11](https://www.rfc-editor.org/rfc/rfc8725.html#section-3.11) and [§3.12](https://www.rfc-editor.org/rfc/rfc8725.html#section-3.12), [HTTP authentication challenges, RFC 9110 §15.5.2](https://www.rfc-editor.org/rfc/rfc9110.html#section-15.5.2), [Bearer challenges, RFC 6750 §3](https://www.rfc-editor.org/rfc/rfc6750.html#section-3), and [conditional updates, RFC 9110 §13.1.1](https://www.rfc-editor.org/rfc/rfc9110.html#section-13.1.1). HTTP conditional requests are one transport option; database compare-and-update is still required to prevent a lost update.
 
 ## Data-service contract
 
@@ -241,7 +241,7 @@ CURU-009, CURU-026, CURU-010 and CURU-027 deliver independent duplication and te
 - Specify external Postgres/backup/restore responsibilities and Curu's migrations, initialization, compatibility, credentials, runtime privileges, and recovery obligations. No cloud provider is selected by application code.
 - Make any material unresolved choice explicit for Chris; documentation may propose details, but must not report them as accepted or implemented. Accepted integration of this design candidate is the record of the chosen contract.
 
-**Verification:** Review positive/negative JWT typing, trust/rotation, challenge and access examples, data lifecycle scenarios, and clear responsibilities. No live identity provider or AWS resources are required.
+**Verification:** Review standard-profile access-token acceptance, wrong-kind/profile rejection, trust/rotation, challenge and access examples, data lifecycle scenarios, and clear responsibilities. Provider-specific profiles require explicit distinguishing rules and negative fixtures before use. No live identity provider or AWS resources are required.
 
 ## CURU-002 — Create the minimal runnable Go application
 
@@ -331,12 +331,13 @@ CURU-009, CURU-026, CURU-010 and CURU-027 deliver independent duplication and te
 
 **Acceptance criteria:**
 
-- Validate the explicit Curu token type, cryptographic signature, configured issuer/audience, allowed algorithms and required temporal claims before mapping a principal.
-- Resolve signing keys only through configured trusted material/endpoints with bounded rotation/failure behavior. Reject unsigned, substituted, wrong-type, malformed, expired and untrusted tokens.
+- Implement the standard OAuth JWT access-token profile and validate its type/required claims, cryptographic signature, configured issuer/resource audience, allowed algorithms and required temporal claims before mapping a principal. No bespoke Curu token type or gateway reissuance is required for a suitable existing access token.
+- Make the supported validation profile an explicit deployment setting, never selected by an unverified token or weakened by fallback. Do not build a generic profile framework; provider-specific support is added only for a concrete reviewed integration need, with wrong-kind rejection fixtures.
+- Resolve signing keys only through configured trusted material/endpoints with bounded rotation/failure behavior. Reject unsigned, substituted, wrong-purpose, wrong-profile, malformed, expired and untrusted tokens.
 - Keep raw JWTs/provider claim names outside application/domain behavior. Use stable external identity rather than editable email/display names.
 - Do not implement login, JWT issuance, token exchange, a production signer, or an identity-provider integration inside Curu.
 
-**Verification:** Local signing fixtures prove success, missing/wrong type, wrong issuer/audience/key/algorithm, expiry and rotation-overlap behavior. No real login or cloud resource is needed.
+**Verification:** Local signing fixtures prove standard-profile success for both access-token media-type forms and their case-insensitive equivalents; missing/wrong type or required claims; rejection of same-issuer ID tokens, wrong-purpose tokens, unsupported profiles and fallback attempts; wrong issuer/audience/key/algorithm; expiry; and rotation-overlap behavior. No real login, gateway token issuer or cloud resource is needed.
 
 ## CURU-020 — Enforce Curu's single-owner authorization policy
 
