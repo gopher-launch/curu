@@ -43,7 +43,7 @@ The following stable interface classes are required. Their exact executable comm
 | --- | --- | --- | --- |
 | Build | One reproducible repository command produces the Curu server binary; the container build creates a minimal non-root runtime image. | CURU-002 | Root `README.md` contributor quickstart and container metadata |
 | Test | One mandatory repository command runs the default local suite; focused integration commands identify disposable PostgreSQL and browser prerequisites without paid or cloud services. | CURU-002, extended by later tasks | Root `README.md`, plus test-adjacent documentation when specialized setup is needed |
-| Start | One foreground server command validates configuration, starts safely, logs readiness, and shuts down gracefully; absent security configuration cannot expose private placeholder data. | CURU-002, constrained by CURU-014 | Root `README.md` and `doc/configuration.md` |
+| Start | One foreground server command validates configuration, starts safely, reports coarse readiness, and shuts down gracefully; absent security configuration cannot expose private placeholder data. | CURU-002, CURU-015, constrained by CURU-014 | Root `README.md` and `doc/configuration.md` |
 | Migrate | A separate explicit command applies ordered forward migrations using schema-owner credentials; ordinary server startup only checks compatibility. | CURU-019 | `doc/database-operations.md` |
 | Bootstrap | A separate explicit command initializes either the versioned seed or an intentionally empty dataset and reports no-op/refusal outcomes; it is never server startup. | CURU-004 | `doc/database-operations.md` |
 

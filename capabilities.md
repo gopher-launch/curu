@@ -21,7 +21,7 @@
 - Safe surface: the default listener is loopback-only. No product-data route exists; unknown safe routes use the shared escaped HTML layout and unsafe or unimplemented routes remain unavailable.
 - Contributor interface: [`README.md`](README.md) defines the executable `go build ./cmd/curu`, `go test ./...`, and `go run ./cmd/curu` commands. [`doc/configuration.md`](doc/configuration.md) defines the implemented runtime settings.
 - Container interface: [`Dockerfile`](Dockerfile) builds the server and separate migration and initialization executables into a minimal image with TLS root certificates; all run as numeric non-root user `65532:65532`, and non-loopback binding must be selected explicitly by the deployment.
-- Deferred capability: JWT authentication, application authorization, browser protections, and every activity/session/template behavior remain assigned to their roadmap tasks.
+- Deferred capability: application authorization, browser protections, and every activity/session/template behavior remain assigned to their roadmap tasks.
 
 ## PostgreSQL migration and compatibility boundary
 
@@ -49,4 +49,14 @@
 - Safe repeat behavior: only an exact completion produces an `already_initialized` no-op. Seed retries must match the recorded seed identity/version and the owner established by all deterministic seeded activity rows. A different owner, a different recorded choice, missing seeded ownership evidence, or unrecorded existing activity is refused. Retries and ordinary server startup never synchronize or replace edited content.
 - Operator safety: [`doc/database-operations.md`](doc/database-operations.md) documents narrow initialization privileges, exact commands, disposable PostgreSQL verification, and a separate reset procedure guarded by the exact isolated database name. No web route or infrastructure lifecycle behavior is added.
 - Verification: local tests cover completion-record matching; opt-in disposable PostgreSQL checks cover fresh seed and empty initialization, same-owner no-op and different-owner refusal, concurrent invocation, induced partial failure rollback, non-empty refusal, exact 44/110 counts, edit preservation, and read-only startup compatibility.
-- Deferred capability: JWT authentication, application authorization, product library routes, backup/restore evidence, and later activity/session behavior remain assigned to their roadmap tasks.
+- Deferred capability: application authorization, product library routes, backup/restore evidence, and later activity/session behavior remain assigned to their roadmap tasks.
+
+## Trusted JWT authentication
+
+- Delivery: CURU-015
+- Explicit profile: runtime configuration selects only the standard RFC 9068 OAuth JWT access-token profile. The adapter accepts the two access-token media types case-insensitively and validates their required claims without a generic-JWT or provider-specific fallback.
+- Trust and validation: compact tokens require one non-empty key ID, an allowed `RS256` or `ES256` algorithm, an eligible unique JWKS key, a valid signature, exact issuer, the configured Curu resource audience, non-empty subject, numeric temporal claims, bounded lifetime/skew, and duplicate-free JSON claim names. Unsigned, wrong-kind, wrong-purpose, malformed, expired, substituted-key, and untrusted tokens fail closed.
+- Principal boundary: successful validation yields only the exact issuer/subject external identity. Tokens, provider claims, emails, display names, roles, and groups do not enter application or domain behavior.
+- JWKS behavior: Curu fetches only the configured HTTPS endpoint with bounded time and response size, applies HTTP freshness with a five-minute default and 15-minute cap, supports planned overlap, rate-limits unknown-key refresh, and never extends an expired cache after failure. A fresh cached known key remains usable during a refresh failure; otherwise the key dependency is unavailable.
+- Runtime integration: authentication trust configuration is required before startup. Liveness remains process-only, while readiness requires a non-expired usable key set. Local generated signing/JWKS fixtures cover both media types, RSA and EC validation, required/wrong claims, trust failures, rotation, cache failure, refresh limiting, duplicate credentials, and unsupported-profile rejection.
+- Deferred capability: CURU-020 owns the configured owner binding and use-case authorization policy. CURU-016 owns browser/HTMX authentication outcomes, CSRF, origin, and proxy protections. No product routes, login, issuer, exchange, production signer, or provider adapter are added by CURU-015.

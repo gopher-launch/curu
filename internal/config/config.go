@@ -14,6 +14,11 @@ const (
 	defaultShutdownTimeout   = 10 * time.Second
 	defaultReadHeaderTimeout = 5 * time.Second
 	defaultIdleTimeout       = 60 * time.Second
+	defaultJWTClockSkew      = 60 * time.Second
+	defaultJWTMaxLifetime    = 15 * time.Minute
+	defaultJWKSFetchTimeout  = 5 * time.Second
+	defaultJWKSCacheTTL      = 5 * time.Minute
+	defaultJWKSRefreshLimit  = time.Minute
 )
 
 // Config contains the settings owned by the current HTTP runtime. Additional
@@ -24,6 +29,22 @@ type Config struct {
 	ShutdownTimeout   time.Duration
 	ReadHeaderTimeout time.Duration
 	IdleTimeout       time.Duration
+	JWT               JWTConfig
+}
+
+// JWTConfig is the deployment-selected trust boundary for access tokens.
+// Only the standard OAuth JWT access-token profile is currently supported.
+type JWTConfig struct {
+	Profile                   string
+	Issuer                    string
+	Audience                  string
+	JWKSURL                   string
+	Algorithms                []string
+	ClockSkew                 time.Duration
+	MaxLifetime               time.Duration
+	JWKSFetchTimeout          time.Duration
+	JWKSDefaultCacheTTL       time.Duration
+	JWKSUnknownKIDRefreshRate time.Duration
 }
 
 // Load reads and validates runtime configuration. lookup has the same contract
@@ -35,7 +56,19 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		ShutdownTimeout:   defaultShutdownTimeout,
 		ReadHeaderTimeout: defaultReadHeaderTimeout,
 		IdleTimeout:       defaultIdleTimeout,
+		JWT: JWTConfig{
+			Profile:                   valueOrDefault(lookup, "CURU_JWT_PROFILE", ""),
+			Issuer:                    valueOrDefault(lookup, "CURU_JWT_ISSUER", ""),
+			Audience:                  valueOrDefault(lookup, "CURU_JWT_AUDIENCE", ""),
+			JWKSURL:                   valueOrDefault(lookup, "CURU_JWKS_URL", ""),
+			ClockSkew:                 defaultJWTClockSkew,
+			MaxLifetime:               defaultJWTMaxLifetime,
+			JWKSFetchTimeout:          defaultJWKSFetchTimeout,
+			JWKSDefaultCacheTTL:       defaultJWKSCacheTTL,
+			JWKSUnknownKIDRefreshRate: defaultJWKSRefreshLimit,
+		},
 	}
+	cfg.JWT.Algorithms = splitComma(valueOrDefault(lookup, "CURU_JWT_ALGORITHMS", ""))
 
 	var err error
 	if cfg.ShutdownTimeout, err = duration(lookup, "CURU_SHUTDOWN_TIMEOUT", cfg.ShutdownTimeout); err != nil {
@@ -47,14 +80,78 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	if cfg.IdleTimeout, err = duration(lookup, "CURU_IDLE_TIMEOUT", cfg.IdleTimeout); err != nil {
 		return Config{}, err
 	}
+	if cfg.JWT.ClockSkew, err = nonNegativeDuration(lookup, "CURU_JWT_CLOCK_SKEW", cfg.JWT.ClockSkew); err != nil {
+		return Config{}, err
+	}
+	if cfg.JWT.MaxLifetime, err = duration(lookup, "CURU_JWT_MAX_LIFETIME", cfg.JWT.MaxLifetime); err != nil {
+		return Config{}, err
+	}
+	if cfg.JWT.JWKSFetchTimeout, err = duration(lookup, "CURU_JWKS_FETCH_TIMEOUT", cfg.JWT.JWKSFetchTimeout); err != nil {
+		return Config{}, err
+	}
+	if cfg.JWT.JWKSDefaultCacheTTL, err = duration(lookup, "CURU_JWKS_DEFAULT_CACHE_TTL", cfg.JWT.JWKSDefaultCacheTTL); err != nil {
+		return Config{}, err
+	}
+	if cfg.JWT.JWKSUnknownKIDRefreshRate, err = duration(lookup, "CURU_JWKS_UNKNOWN_KID_REFRESH_INTERVAL", cfg.JWT.JWKSUnknownKIDRefreshRate); err != nil {
+		return Config{}, err
+	}
 	if err := validateListenAddress(cfg.ListenAddress); err != nil {
 		return Config{}, fmt.Errorf("CURU_LISTEN_ADDRESS: %w", err)
 	}
 	if err := validateDatabaseURL(cfg.DatabaseURL); err != nil {
 		return Config{}, fmt.Errorf("CURU_DATABASE_URL: %w", err)
 	}
+	if err := validateJWT(cfg.JWT); err != nil {
+		return Config{}, err
+	}
 
 	return cfg, nil
+}
+
+func validateJWT(cfg JWTConfig) error {
+	if cfg.Profile != "rfc9068" {
+		return fmt.Errorf("CURU_JWT_PROFILE: must be rfc9068")
+	}
+	if err := validateHTTPSURL(cfg.Issuer); err != nil {
+		return fmt.Errorf("CURU_JWT_ISSUER: %w", err)
+	}
+	if strings.TrimSpace(cfg.Audience) != cfg.Audience || cfg.Audience == "" {
+		return fmt.Errorf("CURU_JWT_AUDIENCE: must be non-empty without surrounding whitespace")
+	}
+	if err := validateHTTPSURL(cfg.JWKSURL); err != nil {
+		return fmt.Errorf("CURU_JWKS_URL: %w", err)
+	}
+	if len(cfg.Algorithms) == 0 {
+		return fmt.Errorf("CURU_JWT_ALGORITHMS: must select RS256 and/or ES256")
+	}
+	seen := make(map[string]bool, len(cfg.Algorithms))
+	for _, algorithm := range cfg.Algorithms {
+		if algorithm != "RS256" && algorithm != "ES256" {
+			return fmt.Errorf("CURU_JWT_ALGORITHMS: unsupported algorithm %q", algorithm)
+		}
+		if seen[algorithm] {
+			return fmt.Errorf("CURU_JWT_ALGORITHMS: duplicate algorithm %q", algorithm)
+		}
+		seen[algorithm] = true
+	}
+	if cfg.ClockSkew > time.Minute {
+		return fmt.Errorf("CURU_JWT_CLOCK_SKEW: must not exceed 1m")
+	}
+	if cfg.MaxLifetime > 15*time.Minute {
+		return fmt.Errorf("CURU_JWT_MAX_LIFETIME: must not exceed 15m")
+	}
+	if cfg.JWKSDefaultCacheTTL > 15*time.Minute {
+		return fmt.Errorf("CURU_JWKS_DEFAULT_CACHE_TTL: must not exceed 15m")
+	}
+	return nil
+}
+
+func validateHTTPSURL(value string) error {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
+		return fmt.Errorf("must be an absolute HTTPS URL without user information or fragment")
+	}
+	return nil
 }
 
 func validateDatabaseURL(value string) error {
@@ -98,6 +195,28 @@ func duration(lookup func(string) (string, bool), name string, fallback time.Dur
 		return 0, fmt.Errorf("%s: must be greater than zero", name)
 	}
 	return parsed, nil
+}
+
+func nonNegativeDuration(lookup func(string) (string, bool), name string, fallback time.Duration) (time.Duration, error) {
+	value, ok := lookup(name)
+	if !ok {
+		return fallback, nil
+	}
+	parsed, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf("%s: must be a duration: %w", name, err)
+	}
+	if parsed < 0 {
+		return 0, fmt.Errorf("%s: must not be negative", name)
+	}
+	return parsed, nil
+}
+
+func splitComma(value string) []string {
+	if value == "" {
+		return nil
+	}
+	return strings.Split(value, ",")
 }
 
 func validateListenAddress(address string) error {

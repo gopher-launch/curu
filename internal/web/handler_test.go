@@ -15,7 +15,7 @@ func TestHealthEndpoints(t *testing.T) {
 
 	var ready atomic.Bool
 	ready.Store(true)
-	handler := newTestHandler(t, &ready)
+	handler := newTestHandler(t, ready.Load)
 
 	tests := []struct {
 		path string
@@ -43,7 +43,7 @@ func TestReadinessFailsClosedBeforeServerStarts(t *testing.T) {
 	t.Parallel()
 
 	var ready atomic.Bool
-	handler := newTestHandler(t, &ready)
+	handler := newTestHandler(t, ready.Load)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/health/ready", nil))
 	if response.Code != http.StatusServiceUnavailable || response.Body.String() != "not ready\n" {
@@ -55,7 +55,7 @@ func TestUnknownRouteUsesEscapedLayout(t *testing.T) {
 	t.Parallel()
 
 	var ready atomic.Bool
-	handler := newTestHandler(t, &ready)
+	handler := newTestHandler(t, ready.Load)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/%3Cscript%3E", nil))
 	if response.Code != http.StatusNotFound {
@@ -71,7 +71,7 @@ func TestProductLikeMethodsAreUnavailable(t *testing.T) {
 	t.Parallel()
 
 	var ready atomic.Bool
-	handler := newTestHandler(t, &ready)
+	handler := newTestHandler(t, ready.Load)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/activities", strings.NewReader("private=data")))
 	if response.Code != http.StatusMethodNotAllowed {
@@ -79,7 +79,7 @@ func TestProductLikeMethodsAreUnavailable(t *testing.T) {
 	}
 }
 
-func newTestHandler(t *testing.T, ready *atomic.Bool) http.Handler {
+func newTestHandler(t *testing.T, ready func() bool) http.Handler {
 	t.Helper()
 	handler, err := NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), ready)
 	if err != nil {

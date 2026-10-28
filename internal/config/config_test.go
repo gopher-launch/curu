@@ -19,6 +19,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.ShutdownTimeout != 10*time.Second {
 		t.Errorf("ShutdownTimeout = %v", cfg.ShutdownTimeout)
 	}
+	if cfg.JWT.Profile != "rfc9068" || cfg.JWT.ClockSkew != time.Minute || cfg.JWT.MaxLifetime != 15*time.Minute {
+		t.Errorf("JWT = %+v", cfg.JWT)
+	}
 }
 
 func TestLoadOverrides(t *testing.T) {
@@ -30,6 +33,13 @@ func TestLoadOverrides(t *testing.T) {
 		"CURU_SHUTDOWN_TIMEOUT":    "20s",
 		"CURU_READ_HEADER_TIMEOUT": "7s",
 		"CURU_IDLE_TIMEOUT":        "2m",
+		"CURU_JWT_PROFILE":         "rfc9068",
+		"CURU_JWT_ISSUER":          "https://issuer.example/tenant",
+		"CURU_JWT_AUDIENCE":        "https://curu.example",
+		"CURU_JWKS_URL":            "https://keys.example/jwks.json",
+		"CURU_JWT_ALGORITHMS":      "RS256,ES256",
+		"CURU_JWT_CLOCK_SKEW":      "30s",
+		"CURU_JWT_MAX_LIFETIME":    "10m",
 	}
 	cfg, err := Load(func(name string) (string, bool) {
 		value, ok := values[name]
@@ -38,7 +48,7 @@ func TestLoadOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.ListenAddress != values["CURU_LISTEN_ADDRESS"] || cfg.ShutdownTimeout != 20*time.Second || cfg.ReadHeaderTimeout != 7*time.Second || cfg.IdleTimeout != 2*time.Minute {
+	if cfg.ListenAddress != values["CURU_LISTEN_ADDRESS"] || cfg.ShutdownTimeout != 20*time.Second || cfg.ReadHeaderTimeout != 7*time.Second || cfg.IdleTimeout != 2*time.Minute || len(cfg.JWT.Algorithms) != 2 || cfg.JWT.ClockSkew != 30*time.Second {
 		t.Errorf("Load() = %+v", cfg)
 	}
 }
@@ -54,6 +64,12 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 		"empty address":       {"CURU_LISTEN_ADDRESS": ""},
 		"bad duration":        {"CURU_IDLE_TIMEOUT": "soon"},
 		"zero duration":       {"CURU_SHUTDOWN_TIMEOUT": "0s"},
+		"unsupported profile": {"CURU_JWT_PROFILE": "generic"},
+		"HTTP keys":           {"CURU_JWKS_URL": "http://keys.example/jwks.json"},
+		"bad algorithm":       {"CURU_JWT_ALGORITHMS": "HS256"},
+		"duplicate algorithm": {"CURU_JWT_ALGORITHMS": "RS256,RS256"},
+		"excessive skew":      {"CURU_JWT_CLOCK_SKEW": "61s"},
+		"excessive lifetime":  {"CURU_JWT_MAX_LIFETIME": "16m"},
 	}
 	for name, values := range tests {
 		values := values
@@ -74,14 +90,20 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 }
 
 func lookupWithDatabase(values map[string]string) func(string) (string, bool) {
+	defaults := map[string]string{
+		"CURU_DATABASE_URL":   "postgres://curu@db.example/curu",
+		"CURU_JWT_PROFILE":    "rfc9068",
+		"CURU_JWT_ISSUER":     "https://issuer.example/tenant",
+		"CURU_JWT_AUDIENCE":   "https://curu.example",
+		"CURU_JWKS_URL":       "https://keys.example/jwks.json",
+		"CURU_JWT_ALGORITHMS": "RS256",
+	}
 	return func(name string) (string, bool) {
 		if value, ok := values[name]; ok {
 			return value, true
 		}
-		if name == "CURU_DATABASE_URL" {
-			return "postgres://curu@db.example/curu", true
-		}
-		return "", false
+		value, ok := defaults[name]
+		return value, ok
 	}
 }
 

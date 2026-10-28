@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"sync/atomic"
 
+	"github.com/gopher-launch/curu/internal/auth"
 	"github.com/gopher-launch/curu/internal/config"
 	"github.com/gopher-launch/curu/internal/web"
 )
@@ -17,6 +18,7 @@ type App struct {
 	config config.Config
 	logger *slog.Logger
 	ready  atomic.Bool
+	auth   *auth.Authenticator
 	server *http.Server
 }
 
@@ -25,8 +27,18 @@ func New(cfg config.Config, logger *slog.Logger) (*App, error) {
 		return nil, errors.New("logger is required")
 	}
 
-	application := &App{config: cfg, logger: logger}
-	handler, err := web.NewHandler(logger, &application.ready)
+	authenticator, err := auth.New(auth.Config{
+		Profile: cfg.JWT.Profile, Issuer: cfg.JWT.Issuer, Audience: cfg.JWT.Audience,
+		JWKSURL: cfg.JWT.JWKSURL, Algorithms: cfg.JWT.Algorithms,
+		ClockSkew: cfg.JWT.ClockSkew, MaxLifetime: cfg.JWT.MaxLifetime,
+		FetchTimeout: cfg.JWT.JWKSFetchTimeout, DefaultCacheTTL: cfg.JWT.JWKSDefaultCacheTTL,
+		UnknownKIDRefreshInterval: cfg.JWT.JWKSUnknownKIDRefreshRate,
+	}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create authenticator: %w", err)
+	}
+	application := &App{config: cfg, logger: logger, auth: authenticator}
+	handler, err := web.NewHandler(logger, func() bool { return application.ready.Load() && application.auth.Ready() })
 	if err != nil {
 		return nil, fmt.Errorf("create HTTP handler: %w", err)
 	}
@@ -48,7 +60,10 @@ func (a *App) Run(ctx context.Context) error {
 
 	serveResult := make(chan error, 1)
 	a.ready.Store(true)
-	a.logger.Info("server ready", "address", listener.Addr().String())
+	a.logger.Info("server listening", "address", listener.Addr().String())
+	go a.auth.Maintain(ctx, func() {
+		a.logger.Warn("authentication key refresh failed", "reason", "jwks_refresh_failed")
+	})
 	go func() {
 		serveResult <- a.server.Serve(listener)
 	}()

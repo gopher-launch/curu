@@ -9,5 +9,17 @@ The Curu server reads runtime settings from environment variables and rejects ma
 | `CURU_SHUTDOWN_TIMEOUT` | `10s` | Positive Go duration allowed for graceful HTTP shutdown. |
 | `CURU_READ_HEADER_TIMEOUT` | `5s` | Positive Go duration allowed to read request headers. |
 | `CURU_IDLE_TIMEOUT` | `60s` | Positive Go duration for idle keep-alive connections. |
+| `CURU_JWT_PROFILE` | required | Must be `rfc9068`; no generic or token-selected fallback profile exists. |
+| `CURU_JWT_ISSUER` | required | Exact, case-sensitive HTTPS issuer identifier. |
+| `CURU_JWT_AUDIENCE` | required | Dedicated, non-empty Curu resource audience. |
+| `CURU_JWKS_URL` | required | Operator-trusted absolute HTTPS JWKS endpoint; it is never taken from a token. |
+| `CURU_JWT_ALGORITHMS` | required | Comma-separated allowlist containing `RS256`, `ES256`, or both. Symmetric and unsigned tokens are unsupported. |
+| `CURU_JWT_CLOCK_SKEW` | `60s` | Non-negative temporal tolerance, capped at `60s`. |
+| `CURU_JWT_MAX_LIFETIME` | `15m` | Positive maximum `exp`–`iat` lifetime, capped at `15m`. |
+| `CURU_JWKS_FETCH_TIMEOUT` | `5s` | Positive bound for each JWKS request. |
+| `CURU_JWKS_DEFAULT_CACHE_TTL` | `5m` | Freshness used when the endpoint supplies none, capped at `15m`; HTTP freshness can shorten it. |
+| `CURU_JWKS_UNKNOWN_KID_REFRESH_INTERVAL` | `1m` | Positive rate limit for refreshes triggered by an unknown key ID. |
 
-Migration-only settings and commands are documented in [`database-operations.md`](database-operations.md); migration credentials are never accepted by the server. Configuration for trusted JWTs, owner authorization, public origin, CSRF, and proxy behavior remains absent until the roadmap tasks that implement those boundaries. Because no product routes exist, missing future request-security configuration cannot expose a usable private application. The only successful unauthenticated responses are coarse liveness and readiness checks; the deployment platform is responsible for restricting readiness to its platform network.
+Migration-only settings and commands are documented in [`database-operations.md`](database-operations.md); migration credentials are never accepted by the server. JWT trust settings are mandatory even though product routes are not implemented yet. The server retrieves only the configured JWKS URL, bounds response size and fetch time, follows HTTP freshness up to a 15-minute cap, rate-limits unknown-key refreshes, and fails closed when no fresh usable set is available. Liveness does not depend on the key service; readiness does. The deployment platform is responsible for restricting readiness to its platform network.
+
+Owner binding and internal authorization, public origin, CSRF, and trusted-proxy configuration remain absent until CURU-020 and CURU-016 implement those boundaries. Tokens and claims are not logged. Authentication maps a validated token only to its exact issuer/subject external identity; it does not consume email, display name, roles, or groups as authority.

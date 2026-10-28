@@ -52,5 +52,11 @@ func newTestConfig(address string) config.Config {
 		ShutdownTimeout:   time.Second,
 		ReadHeaderTimeout: time.Second,
 		IdleTimeout:       time.Second,
+		JWT: config.JWTConfig{
+			Profile: "rfc9068", Issuer: "https://issuer.example", Audience: "curu-resource",
+			JWKSURL: "https://keys.example/jwks.json", Algorithms: []string{"RS256"},
+			ClockSkew: time.Minute, MaxLifetime: 15 * time.Minute, JWKSFetchTimeout: time.Second,
+			JWKSDefaultCacheTTL: 5 * time.Minute, JWKSUnknownKIDRefreshRate: time.Minute,
+		},
 	}
 }

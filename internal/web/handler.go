@@ -6,7 +6,6 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
-	"sync/atomic"
 	"time"
 )
 
@@ -15,11 +14,11 @@ var templateFiles embed.FS
 
 type handler struct {
 	logger    *slog.Logger
-	ready     *atomic.Bool
+	ready     func() bool
 	templates *template.Template
 }
 
-func NewHandler(logger *slog.Logger, ready *atomic.Bool) (http.Handler, error) {
+func NewHandler(logger *slog.Logger, ready func() bool) (http.Handler, error) {
 	templates, err := template.ParseFS(templateFiles, "templates/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
@@ -43,7 +42,7 @@ func (h *handler) live(w http.ResponseWriter, _ *http.Request) {
 func (h *handler) readiness(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	if !h.ready.Load() {
+	if !h.ready() {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = w.Write([]byte("not ready\n"))
 		return
