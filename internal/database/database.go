@@ -128,12 +128,15 @@ func migrateThrough(ctx context.Context, db *gorm.DB, runtimeRole string, target
 			}
 		}
 
-		return grantRuntimeAccess(tx, runtimeRole)
+		if err := grantRuntimeAccess(tx, runtimeRole); err != nil {
+			return err
+		}
+		return validateRuntimeRole(tx, runtimeRole)
 	})
 }
 
 func grantRuntimeAccess(tx *gorm.DB, role string) error {
-	quoted := `"` + strings.ReplaceAll(role, `"`, `""`) + `"`
+	quoted := quoteIdentifier(role)
 	statements := []string{
 		"REVOKE ALL PRIVILEGES ON SCHEMA curu FROM PUBLIC",
 		"REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA curu FROM PUBLIC",
@@ -159,6 +162,53 @@ func grantRuntimeAccess(tx *gorm.DB, role string) error {
 		}
 	}
 	return nil
+}
+
+func validateRuntimeRole(tx *gorm.DB, role string) error {
+	var elevated bool
+	if err := tx.Raw(`SELECT rolsuper OR rolcreaterole OR rolcreatedb OR rolreplication OR rolbypassrls
+        FROM pg_roles WHERE rolname = ?`, role).Scan(&elevated).Error; err != nil {
+		return fmt.Errorf("inspect runtime role attributes: %w", err)
+	}
+	if elevated {
+		return errors.New("runtime database role has an elevated PostgreSQL attribute")
+	}
+
+	var canCreateTemporary bool
+	if err := tx.Raw(
+		"SELECT has_database_privilege(?, current_database(), 'TEMPORARY')", role,
+	).Scan(&canCreateTemporary).Error; err != nil {
+		return fmt.Errorf("inspect runtime database privileges: %w", err)
+	}
+	if canCreateTemporary {
+		return errors.New("runtime database role has effective TEMPORARY privilege; the database owner must revoke TEMPORARY from PUBLIC and inherited roles")
+	}
+	var canCreateSchema bool
+	if err := tx.Raw(
+		"SELECT has_database_privilege(?, current_database(), 'CREATE')", role,
+	).Scan(&canCreateSchema).Error; err != nil {
+		return fmt.Errorf("inspect runtime database CREATE privilege: %w", err)
+	}
+	if canCreateSchema {
+		return errors.New("runtime database role has effective database CREATE privilege")
+	}
+
+	var creatableSchemas string
+	if err := tx.Raw(`SELECT COALESCE(string_agg(quote_ident(nspname), ', ' ORDER BY nspname), '')
+        FROM pg_namespace
+        WHERE nspname NOT LIKE 'pg_temp_%'
+          AND nspname NOT LIKE 'pg_toast_temp_%'
+          AND has_schema_privilege(?, oid, 'CREATE')`, role).Scan(&creatableSchemas).Error; err != nil {
+		return fmt.Errorf("inspect runtime schema privileges: %w", err)
+	}
+	if creatableSchemas != "" {
+		return fmt.Errorf("runtime database role has effective CREATE privilege on schemas: %s", creatableSchemas)
+	}
+	return nil
+}
+
+func quoteIdentifier(identifier string) string {
+	return `"` + strings.ReplaceAll(identifier, `"`, `""`) + `"`
 }
 
 // CheckCompatibility verifies that the database has exactly the migration

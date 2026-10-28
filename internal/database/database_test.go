@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"gorm.io/gorm"
 )
 
 func TestEmbeddedMigrationsAreContiguous(t *testing.T) {
@@ -54,8 +56,11 @@ func TestPostgresMigrationAndRuntimeRestrictions(t *testing.T) {
 	const runtimeRole = "curu_runtime_test"
 	const runtimePassword = "curu-runtime-test-password"
 	cleanup := func() {
+		admin.Exec("REVOKE ALL PRIVILEGES ON DATABASE " + quoteIdentifier(currentDatabase(t, admin)) + " FROM " + runtimeRole)
 		admin.Exec("DROP SCHEMA IF EXISTS curu CASCADE")
+		admin.Exec("DROP SCHEMA IF EXISTS runtime_escape CASCADE")
 		admin.Exec("DROP ROLE IF EXISTS " + runtimeRole)
+		admin.Exec("GRANT TEMPORARY ON DATABASE " + quoteIdentifier(currentDatabase(t, admin)) + " TO PUBLIC")
 	}
 	cleanup()
 	defer cleanup()
@@ -78,6 +83,34 @@ func TestPostgresMigrationAndRuntimeRestrictions(t *testing.T) {
 	}
 	if schemaExists {
 		t.Fatal("runtime compatibility check created the curu schema")
+	}
+
+	if err := Migrate(ctx, admin, runtimeRole); err == nil || !strings.Contains(err.Error(), "TEMPORARY") {
+		t.Fatalf("Migrate() with inherited TEMPORARY error = %v, want fail-closed TEMPORARY error", err)
+	}
+	if err := admin.Exec("REVOKE TEMPORARY ON DATABASE " + quoteIdentifier(currentDatabase(t, admin)) + " FROM PUBLIC").Error; err != nil {
+		t.Fatalf("revoke disposable database TEMPORARY privilege: %v", err)
+	}
+	if err := admin.Exec("GRANT CREATE ON DATABASE " + quoteIdentifier(currentDatabase(t, admin)) + " TO " + runtimeRole).Error; err != nil {
+		t.Fatalf("grant database CREATE fixture: %v", err)
+	}
+	if err := Migrate(ctx, admin, runtimeRole); err == nil || !strings.Contains(err.Error(), "database CREATE") {
+		t.Fatalf("Migrate() with database CREATE error = %v, want fail-closed database CREATE error", err)
+	}
+	if err := admin.Exec("REVOKE CREATE ON DATABASE " + quoteIdentifier(currentDatabase(t, admin)) + " FROM " + runtimeRole).Error; err != nil {
+		t.Fatalf("revoke database CREATE fixture: %v", err)
+	}
+	if err := admin.Exec("CREATE SCHEMA runtime_escape").Error; err != nil {
+		t.Fatalf("create privilege fixture schema: %v", err)
+	}
+	if err := admin.Exec("GRANT CREATE ON SCHEMA runtime_escape TO " + runtimeRole).Error; err != nil {
+		t.Fatalf("grant privilege fixture: %v", err)
+	}
+	if err := Migrate(ctx, admin, runtimeRole); err == nil || !strings.Contains(err.Error(), "runtime_escape") {
+		t.Fatalf("Migrate() with unintended schema CREATE error = %v, want fail-closed schema error", err)
+	}
+	if err := admin.Exec("DROP SCHEMA runtime_escape").Error; err != nil {
+		t.Fatalf("drop privilege fixture schema: %v", err)
 	}
 
 	if err := migrateThrough(ctx, admin, runtimeRole, 1); err != nil {
@@ -117,6 +150,12 @@ func TestPostgresMigrationAndRuntimeRestrictions(t *testing.T) {
 	if err := runtime.Exec("CREATE TABLE curu.runtime_must_not_create (id integer)").Error; err == nil {
 		t.Fatal("runtime role created a table")
 	}
+	if err := runtime.Exec("CREATE TEMP TABLE runtime_must_not_create_temp (id integer)").Error; err == nil {
+		t.Fatal("runtime role created a temporary table")
+	}
+	if err := runtime.Exec("CREATE TABLE public.runtime_must_not_create (id integer)").Error; err == nil {
+		t.Fatal("runtime role created a table outside the curu schema")
+	}
 	if err := runtime.Exec("INSERT INTO curu.schema_migrations (version, name, checksum) VALUES (99, 'bad', 'bad')").Error; err == nil {
 		t.Fatal("runtime role changed migration history")
 	}
@@ -126,6 +165,15 @@ func TestPostgresMigrationAndRuntimeRestrictions(t *testing.T) {
 	if err := runtime.Exec("INSERT INTO curu.dataset_initializations (kind) VALUES ('empty')").Error; err == nil {
 		t.Fatal("runtime role changed bootstrap metadata")
 	}
+}
+
+func currentDatabase(t *testing.T, db *gorm.DB) string {
+	t.Helper()
+	var name string
+	if err := db.Raw("SELECT current_database()").Scan(&name).Error; err != nil {
+		t.Fatalf("read current database: %v", err)
+	}
+	return name
 }
 
 func databaseURLForRole(t *testing.T, value, role, password string) string {
