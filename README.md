@@ -27,7 +27,7 @@ go test ./...
 After applying migrations, start the server with its restricted runtime connection on the safe loopback default:
 
 ```sh
-CURU_DATABASE_URL='postgres://curu-runtime:...@db.example/curu?sslmode=require' go run ./cmd/curu
+CURU_DATABASE_URL='postgres://curu_runtime:...@db.example/curu?sslmode=require' go run ./cmd/curu
 ```
 
 The process logs structured JSON to standard output. In another terminal, check its minimal endpoints:
@@ -52,7 +52,7 @@ The default application bind is loopback. A container deployment must explicitly
 ```sh
 docker run --rm \
   -e CURU_LISTEN_ADDRESS=0.0.0.0:8080 \
-  -e CURU_DATABASE_URL='postgres://curu-runtime:...@db.example/curu?sslmode=require' \
+  -e CURU_DATABASE_URL='postgres://curu_runtime:...@db.example/curu?sslmode=require' \
   -p 127.0.0.1:8080:8080 curu:local
 ```
 

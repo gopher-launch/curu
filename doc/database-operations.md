@@ -10,7 +10,7 @@ Provision distinct PostgreSQL login roles:
 - The restricted runtime role is named by `CURU_RUNTIME_DATABASE_ROLE`. Migrations grant it schema usage, read-only migration and initialization metadata, non-destructive activity access, and progression access. It cannot create or alter schema objects, change migration history or initialization state, or permanently delete activities.
 - The server receives the runtime role's URL as `CURU_DATABASE_URL`.
 
-The platform must create the runtime login without `SUPERUSER`, `CREATEDB`, `CREATEROLE`, `REPLICATION`, or `BYPASSRLS`. It must also remove database-wide temporary-object creation inherited from PostgreSQL's default `PUBLIC` grant and ensure neither `PUBLIC`, the runtime role, nor any role it inherits can create objects in another schema. Run the database-wide revocation as the database owner, substituting the selected database name:
+The platform must create the runtime login without `SUPERUSER`, `CREATEDB`, `CREATEROLE`, `REPLICATION`, or `BYPASSRLS`, and must not grant it membership in any other PostgreSQL role. The no-membership rule prevents a `NOINHERIT` login from gaining additional authority through `SET ROLE`. The platform must also remove database-wide temporary-object creation inherited from PostgreSQL's default `PUBLIC` grant and ensure neither `PUBLIC` nor the runtime role can create objects in another schema. Run the database-wide revocation as the database owner, substituting the selected database name:
 
 ```sql
 REVOKE TEMPORARY ON DATABASE curu FROM PUBLIC;
@@ -18,9 +18,9 @@ REVOKE CREATE ON DATABASE curu FROM PUBLIC;
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 ```
 
-If another application role legitimately needs temporary objects or schema creation, grant that privilege directly to that other role rather than to `PUBLIC` or a role inherited by Curu runtime. Revoking a privilege only from the named runtime role is insufficient when it remains available through `PUBLIC` or role membership.
+If another application role legitimately needs temporary objects or schema creation, grant that privilege directly to that other role rather than to `PUBLIC`. Do not make Curu runtime a member of it. Revoking a privilege only from the named runtime role is insufficient when it remains available through `PUBLIC`, and `NOINHERIT` alone is insufficient because the login can use `SET ROLE`.
 
-The migration owner must be able to create the `curu` schema and grant object privileges to the already-created runtime role. The migration command checks the runtime role's effective privileges and rolls back all migration work if it can create temporary objects, create a schema, create objects in any existing schema, or has an elevated role attribute. It does not change database-wide or unrelated-schema grants because those are platform/database-owner responsibilities. URLs use `postgres://` or `postgresql://`, identify a database explicitly, and should select the deployment's required TLS mode. Supply real secrets through the deployment's secret facility; do not commit or log them.
+The migration owner must be able to create the `curu` schema and grant object privileges to the already-created runtime role. The migration command checks the runtime role's effective privileges and rolls back all migration work if it has any role membership, can create temporary objects, create a schema, create objects in any existing schema, or has an elevated role attribute. It does not change database-wide or unrelated-schema grants because those are platform/database-owner responsibilities. URLs use `postgres://` or `postgresql://`, identify a database explicitly, and should select the deployment's required TLS mode. Supply real secrets through the deployment's secret facility; do not commit or log them.
 
 ## Apply migrations
 
@@ -43,7 +43,7 @@ The initial schema contains owner-scoped activities, their ordered progressions,
 After migration, start the server with only the runtime URL:
 
 ```sh
-CURU_DATABASE_URL='postgres://curu-runtime:...@db.example/curu?sslmode=require' \
+CURU_DATABASE_URL='postgres://curu_runtime:...@db.example/curu?sslmode=require' \
 go run ./cmd/curu
 ```
 
@@ -58,4 +58,4 @@ CURU_TEST_DATABASE_URL='postgres://postgres:...@127.0.0.1:5432/curu_test?sslmode
 go test ./internal/database -run TestPostgresMigrationAndRuntimeRestrictions -count=1
 ```
 
-The test changes database-wide `PUBLIC` temporary privileges, drops and recreates the `curu` schema, and creates a role named `curu_runtime_test`; never point it at retained data. It first proves migration fails closed while inherited temporary or unrelated-schema creation is available. It then proves startup compatibility is read-only, applies migration 1, inserts an existing fixture, applies migration 2, verifies retained content and repeatability, and confirms the runtime role can edit activity data but cannot create persistent or temporary tables, alter migration/initialization state, or permanently delete activities. Cleanup restores the usual `PUBLIC` temporary privilege.
+The test changes database-wide `PUBLIC` temporary privileges, drops and recreates the `curu` schema, and creates roles named `curu_runtime_test` and `curu_runtime_assumable_test`; never point it at retained data. It first proves migration fails closed while inherited temporary, database/schema creation, or `SET ROLE` authority is available. It then proves startup compatibility is read-only, applies migration 1, inserts an existing fixture, applies migration 2, verifies retained content and repeatability, and confirms the runtime role can edit activity data but cannot create persistent or temporary tables, alter migration/initialization state, or permanently delete activities. Cleanup restores the usual `PUBLIC` temporary privilege.

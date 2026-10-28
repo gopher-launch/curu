@@ -55,16 +55,19 @@ func TestPostgresMigrationAndRuntimeRestrictions(t *testing.T) {
 
 	const runtimeRole = "curu_runtime_test"
 	const runtimePassword = "curu-runtime-test-password"
+	const assumableRole = "curu_runtime_assumable_test"
 	cleanup := func() {
+		admin.Exec("REVOKE " + assumableRole + " FROM " + runtimeRole)
 		admin.Exec("REVOKE ALL PRIVILEGES ON DATABASE " + quoteIdentifier(currentDatabase(t, admin)) + " FROM " + runtimeRole)
 		admin.Exec("DROP SCHEMA IF EXISTS curu CASCADE")
 		admin.Exec("DROP SCHEMA IF EXISTS runtime_escape CASCADE")
 		admin.Exec("DROP ROLE IF EXISTS " + runtimeRole)
+		admin.Exec("DROP ROLE IF EXISTS " + assumableRole)
 		admin.Exec("GRANT TEMPORARY ON DATABASE " + quoteIdentifier(currentDatabase(t, admin)) + " TO PUBLIC")
 	}
 	cleanup()
 	defer cleanup()
-	if err := admin.Exec(fmt.Sprintf("CREATE ROLE %s LOGIN PASSWORD '%s'", runtimeRole, runtimePassword)).Error; err != nil {
+	if err := admin.Exec(fmt.Sprintf("CREATE ROLE %s LOGIN NOINHERIT PASSWORD '%s'", runtimeRole, runtimePassword)).Error; err != nil {
 		t.Fatalf("create runtime role: %v", err)
 	}
 
@@ -111,6 +114,53 @@ func TestPostgresMigrationAndRuntimeRestrictions(t *testing.T) {
 	}
 	if err := admin.Exec("DROP SCHEMA runtime_escape").Error; err != nil {
 		t.Fatalf("drop privilege fixture schema: %v", err)
+	}
+
+	if err := admin.Exec("CREATE SCHEMA runtime_escape").Error; err != nil {
+		t.Fatalf("create SET ROLE fixture schema: %v", err)
+	}
+	if err := admin.Exec("CREATE ROLE " + assumableRole + " NOLOGIN CREATEROLE").Error; err != nil {
+		t.Fatalf("create assumable role: %v", err)
+	}
+	if err := admin.Exec("GRANT CREATE ON SCHEMA runtime_escape TO " + assumableRole).Error; err != nil {
+		t.Fatalf("grant assumable role schema privilege: %v", err)
+	}
+	if err := admin.Exec("GRANT " + assumableRole + " TO " + runtimeRole).Error; err != nil {
+		t.Fatalf("grant runtime role membership: %v", err)
+	}
+	runtime, err = Open(ctx, runtimeURL)
+	if err != nil {
+		t.Fatalf("Open(runtime) for SET ROLE fixture error = %v", err)
+	}
+	if err := runtime.Exec("SET ROLE " + assumableRole).Error; err != nil {
+		t.Fatalf("SET ROLE fixture is not assumable: %v", err)
+	}
+	if err := runtime.Exec("CREATE TABLE runtime_escape.membership_escape (id integer)").Error; err != nil {
+		t.Fatalf("SET ROLE fixture lacks expected schema authority: %v", err)
+	}
+	if err := runtime.Exec("RESET ROLE").Error; err != nil {
+		t.Fatalf("reset SET ROLE fixture: %v", err)
+	}
+	if err := Close(runtime); err != nil {
+		t.Fatalf("close SET ROLE fixture connection: %v", err)
+	}
+	if err := Migrate(ctx, admin, runtimeRole); err == nil || !strings.Contains(err.Error(), "role memberships") {
+		t.Fatalf("Migrate() with SET ROLE authority error = %v, want fail-closed membership error", err)
+	}
+	if err := admin.Raw("SELECT to_regnamespace('curu') IS NOT NULL").Scan(&schemaExists).Error; err != nil {
+		t.Fatalf("inspect migration rollback after role membership rejection: %v", err)
+	}
+	if schemaExists {
+		t.Fatal("migration with SET ROLE authority did not roll back the curu schema")
+	}
+	if err := admin.Exec("REVOKE " + assumableRole + " FROM " + runtimeRole).Error; err != nil {
+		t.Fatalf("revoke runtime role membership fixture: %v", err)
+	}
+	if err := admin.Exec("DROP SCHEMA runtime_escape CASCADE").Error; err != nil {
+		t.Fatalf("drop SET ROLE fixture schema: %v", err)
+	}
+	if err := admin.Exec("DROP ROLE " + assumableRole).Error; err != nil {
+		t.Fatalf("drop assumable role fixture: %v", err)
 	}
 
 	if err := migrateThrough(ctx, admin, runtimeRole, 1); err != nil {

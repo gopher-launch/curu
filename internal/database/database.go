@@ -174,6 +174,24 @@ func validateRuntimeRole(tx *gorm.DB, role string) error {
 		return errors.New("runtime database role has an elevated PostgreSQL attribute")
 	}
 
+	// PostgreSQL role membership can confer authority through SET ROLE even
+	// when a NOINHERIT login has none of the member role's privileges in its
+	// initial session. Forbid memberships entirely so this boundary is valid
+	// across PostgreSQL versions, including versions without per-membership
+	// SET options. Rejecting a direct membership also closes every recursive
+	// membership path before it can begin.
+	var memberOf string
+	if err := tx.Raw(`SELECT COALESCE(string_agg(quote_ident(granted.rolname), ', ' ORDER BY granted.rolname), '')
+        FROM pg_auth_members membership
+        JOIN pg_roles granted ON granted.oid = membership.roleid
+        JOIN pg_roles member ON member.oid = membership.member
+        WHERE member.rolname = ?`, role).Scan(&memberOf).Error; err != nil {
+		return fmt.Errorf("inspect runtime role memberships: %w", err)
+	}
+	if memberOf != "" {
+		return fmt.Errorf("runtime database role has prohibited role memberships: %s", memberOf)
+	}
+
 	var canCreateTemporary bool
 	if err := tx.Raw(
 		"SELECT has_database_privilege(?, current_database(), 'TEMPORARY')", role,
