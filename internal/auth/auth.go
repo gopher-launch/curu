@@ -120,12 +120,18 @@ func (a *Authenticator) Validate(ctx context.Context, compact string) (Principal
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
 		return Principal{}, ErrInvalidCredentials
 	}
-	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if _, err := base64.RawURLEncoding.Strict().DecodeString(parts[1]); err != nil {
+		return Principal{}, ErrInvalidCredentials
+	}
+	headerBytes, err := base64.RawURLEncoding.Strict().DecodeString(parts[0])
 	if err != nil {
 		return Principal{}, ErrInvalidCredentials
 	}
 	header, err := decodeUniqueObject(headerBytes)
 	if err != nil {
+		return Principal{}, ErrInvalidCredentials
+	}
+	if !validJWTEncodingHeaders(header) {
 		return Principal{}, ErrInvalidCredentials
 	}
 	algorithmName, ok := requiredString(header, "alg")
@@ -158,6 +164,35 @@ func (a *Authenticator) Validate(ctx context.Context, compact string) (Principal
 		return Principal{}, ErrInvalidCredentials
 	}
 	return a.validateClaims(claims)
+}
+
+func validJWTEncodingHeaders(header map[string]json.RawMessage) bool {
+	if raw, present := header["b64"]; present {
+		var encoded bool
+		if json.Unmarshal(raw, &encoded) != nil || !encoded {
+			return false
+		}
+	}
+	raw, present := header["crit"]
+	if !present {
+		return true
+	}
+	var critical []string
+	if json.Unmarshal(raw, &critical) != nil || len(critical) == 0 {
+		return false
+	}
+	seen := make(map[string]struct{}, len(critical))
+	for _, name := range critical {
+		if name != "b64" {
+			return false
+		}
+		if _, duplicate := seen[name]; duplicate {
+			return false
+		}
+		seen[name] = struct{}{}
+	}
+	_, hasB64 := header["b64"]
+	return hasB64
 }
 
 // Refresh retrieves trusted keys immediately. A failed refresh leaves a
@@ -298,10 +333,12 @@ func (a *Authenticator) fetchLocked(ctx context.Context) error {
 		return err
 	}
 	request.Header.Set("Accept", "application/json")
+	requestTime := a.now()
 	response, err := a.client.Do(request)
 	if err != nil {
 		return err
 	}
+	responseTime := a.now()
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return fmt.Errorf("JWKS response status %d", response.StatusCode)
@@ -314,12 +351,13 @@ func (a *Authenticator) fetchLocked(ctx context.Context) error {
 	if err != nil || !a.hasUsableKey(set) {
 		return fmt.Errorf("invalid JWKS response")
 	}
-	ttl := cacheTTL(response.Header, a.now(), a.config.DefaultCacheTTL)
+	cacheTime := a.now()
+	ttl := cacheTTL(response.Header, requestTime, responseTime, cacheTime, a.config.DefaultCacheTTL)
 	if ttl <= 0 {
 		return fmt.Errorf("JWKS response is not fresh")
 	}
 	a.keys = set
-	a.keysExpireAt = a.now().Add(ttl)
+	a.keysExpireAt = cacheTime.Add(ttl)
 	a.readyUntil.Store(a.keysExpireAt.UnixNano())
 	return nil
 }
@@ -350,32 +388,161 @@ func (a *Authenticator) hasUsableKey(set jwk.Set) bool {
 	return false
 }
 
-func cacheTTL(header http.Header, now time.Time, fallback time.Duration) time.Duration {
-	ttl := fallback
-	for _, directive := range strings.Split(header.Get("Cache-Control"), ",") {
+func cacheTTL(header http.Header, requestTime, responseTime, now time.Time, fallback time.Duration) time.Duration {
+	freshness := fallback
+	maxAgeValues := make([]string, 0, 1)
+	directives, valid := cacheControlDirectives(header.Values("Cache-Control"))
+	if !valid {
+		return 0
+	}
+	for _, directive := range directives {
 		name, value, found := strings.Cut(strings.TrimSpace(directive), "=")
-		if strings.EqualFold(name, "no-store") || strings.EqualFold(name, "no-cache") {
+		name = strings.TrimSpace(name)
+		switch {
+		case strings.EqualFold(name, "no-store"), strings.EqualFold(name, "no-cache"):
+			return 0
+		case strings.EqualFold(name, "max-age"):
+			if !found {
+				return 0
+			}
+			maxAgeValues = append(maxAgeValues, strings.TrimSpace(value))
+		}
+	}
+	if len(maxAgeValues) > 1 {
+		return 0
+	}
+	if len(maxAgeValues) == 1 {
+		seconds, valid := parseDeltaSeconds(maxAgeValues[0])
+		if !valid {
 			return 0
 		}
-		if found && strings.EqualFold(name, "max-age") {
-			seconds, err := strconv.ParseInt(strings.Trim(value, `"`), 10, 64)
-			if err == nil {
-				ttl = time.Duration(seconds) * time.Second
+		freshness = secondsDuration(seconds)
+	} else if expiresValues := header.Values("Expires"); len(expiresValues) > 0 {
+		if len(expiresValues) != 1 {
+			return 0
+		}
+		expires, err := http.ParseTime(expiresValues[0])
+		if err != nil {
+			return 0
+		}
+		date := responseTime
+		if dateValues := header.Values("Date"); len(dateValues) > 0 {
+			if len(dateValues) != 1 {
+				return 0
+			}
+			date, err = http.ParseTime(dateValues[0])
+			if err != nil {
+				return 0
 			}
 		}
+		freshness = expires.Sub(date)
 	}
-	if header.Get("Cache-Control") == "" {
-		if expiry, err := http.ParseTime(header.Get("Expires")); err == nil {
-			ttl = expiry.Sub(now)
-		}
+
+	currentAge, valid := responseAge(header, requestTime, responseTime, now)
+	if !valid || freshness <= currentAge {
+		return 0
 	}
-	if age, err := strconv.ParseInt(header.Get("Age"), 10, 64); err == nil && age > 0 {
-		ttl -= time.Duration(age) * time.Second
-	}
+	ttl := freshness - currentAge
 	if ttl > maxCacheTTL {
 		return maxCacheTTL
 	}
 	return ttl
+}
+
+func cacheControlDirectives(values []string) ([]string, bool) {
+	var directives []string
+	for _, value := range values {
+		start := 0
+		quoted := false
+		escaped := false
+		for index, char := range value {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if quoted && char == '\\' {
+				escaped = true
+				continue
+			}
+			if char == '"' {
+				quoted = !quoted
+				continue
+			}
+			if char == ',' && !quoted {
+				directives = append(directives, value[start:index])
+				start = index + 1
+			}
+		}
+		if quoted || escaped {
+			return nil, false
+		}
+		directives = append(directives, value[start:])
+	}
+	return directives, true
+}
+
+func parseDeltaSeconds(value string) (uint64, bool) {
+	if strings.HasPrefix(value, `"`) || strings.HasSuffix(value, `"`) {
+		unquoted, err := strconv.Unquote(value)
+		if err != nil {
+			return 0, false
+		}
+		value = unquoted
+	} else if strings.Contains(value, `"`) {
+		return 0, false
+	}
+	seconds, err := strconv.ParseUint(value, 10, 63)
+	return seconds, err == nil
+}
+
+func responseAge(header http.Header, requestTime, responseTime, now time.Time) (time.Duration, bool) {
+	apparentAge := time.Duration(0)
+	if dateValues := header.Values("Date"); len(dateValues) > 0 {
+		if len(dateValues) != 1 {
+			return 0, false
+		}
+		date, err := http.ParseTime(dateValues[0])
+		if err != nil {
+			return 0, false
+		}
+		if responseTime.After(date) {
+			apparentAge = responseTime.Sub(date)
+		}
+	}
+	responseDelay := responseTime.Sub(requestTime)
+	if responseDelay < 0 {
+		responseDelay = 0
+	}
+	ageValue := time.Duration(0)
+	if values := header.Values("Age"); len(values) > 0 {
+		first := strings.TrimSpace(strings.Split(values[0], ",")[0])
+		if seconds, err := strconv.ParseUint(first, 10, 63); err == nil {
+			ageValue = secondsDuration(seconds)
+		}
+	}
+	correctedAge := ageValue + responseDelay
+	if correctedAge < ageValue {
+		correctedAge = time.Duration(math.MaxInt64)
+	}
+	if apparentAge > correctedAge {
+		correctedAge = apparentAge
+	}
+	residentTime := now.Sub(responseTime)
+	if residentTime < 0 {
+		residentTime = 0
+	}
+	currentAge := correctedAge + residentTime
+	if currentAge < correctedAge {
+		return time.Duration(math.MaxInt64), true
+	}
+	return currentAge, true
+}
+
+func secondsDuration(seconds uint64) time.Duration {
+	if seconds > uint64(math.MaxInt64/int64(time.Second)) {
+		return time.Duration(math.MaxInt64)
+	}
+	return time.Duration(seconds) * time.Second
 }
 
 func (a *Authenticator) validateClaims(claims map[string]json.RawMessage) (Principal, error) {

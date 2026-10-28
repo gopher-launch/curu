@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -150,19 +151,59 @@ func TestReadinessRequiresFreshUsableKeys(t *testing.T) {
 	}
 }
 
-func TestCacheFreshnessDefaultsCapsAndRefusesNoCache(t *testing.T) {
-	now := time.Unix(1_800_000_000, 0)
-	if got := cacheTTL(http.Header{}, now, 5*time.Minute); got != 5*time.Minute {
+func TestCacheFreshnessUsesHTTPPrecedenceAndCurrentAge(t *testing.T) {
+	responseTime := time.Unix(1_800_000_000, 0).UTC()
+	requestTime := responseTime.Add(-10 * time.Second)
+	now := responseTime.Add(5 * time.Second)
+	date := responseTime.Format(http.TimeFormat)
+	if got := cacheTTL(http.Header{}, responseTime, responseTime, responseTime, 5*time.Minute); got != 5*time.Minute {
 		t.Errorf("default cache TTL = %v", got)
 	}
-	if got := cacheTTL(http.Header{"Cache-Control": {"public, max-age=3600"}}, now, 5*time.Minute); got != 15*time.Minute {
+	if got := cacheTTL(http.Header{"Cache-Control": {"public, max-age=3600"}, "Date": {date}}, responseTime, responseTime, responseTime, 5*time.Minute); got != 15*time.Minute {
 		t.Errorf("capped cache TTL = %v", got)
 	}
-	if got := cacheTTL(http.Header{"Cache-Control": {"max-age=300"}, "Age": {"60"}}, now, 5*time.Minute); got != 4*time.Minute {
+	if got := cacheTTL(http.Header{"Cache-Control": {"max-age=300"}, "Age": {"60"}, "Date": {date}}, requestTime, responseTime, now, 5*time.Minute); got != 3*time.Minute+45*time.Second {
 		t.Errorf("aged cache TTL = %v", got)
 	}
-	if got := cacheTTL(http.Header{"Cache-Control": {"no-store"}}, now, 5*time.Minute); got != 0 {
+	oldDate := responseTime.Add(-2 * time.Minute).Format(http.TimeFormat)
+	if got := cacheTTL(http.Header{"Cache-Control": {"max-age=300"}, "Date": {oldDate}}, responseTime, responseTime, responseTime, 5*time.Minute); got != 3*time.Minute {
+		t.Errorf("date-aged cache TTL = %v", got)
+	}
+	futureExpiry := responseTime.Add(2 * time.Minute).Format(http.TimeFormat)
+	if got := cacheTTL(http.Header{"Cache-Control": {"public"}, "Date": {date}, "Expires": {futureExpiry}}, responseTime, responseTime, responseTime, 5*time.Minute); got != 2*time.Minute {
+		t.Errorf("Expires cache TTL = %v", got)
+	}
+	pastExpiry := responseTime.Add(-time.Minute).Format(http.TimeFormat)
+	if got := cacheTTL(http.Header{"Cache-Control": {"public"}, "Date": {date}, "Expires": {pastExpiry}}, responseTime, responseTime, responseTime, 5*time.Minute); got > 0 {
+		t.Errorf("stale Expires cache TTL = %v", got)
+	}
+	if got := cacheTTL(http.Header{"Cache-Control": {"max-age=300"}, "Date": {date}, "Expires": {pastExpiry}}, responseTime, responseTime, responseTime, 5*time.Minute); got != 5*time.Minute {
+		t.Errorf("max-age precedence cache TTL = %v", got)
+	}
+	if got := cacheTTL(http.Header{"Cache-Control": {`public, extension="x,max-age=1"`}}, responseTime, responseTime, responseTime, 5*time.Minute); got != 5*time.Minute {
+		t.Errorf("quoted extension cache TTL = %v", got)
+	}
+	if got := cacheTTL(http.Header{"Cache-Control": {"no-store"}}, responseTime, responseTime, responseTime, 5*time.Minute); got != 0 {
 		t.Errorf("no-store cache TTL = %v", got)
+	}
+}
+
+func TestCacheFreshnessRejectsAmbiguousOrInvalidExplicitMetadata(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0).UTC()
+	tests := map[string]http.Header{
+		"duplicate max age":        {"Cache-Control": {"max-age=300", "max-age=600"}},
+		"conflicting directives":   {"Cache-Control": {"max-age=300, no-cache"}},
+		"invalid max age":          {"Cache-Control": {"max-age=invalid"}},
+		"malformed quoted max age": {"Cache-Control": {`max-age="300`}},
+		"duplicate Expires":        {"Cache-Control": {"public"}, "Expires": {now.Add(time.Minute).Format(http.TimeFormat), now.Add(2 * time.Minute).Format(http.TimeFormat)}},
+		"invalid Expires":          {"Cache-Control": {"public"}, "Expires": {"not-a-date"}},
+	}
+	for name, header := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := cacheTTL(header, now, now, now, 5*time.Minute); got > 0 {
+				t.Errorf("cache TTL = %v, want stale", got)
+			}
+		})
 	}
 }
 
@@ -187,6 +228,48 @@ func TestRejectsDisallowedAlgorithmDuplicateClaimsAndFallback(t *testing.T) {
 	badProfile.Profile = "generic-jwt"
 	if _, err := New(badProfile, fixture.server.Client()); err == nil {
 		t.Fatal("New() accepted an unsupported fallback profile")
+	}
+}
+
+func TestStandardProfileRejectsUnencodedPayloadAndUnsupportedCriticalHeaders(t *testing.T) {
+	fixture := newFixture(t, []string{"RS256"})
+	payload, err := json.Marshal(fixture.claims())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Compact unencoded payloads cannot contain periods. JSON escapes retain
+	// the exact claim values after decoding while producing a valid probe.
+	payload = []byte(strings.ReplaceAll(string(payload), ".", `\u002e`))
+	unencoded := signUnencodedPayload(t, payload, "at+jwt", "rsa-1", jwa.RS256(), fixture.rsaKey)
+	if _, err := fixture.auth.Validate(context.Background(), unencoded); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("unencoded payload Validate() error = %v", err)
+	}
+
+	headers := tokenHeaders(t, "at+jwt", "rsa-1")
+	if err := headers.Set("b64", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := headers.Set("crit", []string{"b64"}); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := jws.Sign(payload, jws.WithKey(jwa.RS256(), fixture.rsaKey, jws.WithProtectedHeaders(headers)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.auth.Validate(context.Background(), string(encoded)); err != nil {
+		t.Fatalf("understood critical header Validate() error = %v", err)
+	}
+
+	headers = tokenHeaders(t, "at+jwt", "rsa-1")
+	if err := headers.Set("crit", []string{"unsupported"}); err != nil {
+		t.Fatal(err)
+	}
+	critical, err := jws.Sign(payload, jws.WithKey(jwa.RS256(), fixture.rsaKey, jws.WithProtectedHeaders(headers)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.auth.Validate(context.Background(), string(critical)); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("unsupported critical header Validate() error = %v", err)
 	}
 }
 
@@ -290,6 +373,7 @@ type keyServer struct {
 
 func newFixture(t *testing.T, algorithms []string) *authFixture {
 	t.Helper()
+	now := time.Unix(1_800_000_000, 0).UTC()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatal(err)
@@ -304,12 +388,12 @@ func newFixture(t *testing.T, algorithms []string) *authFixture {
 			return
 		}
 		w.Header().Set("Cache-Control", "public, max-age=300")
+		w.Header().Set("Date", now.Format(http.TimeFormat))
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(keys.body)
 	}))
 	t.Cleanup(server.Close)
 	keys.set(t, key.Public(), "rsa-1")
-	now := time.Unix(1_800_000_000, 0).UTC()
 	config := Config{
 		Profile: "rfc9068", Issuer: server.URL + "/issuer", Audience: "curu-resource",
 		JWKSURL: server.URL, Algorithms: algorithms, ClockSkew: time.Minute,
@@ -373,6 +457,32 @@ func sign(t *testing.T, claims map[string]any, typ, kid string, algorithm jwa.Si
 
 func signPayload(t *testing.T, payload []byte, typ, kid string, algorithm jwa.SignatureAlgorithm, key any) string {
 	t.Helper()
+	headers := tokenHeaders(t, typ, kid)
+	compact, err := jws.Sign(payload, jws.WithKey(algorithm, key, jws.WithProtectedHeaders(headers)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(compact)
+}
+
+func signUnencodedPayload(t *testing.T, payload []byte, typ, kid string, algorithm jwa.SignatureAlgorithm, key any) string {
+	t.Helper()
+	headers := tokenHeaders(t, typ, kid)
+	if err := headers.Set("b64", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := headers.Set("crit", []string{"b64"}); err != nil {
+		t.Fatal(err)
+	}
+	compact, err := jws.Sign(payload, jws.WithKey(algorithm, key, jws.WithProtectedHeaders(headers)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(compact)
+}
+
+func tokenHeaders(t *testing.T, typ, kid string) jws.Headers {
+	t.Helper()
 	headers := jws.NewHeaders()
 	if typ != "" {
 		if err := headers.Set("typ", typ); err != nil {
@@ -382,11 +492,7 @@ func signPayload(t *testing.T, payload []byte, typ, kid string, algorithm jwa.Si
 	if err := headers.Set("kid", kid); err != nil {
 		t.Fatal(err)
 	}
-	compact, err := jws.Sign(payload, jws.WithKey(algorithm, key, jws.WithProtectedHeaders(headers)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(compact)
+	return headers
 }
 
 func jsonNumber(value int64) string { return strconv.FormatInt(value, 10) }
