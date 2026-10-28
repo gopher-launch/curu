@@ -31,4 +31,12 @@
 - Safe startup: the server uses only `CURU_DATABASE_URL` and performs a read-only exact-version/history checksum compatibility check. Startup never calls `AutoMigrate`, applies migrations, initializes content, or resets data.
 - Operator interface: [`doc/database-operations.md`](doc/database-operations.md) documents provider-independent connections, roles, migration/start commands, supported schema version, and the destructive scope of the opt-in disposable PostgreSQL verification.
 - Verification: focused tests cover embedded migration continuity/checksums and, when `CURU_TEST_DATABASE_URL` selects a disposable PostgreSQL target, fail-closed effective-privilege validation, fresh and forward migration, retained fixture content, repeat application, read-only startup compatibility, permitted runtime data writes, and denied persistent/temporary DDL, migration/initialization mutation, and permanent activity deletion.
-- Deferred capability: CURU-003 owns the bounded seed asset; CURU-004 owns explicit dataset initialization. Product library behavior and owner authorization remain assigned to later tasks.
+- Deferred capability: CURU-004 owns explicit dataset initialization. Product library behavior and owner authorization remain assigned to later tasks.
+
+## Bounded coaching-library seed
+
+- Delivery: CURU-003
+- Committed asset: `internal/seed/library.json` identifies `curu-coaching-library` version `1`, records the SHA-256 provenance of the three supplied references, and contains all 44 activity and 110 progression inputs. `internal/seed.Load` decodes and validates the embedded asset without database side effects.
+- Schema mapping: reference activity slugs remain source identities; deterministic UUIDs satisfy schema version 2; lower recommended durations are integer seconds while complete ranges, themes, phases, tags, coaching fields, and extra sections remain labeled Markdown; progression order is zero-based for the target schema.
+- Verification: local focused tests validate deterministic decoding, counts, identity uniqueness, ordering, seconds-based duration examples, and representative extra sections. The opt-in disposable PostgreSQL test inserts the complete asset against the migrated schema and verifies its counts.
+- Operator boundary: [`doc/seed-library.md`](doc/seed-library.md) records provenance and mapping decisions. CURU-003 adds no bootstrap command, blanket deletion, startup seeding, or synchronization over a working library; CURU-004 owns safe explicit dataset initialization.

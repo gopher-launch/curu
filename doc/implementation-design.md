@@ -23,7 +23,9 @@ CURU-019 established explicit schema version 2 for owner-scoped activities, orde
 
 Mutations use transactions and compare-and-update revision checks at the relevant aggregate boundary. A stale write leaves authoritative data unchanged. Recovery drafts store bounded owner-scoped submitted content separately and require explicit reopen/discard actions; their exact durable representation and retention are designed before implementation. Activity content copied into a placement is an owned snapshot, with source identity retained only as provenance.
 
-Initialization is a separate, one-shot operator action. It applies a deterministic seed and its identity/version atomically, makes completed retries no-ops, rolls back partial failures, handles concurrent calls without duplication, and refuses unrecognized non-empty data. A recorded intentionally empty installation is valid. Ordinary startup, migrations, seed initialization, user saves, recovery drafts, backup/restore, and disposable reset are separate operations.
+CURU-003 delivered the bounded `curu-coaching-library` version `1` asset described in [`seed-library.md`](seed-library.md). It maps the supplied 44 activities and 110 progressions to schema version 2 with retained source identities, deterministic UUIDs, integer-second minimum durations, and labeled Markdown that preserves range and metadata detail. It is committed application data, not an importer or an initialization side effect.
+
+Initialization remains a separate, one-shot operator action. It applies the deterministic seed and its identity/version atomically, makes completed retries no-ops, rolls back partial failures, handles concurrent calls without duplication, and refuses unrecognized non-empty data. A recorded intentionally empty installation is valid. Ordinary startup, migrations, seed initialization, user saves, recovery drafts, backup/restore, and disposable reset are separate operations.
 
 ## Trust and request boundary
 

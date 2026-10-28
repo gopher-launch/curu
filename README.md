@@ -56,4 +56,4 @@ docker run --rm \
   -p 127.0.0.1:8080:8080 curu:local
 ```
 
-This runtime implements explicit PostgreSQL migrations and read-only startup compatibility checks. It does not implement JWT authentication, authorization, product pages, or bootstrap commands; those remain with their owning roadmap tasks.
+This runtime implements explicit PostgreSQL migrations and read-only startup compatibility checks. The bounded coaching-library asset is documented in [`doc/seed-library.md`](doc/seed-library.md), but no bootstrap command applies it yet. JWT authentication, authorization, product pages, and initialization remain with their owning roadmap tasks.

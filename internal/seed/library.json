@@ -1,0 +1,1225 @@
+{
+  "seed_identity": "curu-coaching-library",
+  "seed_version": "1",
+  "sources": [
+    {
+      "name": "seedlib_main.go",
+      "sha256": "47026c0a0d1b812ba83da097cc23adb51c132fab08594dd6b32c37b1b050641b"
+    },
+    {
+      "name": "seed_library.sql",
+      "sha256": "545b894c6e26fbd83fb843485151fd97f175eca1f644c6f5516fea6a39d94895"
+    },
+    {
+      "name": "library-v2.md",
+      "sha256": "6c4ed7ae95c45f3d7e26c83891344889e935f33c47251509848e71d71ec35e2a"
+    }
+  ],
+  "activities": [
+    {
+      "id": "e0a033aa-dc97-8703-bda4-12ea23abcc0f",
+      "source_identity": "evasion-gauntlet",
+      "title": "Evasion Gauntlet",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 5–10 minutes\n- Game phases: attack, defense\n- Primary theme: Evasion\n- Secondary theme: Tracking\n- Tags: Engagement, Footwork, Body Height\n\n## Objective\nAttack:\n- Develop evasive footwork and acceleration.\nDefense:\n- Maintain spacing and lateral discipline.\n\n## Setup\n- 3 lines of defenders holding hands.\n- Defenders move laterally only.\n\n## Game Play\n- Ball carrier attempts to break through.\n\n## Performance Factors\nAttack:\n- Change of pace.\n- Stay square.\nDefense:\n- Stay connected.\n- Close space without reaching.",
+      "duration_seconds": 300,
+      "progressions": [
+        {
+          "id": "2e0ef34c-70d3-8d58-8681-ba63613616a5",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Release hands.",
+          "duration_seconds": null
+        },
+        {
+          "id": "34185add-a9c0-8361-81be-6b1c7285e7ba",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Add second ball carrier.",
+          "duration_seconds": null
+        },
+        {
+          "id": "e4568174-b079-8f09-b1ce-86557d2d58d4",
+          "position": 2,
+          "title": "",
+          "content_markdown": "Touch → Wrap.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "0ff94551-03f9-8fd5-a17d-8b13b8fbad4a",
+      "source_identity": "silly-buggers",
+      "title": "Silly Buggers",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 8–12 minutes\n- Game phases: attack, defense, transition\n- Primary theme: Creative Attack\n- Secondary theme: Defensive Adaptation\n- Tags: Engagement, Spatial Awareness\n\n## Objective\n- Encourage creativity and spatial awareness.\n\n## Setup\n- Small-sided field.\n- Two teams.\n\n## Game Play\n- Ball may be passed or kicked in any direction.\n- Ball carrier must remain stationary.\n- Turnover on drop.\n- Score in opponent’s end zone.\n\n## Performance Factors\nAttack:\n- Move early into space.\n- Communicate options.\nDefense:\n- Close space aggressively.\n- Anticipate kicks.",
+      "duration_seconds": 480,
+      "progressions": null
+    },
+    {
+      "id": "3e5ad753-1611-8c63-ba08-999fca36eb8e",
+      "source_identity": "knee-tag",
+      "title": "Knee Tag",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 8–12 minutes\n- Game phases: attack, defense\n- Primary theme: Evasion\n- Secondary theme: Tracking\n- Tags: Engagement, Agility, Tactical Thinking\n\n## Objective\nEvasion:\n- Develop agility and spatial awareness.\n- Encourage tactical freeing of teammates.\nDefense:\n- Improve tracking and decision-making when tagging.\n\n## Setup\n- 20m x 20m grid.\n- One player starts as tagger.\n- All others are evaders.\n\n## Game Play\n- First tag: player drops to one knee.\n- Kneeling players can be freed by teammates.\n- Second tag: player joins tagging team.\n- Last evader wins.\n\n## Performance Factors\n- Quick change of direction.\n- Awareness of free teammates.\n- Taggers think strategically about who to target.",
+      "duration_seconds": 480,
+      "progressions": [
+        {
+          "id": "3f8e4063-c462-84fa-81b0-ccd9a63714ee",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Add second starting tagger.",
+          "duration_seconds": null
+        },
+        {
+          "id": "1fc59443-5940-8725-b737-f925c492efcf",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Reduce grid size.",
+          "duration_seconds": null
+        },
+        {
+          "id": "30864da9-a504-819f-8851-f655c34b5b4c",
+          "position": 2,
+          "title": "",
+          "content_markdown": "Require ball carry for evaders.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "000d0b2b-c8bc-8740-8528-07ee83464175",
+      "source_identity": "collect-the-flags",
+      "title": "Collect the Flags",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 8–10 minutes\n- Game phases: attack, defense\n- Primary theme: Evasion\n- Secondary theme: Competition\n- Tags: Engagement, Agility, Conditioning\n\n## Objective\n- Develop evasive movement under pressure.\n- Encourage spatial awareness and competitiveness.\n\n## Setup\n- 20m x 20m grid.\n- Each player wears a flag belt.\n\n## Game Play\n- 60-second rounds.\n- Players collect as many flags as possible.\n- Most flags wins.\n\n## Performance Factors\n- Protect own space.\n- Attack blind spots.\n- Change direction explosively.",
+      "duration_seconds": 480,
+      "progressions": [
+        {
+          "id": "7eab4520-1153-8e75-a2f3-e733b9e51f9e",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Teams instead of individuals.",
+          "duration_seconds": null
+        },
+        {
+          "id": "405d04de-541e-8c2a-9148-397993660e1d",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Require ball carry.",
+          "duration_seconds": null
+        },
+        {
+          "id": "9f1460e3-0764-8380-b7a0-2634ede6cda7",
+          "position": 2,
+          "title": "",
+          "content_markdown": "Add safe zones.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "c9ebef75-0f8b-8f83-b006-935189f310d7",
+      "source_identity": "ring-around-the-rosie-ball-reaction-game",
+      "title": "Ring Around the Rosie (Ball Reaction Game)",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 6–10 minutes\n- Game phases: multi_phase\n- Primary theme: Reaction \u0026 Acceleration\n- Secondary theme: Competition\n- Tags: Engagement, Acceleration, Ball Awareness\n\n## Objective\n- Develop reaction speed and acceleration toward ball.\n\n## Setup\n- Cones in a circle with balls in center.\n- One fewer ball than players.\n- Players shuffle around outside.\n\n## Game Play\n- Coach calls “left” or “right.”\n- Players shuffle accordingly.\n- On “go,” players enter circle and grab ball.\n- Player without ball is out and removes a ball.\n\n## Performance Factors\n- Stay light on feet.\n- Quick reaction to cue.\n- Explode into space.",
+      "duration_seconds": 360,
+      "progressions": [
+        {
+          "id": "ed68a743-a75a-8511-a577-25a920a33e5c",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Players face outward.",
+          "duration_seconds": null
+        },
+        {
+          "id": "79bf8b42-537f-8458-b43d-26317b35bf1f",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Eliminated players become defenders in circle.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "de7c75d6-a129-8652-b6ac-72eecc4fa893",
+      "source_identity": "caterpillar-chase",
+      "title": "Caterpillar Chase",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 6–10 minutes\n- Game phases: defense\n- Primary theme: Acceleration\n- Secondary theme: Team Coordination\n- Tags: Engagement, Conditioning\n\n## Objective\n- Develop acceleration and group movement coordination.\n\n## Setup\n- Players form a line holding hips.\n- Group jogs forward.\n\n## Game Play\n- Last player sprints to front.\n- Caterpillar attempts to evade rejoining runner.\n\n## Performance Factors\n- Communication.\n- Quick acceleration.\n- Spatial awareness.",
+      "duration_seconds": 360,
+      "progressions": [
+        {
+          "id": "deb75eeb-e9ea-8025-a3a3-dc0ee3926619",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Increase pace.",
+          "duration_seconds": null
+        },
+        {
+          "id": "36d22393-4168-89f6-90d4-ad391aacada2",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Add ball carry to group.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "087a1c85-7f89-800a-83d4-f1a9c7b062c7",
+      "source_identity": "balloon-ball",
+      "title": "Balloon Ball",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 5–8 minutes\n- Game phases: multi_phase\n- Primary theme: Coordination\n- Secondary theme: Communication\n- Tags: Engagement, Tracking, Fun\n\n## Objective\n- Improve hand-eye coordination and communication.\n\n## Setup\n- Teams of 2–4.\n- One or more balloons.\n\n## Game Play\n- Keep balloon(s) in air.\n- Add additional balloons over time.\n\n## Performance Factors\n- Early communication.\n- Move into space before balloon drops.",
+      "duration_seconds": 300,
+      "progressions": [
+        {
+          "id": "3a8927a5-9d61-819d-a9ab-fc5274f915d2",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Assign balloon color to specific player.",
+          "duration_seconds": null
+        },
+        {
+          "id": "ac3eaaed-046b-8d4d-b8ee-be4a9cbc80ab",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Add movement boundary.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "50daca50-a764-8bed-8116-f3abe7b42bc3",
+      "source_identity": "telephone",
+      "title": "Telephone",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 5–8 minutes\n- Game phases: multi_phase\n- Primary theme: Communication\n- Secondary theme: Team Cohesion\n- Tags: Engagement, Culture\n\n## Objective\n- Develop loud, clear communication.\n- Build team cohesion.\n\n## Setup\n- Team spread across width of field.\n\n## Game Play\n- One player calls instruction.\n- Message must travel across field.\n- Entire team performs action together.\n\n## Performance Factors\n- Clear voice.\n- Confident communication.\n- Team synchronization.",
+      "duration_seconds": 300,
+      "progressions": [
+        {
+          "id": "a43db201-e92a-894c-8540-b372c2a02a56",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Add time pressure.",
+          "duration_seconds": null
+        },
+        {
+          "id": "926407a4-9ae2-8783-a221-b1a8f4bceb22",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Add physical task after instruction.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "02af532d-5dc5-87f6-a66e-b69fa5834431",
+      "source_identity": "fetch-a-friend-bronco",
+      "title": "Fetch a Friend Bronco",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 10–15 minutes\n- Game phases: multi_phase\n- Primary theme: Conditioning\n- Secondary theme: Teamwork\n- Tags: Engagement, Conditioning, Sprint\n\n## Objective\n- Develop repeat sprint ability.\n- Build team accountability.\n\n## Setup\n- Cones at 20m, 40m, 60m.\n- Teams of 4.\n- One player at each cone and start line.\n\n## Game Play\n- Runner collects teammate at each cone.\n- All hold hands returning.\n- Cycle positions and repeat.\n\n## Performance Factors\n- Sprint form.\n- Controlled deceleration.\n- Team encouragement.",
+      "duration_seconds": 600,
+      "progressions": [
+        {
+          "id": "df0bc292-b306-8d21-9b95-f55ce781f05b",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Add ball carry.",
+          "duration_seconds": null
+        },
+        {
+          "id": "1a002d30-4023-84a8-b01a-5e31bd78e540",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Increase distance.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "d634f145-19ea-8c0f-b5dc-7306c2f3b032",
+      "source_identity": "scrum-o-war",
+      "title": "Scrum ‘o War",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 5–8 minutes\n- Game phases: multi_phase\n- Primary theme: Contact Prep\n- Tags: Activation, Body Position\n\n## Objective\n- Develop body height and leg drive for contact.\n\n## Setup\n- 1v1, 2v2, or 3v3 over cone.\n\n## Game Play\n- Bind and drive opponent back.\n\n## Performance Factors\n- Flat back.\n- Strong bind.\n- Leg drive first.",
+      "duration_seconds": 300,
+      "progressions": null
+    },
+    {
+      "id": "4c00e775-0e97-81ce-b0e7-564b955cf856",
+      "source_identity": "macarena-push-ups-circle",
+      "title": "Macarena Push-Ups Circle",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 4–6 minutes\n- Game phases: multi_phase\n- Primary theme: Upper Body Activation\n- Secondary theme: Core Stability\n- Tags: Activation, Upper Body Prep\n\n## Objective\n- Prepare shoulders, core, and wrists for contact work.\n\n## Setup\n- Players in circle, push-up position.\n\n## Game Play\n- Perform Macarena arm sequence while holding plank/push-up.\n\n## Performance Factors\n- Stable hips.\n- Controlled arm movement.\n- Strong plank position.",
+      "duration_seconds": 240,
+      "progressions": [
+        {
+          "id": "0a3fb11e-e281-8192-886a-064f28994592",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Full push-ups.",
+          "duration_seconds": null
+        },
+        {
+          "id": "632af7bc-d121-8425-8fdd-135ae6f4ffc5",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Add tempo changes.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "dad2b936-e616-81b1-bd0d-cf2637e64d1d",
+      "source_identity": "pairs-kick-off-catching",
+      "title": "Pairs Kick-Off Catching",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 6–8 minutes\n- Game phases: defense, restart, kick_aerial\n- Primary theme: Aerial Activation\n- Secondary theme: Communication\n- Tags: Activation, Catching\n\n## Objective\n- Prepare players for aerial contests and communication.\n\n## Setup\n- Groups of 3.\n- One thrower simulates kick.\n- Two receivers attempt one-handed catch together.\n\n## Game Play\n- Receivers coordinate to secure ball with one hand each.\n\n## Performance Factors\n- Early call.\n- Track ball flight.\n- Soft hands.",
+      "duration_seconds": 360,
+      "progressions": [
+        {
+          "id": "44fec1ee-5806-8efa-80d4-34a8bb677bf3",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Increase height.",
+          "duration_seconds": null
+        },
+        {
+          "id": "7b163961-69bf-8971-86bd-c5e6dc03cf37",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Add chase pressure.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "362e3007-fa63-8528-b712-02b7aa36ee2f",
+      "source_identity": "ball-rip",
+      "title": "Ball Rip",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 6–8 minutes\n- Game phases: attack, defense, breakdown\n- Primary theme: Contact Activation\n- Secondary theme: Ball Security\n- Tags: Activation, Breakdown\n\n## Objective\n- Prepare players for breakdown contest and ball protection.\n\n## Setup\n- Pairs with one ball.\n\n## Game Play\n- Attacker protects ball.\n- Defender attempts legal rip.\n- Rotate every 30 seconds.\n\n## Performance Factors\nAttacker:\n- Strong base.\n- Ball tight to chest.\nDefender:\n- Target ball, not body.\n- Legal grip and twist.",
+      "duration_seconds": 360,
+      "progressions": [
+        {
+          "id": "9efcfd85-c0c2-8b62-83cb-7d98d3b99473",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Add tackle entry.",
+          "duration_seconds": null
+        },
+        {
+          "id": "29448d05-d101-8a5f-9b2b-21e663c6ccf8",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Add support player.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "4b244afd-1713-84ee-aa47-26b98fa95c7a",
+      "source_identity": "line-pass-run",
+      "title": "Line Pass, Run",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 5–8 minutes\n- Game phases: attack\n- Primary theme: Ball Speed\n- Tags: Skill, Passing\n\n## Objective\n- Develop catch-pass rhythm.\n\n## Setup\n- 6–7 players spaced 2m apart.\n\n## Game Play\n- Pass down line.\n- Last player slaloms through.\n- Repeat.\n\n## Performance Factors\n- Hands early.\n- Quick release.",
+      "duration_seconds": 300,
+      "progressions": null
+    },
+    {
+      "id": "ccf49873-01e8-8d36-addd-dd0e2eee1807",
+      "source_identity": "kick-off-simulation",
+      "title": "Kick-Off Simulation",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 5–10 minutes\n- Game phases: attack, defense, restart\n- Primary theme: Restart Structure\n- Secondary theme: Phase Defense\n- Tags: Skill, Restart\n\n## Objective\nDefense:\n- Organize quickly and defend first two phases.\nAttack:\n- Execute structured restart shape.\n\n## Setup\n- Kick from center.\n- Receiving team has two phases to score past halfway.\n\n## Performance Factors\nDefense:\n- Line integrity.\n- Communication.\nAttack:\n- Early shape.\n- Ball speed.",
+      "duration_seconds": 300,
+      "progressions": null
+    },
+    {
+      "id": "e052a29f-a684-87ff-8838-d4f01123d0a1",
+      "source_identity": "kicking-game",
+      "title": "Kicking Game",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 10–20 minutes\n- Game phases: kick_aerial\n- Primary theme: Contestable Kicking\n- Secondary theme: Aerial Receiving\n- Tags: Skill, Kicking\n\n## Objective\n- Develop kicking height and aerial catch confidence.\n\n## Setup\n- Two teams.\n- Defined zones.\n\n## Game Play\n- Alternate kicking and receiving.\n- Ball must travel 10m in air.\n- Catch in air eliminates opponent.\n- Grounded ball eliminates closest player.\n\n## Performance Factors\nKicker:\n- Height before distance.\nReceiver:\n- Fingers first.\n- Shoulder turn.\n- Protect landing.",
+      "duration_seconds": 600,
+      "progressions": null
+    },
+    {
+      "id": "170e3b3d-3183-845a-868f-21425dfef491",
+      "source_identity": "passing-gauntlet",
+      "title": "Passing Gauntlet",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 8–12 minutes\n- Game phases: attack\n- Primary theme: Ball Speed\n- Secondary theme: Catch-Pass Flow\n- Tags: Skill, Passing, Movement\n\n## Objective\n- Develop catch-pass flow while maintaining forward momentum.\n- Improve passing accuracy at speed.\n\n## Setup\n- Two rows of 4–5 cones, 10m apart, forming a channel.\n- One player on each cone.\n- Balls at each cone on one side.\n- Attacker starts at one end of channel.\n\n## Game Play\n- Attacker runs down channel.\n- Receives pass from one side.\n- Passes immediately to opposite side.\n- Continues through entire channel.\n\n## Performance Factors\n- Catch early.\n- Pass in front of receiver.\n- Maintain running speed.\n- Eyes up before pass.",
+      "duration_seconds": 480,
+      "progressions": [
+        {
+          "id": "2d3be09b-ff57-8747-a116-956781dafbe5",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Increase passing distance.",
+          "duration_seconds": null
+        },
+        {
+          "id": "cbc1be67-3980-88f5-9de5-78dc32173118",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Increase running speed.",
+          "duration_seconds": null
+        },
+        {
+          "id": "3557be76-1bed-8f53-91ed-f1ac4e1ba450",
+          "position": 2,
+          "title": "",
+          "content_markdown": "Add second attacker.",
+          "duration_seconds": null
+        },
+        {
+          "id": "95a15218-ab1a-82f0-88d6-18c26186faca",
+          "position": 3,
+          "title": "",
+          "content_markdown": "Add passive defender in channel.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "c147f97e-aca1-8a39-982b-757bcb9e3cd6",
+      "source_identity": "y-reaction-drill",
+      "title": "Y Reaction Drill",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 6–10 minutes\n- Game phases: attack\n- Primary theme: Change of Direction\n- Secondary theme: Decision-Making\n- Tags: Skill, Agility, Reaction\n\n## Objective\n- Develop reactive footwork and directional change.\n\n## Setup\n- Cones in Y shape (base, intersection, two endpoints).\n- Coach or player at intersection.\n\n## Game Play\n- Attacker runs from base toward intersection.\n- Coach indicates direction at last moment.\n- Attacker plants and accelerates to chosen endpoint.\n\n## Performance Factors\n- Low body position.\n- Quick plant and explode.\n- Eyes up before decision.",
+      "duration_seconds": 360,
+      "progressions": [
+        {
+          "id": "2b0b8eb1-21d3-8673-8f00-99ee75133c0c",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Add hand signal only.",
+          "duration_seconds": null
+        },
+        {
+          "id": "61d73ec8-a97d-8c43-ab51-09bc3dd735e1",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Turn hips before changing direction.",
+          "duration_seconds": null
+        },
+        {
+          "id": "4f2bc6f8-a563-8f35-9921-df2720597f47",
+          "position": 2,
+          "title": "",
+          "content_markdown": "Add pass at endpoint.",
+          "duration_seconds": null
+        },
+        {
+          "id": "4312183d-19d8-8a8e-827f-7271cff56290",
+          "position": 3,
+          "title": "",
+          "content_markdown": "Add defender pressure.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "94ef5c58-734d-840a-9693-8e5420ddd37f",
+      "source_identity": "2-channel-2v1",
+      "title": "2 Channel 2v1",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 10–15 minutes\n- Game phases: attack, defense\n- Primary theme: Fix \u0026 Pass\n- Secondary theme: Defensive Commitment\n- Tags: Skill, Channel Play, Decision\n\n## Objective\nAttack:\n- Fix defender before passing.\n- Use width and depth effectively.\nDefense:\n- Close space quickly.\n- Commit at correct moment.\n\n## Setup\n- Two adjacent channels: 5m and 10m.\n- Attackers start in 5m channel.\n- Defender at end of 5m channel.\n\n## Game Play\n- 2 attackers attempt to beat defender in 5m channel.\n- Defender must loop around cone before defending 10m channel.\n- Attackers attempt to win 10m channel.\n\n## Performance Factors\nAttack:\n- Attack defender’s inside shoulder.\n- Late pass.\n- Stay square.\nDefense:\n- Close space early.\n- Commit decisively.",
+      "duration_seconds": 600,
+      "progressions": [
+        {
+          "id": "6186d237-c111-8551-a90a-0f106bb6a8bb",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Add second defender.",
+          "duration_seconds": null
+        },
+        {
+          "id": "260d6f62-054a-827f-ab48-78efddb79b74",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Add scoring incentive for wide finish.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "e1b1a94c-01d4-8d42-a9d4-297236986099",
+      "source_identity": "breakout-1v1-2v2-3v3",
+      "title": "Breakout (1v1 / 2v2 / 3v3)",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 10–15 minutes\n- Game phases: attack, defense, transition\n- Primary theme: Transition Attack\n- Secondary theme: Defensive Recovery\n- Tags: Skill, Chaos Start, Decision\n\n## Objective\n- Develop reaction and transition attack from static start.\n\n## Setup\n- 10m x 10m grid.\n- Attack and defense start lying on backs in touch.\n\n## Game Play\n- Defense calls “go.”\n- Both teams sprint into field.\n- Attack has one attempt to score.\n\n## Performance Factors\nAttack:\n- Quick organization.\n- Attack space immediately.\n- Communicate roles early.\nDefense:\n- Recover shape.\n- Close space quickly.",
+      "duration_seconds": 600,
+      "progressions": [
+        {
+          "id": "aeef7ab7-c831-8e8e-97a8-c255d78bdcd1",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Adjust field size.",
+          "duration_seconds": null
+        },
+        {
+          "id": "631d9ab0-5a17-86a1-bfba-33bf742e5e41",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Add overlap.",
+          "duration_seconds": null
+        },
+        {
+          "id": "944bd90b-2654-8e90-acb1-120c636d787a",
+          "position": 2,
+          "title": "",
+          "content_markdown": "Add additional phase.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "5974c38b-a30b-85b2-9cb0-104b87c9d0ca",
+      "source_identity": "side-step-progression",
+      "title": "Side Step Progression",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 6–10 minutes\n- Game phases: multi_phase\n- Primary theme: Evasion Technique\n- Secondary theme: Acceleration\n- Tags: Skill, Footwork\n\n## Objective\n- Develop effective side-step and acceleration out of break.\n\n## Setup\n- Attacker at starting cone.\n- Secondary cone 5m ahead.\n\n## Game Play\n- Attacker runs to 5m cone.\n- Executes side-step, goose step, or change of direction.\n- Accelerates through.\n\n## Performance Factors\n- Drop hips before step.\n- Sell direction with shoulders.\n- Explode after cut.",
+      "duration_seconds": 360,
+      "progressions": [
+        {
+          "id": "d4af1170-c553-8c28-88ab-9f5c1fb0f8ef",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Add defender.",
+          "duration_seconds": null
+        },
+        {
+          "id": "1e49768f-bbde-8503-8963-5902e8b8bb26",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Add ball carry.",
+          "duration_seconds": null
+        },
+        {
+          "id": "ecc92a71-8644-8ccd-8f7b-e06b27c9eb3d",
+          "position": 2,
+          "title": "",
+          "content_markdown": "Add scoring gate.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "33020e77-108a-8a3b-8642-8baa5d4562ba",
+      "source_identity": "l-hands",
+      "title": "L Hands",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 8–12 minutes\n- Game phases: attack\n- Primary theme: Passing Under Movement\n- Secondary theme: Shape\n- Tags: Skill, Passing, Structure\n\n## Objective\n- Develop catch-pass rhythm through directional change.\n\n## Setup\n- 6 cones in L shape, 5m apart.\n- Players distributed along cones.\n\n## Game Play\n- Ball moves outside → inside through L.\n- Players follow pass and join opposite line.\n\n## Performance Factors\n- Hands ready early.\n- Communicate target.\n- Maintain spacing.",
+      "duration_seconds": 480,
+      "progressions": [
+        {
+          "id": "5eab9b23-a95f-8adb-9233-5d7a6941c6c5",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Increase distance to 10m.",
+          "duration_seconds": null
+        },
+        {
+          "id": "657990dd-914c-86ce-a05a-e8cc18067674",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Add passive defender in passing lane.",
+          "duration_seconds": null
+        },
+        {
+          "id": "0425e2bb-717b-81ca-b6e8-3225695b94d3",
+          "position": 2,
+          "title": "",
+          "content_markdown": "Add live defender.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "625dc824-44ea-8a18-94ec-000ebb3fdfbf",
+      "source_identity": "pick-a-gap",
+      "title": "Pick a Gap",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 10–15 minutes\n- Game phases: attack, defense\n- Primary theme: Gap Recognition\n- Secondary theme: Defensive Alignment\n- Tags: Skill, Decision, Channel\n\n## Objective\nAttack:\n- Identify and exploit available gaps.\nDefense:\n- Communicate and fill space.\n\n## Setup\n- Tackle bags set to create 3–4 gaps.\n- Defense has one fewer player than number of gaps.\n- Attack starts with pass from scrum half.\n\n## Game Play\n- Each defender selects a gap to fill.\n- Attack must move ball to hit open gap.\n\n## Performance Factors\nAttack:\n- Early scan.\n- Quick ball movement.\n- Attack weak shoulder.\nDefense:\n- Communicate assignments.\n- Close gap decisively.",
+      "duration_seconds": 600,
+      "progressions": [
+        {
+          "id": "671aceec-8a70-8d62-ba70-c5a3e7a57040",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Add second phase.",
+          "duration_seconds": null
+        },
+        {
+          "id": "7c588618-a4a7-8d0a-8a86-9a7f55cd3535",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Reduce time to attack.",
+          "duration_seconds": null
+        },
+        {
+          "id": "2c98e914-41e2-8e4a-8c9d-497fe65b3069",
+          "position": 2,
+          "title": "",
+          "content_markdown": "Add tackle.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "25aef2a4-e679-8882-a06a-105493019b2b",
+      "source_identity": "x-pattern-contact-drill",
+      "title": "X Pattern Contact Drill",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 10–15 minutes\n- Game phases: multi_phase\n- Primary theme: Ball Speed Through Contact\n- Secondary theme: Support \u0026 Ruck Entry\n- Tags: Pattern, Shape, Contact\n\n## Objective\n- Develop ball movement through structured shape.\n- Reinforce support lines and post-contact decision.\n\n## Setup\n- Cones in X pattern with one central cone.\n- One defender with tackle shield at top point.\n- Attackers at remaining 3 cones.\n- Ball starts at central cone.\n\n## Game Play\n- Ball passes from center to one attacker.\n- Center follows pass.\n- Ball carrier carries into contact (shield).\n- Support player clears or presents ball.\n- Ball returned to center.\n- Repeat opposite side.\n\n## Performance Factors\n- Pass in front.\n- Support tight and early.\n- Quick recycle.\n- Reload shape immediately.",
+      "duration_seconds": 600,
+      "progressions": [
+        {
+          "id": "c0c6a9d8-c2bf-80c4-b74b-b4ab05bc5a95",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Add second defender.",
+          "duration_seconds": null
+        },
+        {
+          "id": "264abb17-5332-8c6a-b619-6cab0da0e667",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Add live tackle.",
+          "duration_seconds": null
+        },
+        {
+          "id": "0707fcac-f5b9-86ce-bb84-c855fecf2f2a",
+          "position": 2,
+          "title": "",
+          "content_markdown": "Add decision option (carry or tip).",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "d57c88b8-75bd-8286-9f14-1d617d473311",
+      "source_identity": "switch-dummy-switch-pass-dsp",
+      "title": "Switch \u0026 Dummy Switch Pass (DSP)",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 10–15 minutes\n- Game phases: attack\n- Primary theme: Backline Deception\n- Secondary theme: Timing \u0026 Depth\n- Tags: Pattern, Backline, Decision\n\n## Objective\n- Develop timing and deception in midfield.\n- Improve communication between 9–10–12–13.\n\n## Setup\n- Attacking backline in structure.\n- Scrum half initiates play and follows pass.\n\n## Game Play\n- Pass from scrum half to fly half.\n- Fly half chooses:\n  - Switch with inside center; or\n  - Dummy switch → pass to outside center.\n- Finish through designated scoring gates.\n\n## Performance Factors\n- Flat alignment.\n- Sell switch with body language.\n- Late pass.\n- Communication between 10 \u0026 12.",
+      "duration_seconds": 600,
+      "progressions": [
+        {
+          "id": "ccfb14a4-488d-8fea-a2f7-7db55dc4b33a",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Add passive defender.",
+          "duration_seconds": null
+        },
+        {
+          "id": "13337471-7f47-8d17-8c1c-d769826cf4f9",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Add crash-pad defender.",
+          "duration_seconds": null
+        },
+        {
+          "id": "7749eb1c-6988-8a9d-90d7-7e39ed57dc10",
+          "position": 2,
+          "title": "",
+          "content_markdown": "Add live defenders.",
+          "duration_seconds": null
+        },
+        {
+          "id": "010620b4-324b-80fe-ac91-80fd6976742c",
+          "position": 3,
+          "title": "",
+          "content_markdown": "Add second phase.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "0897e70f-02a1-8f87-9d41-c1cd73774202",
+      "source_identity": "loop-dummy-loop-pass-dlp",
+      "title": "Loop \u0026 Dummy Loop Pass (DLP)",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 10–15 minutes\n- Game phases: attack, defense\n- Primary theme: Backline Shape\n- Secondary theme: Support Lines\n- Tags: Pattern, Backline, Timing\n\n## Objective\n- Develop loop timing and depth.\n- Reinforce support angles.\n\n## Setup\n- Backline aligned in attack structure.\n- Scrum half initiates play and follows pass.\n\n## Game Play\n- Pass to fly half.\n- Fly half either:\n  - Loops around inside center (10 → 12 → 10); or\n  - Dummy loop → pass to outside center.\n- Finish through scoring gates.\n\n## Performance Factors\n- Fly half accelerates around loop.\n- Inside center holds defender.\n- Outside center runs strong line.\n- Depth maintained.",
+      "duration_seconds": 600,
+      "progressions": [
+        {
+          "id": "c64f0eb0-713f-8457-94f4-368b3d519f72",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Add passive defenders.",
+          "duration_seconds": null
+        },
+        {
+          "id": "b9a70f4d-5045-8e41-be8a-ed1b52212e18",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Add line speed pressure.",
+          "duration_seconds": null
+        },
+        {
+          "id": "5f6df5f4-dcf8-864b-9833-be64e4a83f55",
+          "position": 2,
+          "title": "",
+          "content_markdown": "Add decision constraint (coach call).",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "2dba30e3-bb07-8047-ab24-63e3ccff2178",
+      "source_identity": "l-attack",
+      "title": "L Attack",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 10–15 minutes\n- Game phases: attack, defense, transition\n- Primary theme: Shape Under Pressure\n- Secondary theme: Defensive Transition\n- Tags: Pattern, Channel Attack\n\n## Objective\nAttack:\n- Organize quickly and attack structured space.\nDefense:\n- Transition from pass to line speed.\n\n## Setup\n- 6 cones in L shape, 5m apart.\n- Defense passes ball to attack to start.\n- Defense immediately moves to defend.\n\n## Game Play\n- Attack must organize from turnover pass.\n- One chance to score.\n- Reset and rotate roles.\n\n## Performance Factors\nAttack:\n- Quick shape call.\n- Width and depth maintained.\n- Attack weak shoulder.\nDefense:\n- Rapid line speed.\n- Communication early.\n- Stay square.",
+      "duration_seconds": 600,
+      "progressions": [
+        {
+          "id": "402f4b25-cb96-8401-9fab-d1ed5023c3f8",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Increase field size.",
+          "duration_seconds": null
+        },
+        {
+          "id": "d09f1473-acd2-8c2d-a965-5d6e7dd5ab95",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Add second phase.",
+          "duration_seconds": null
+        },
+        {
+          "id": "6abaa65d-8069-8adf-8e1d-9c827cab04e9",
+          "position": 2,
+          "title": "",
+          "content_markdown": "Add scoring zones.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "2f09e16c-70d9-87da-8483-bb5ea4fb2018",
+      "source_identity": "kick-tackle",
+      "title": "Kick \u0026 Tackle",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 8–12 minutes\n- Game phases: attack, defense, kick_aerial\n- Primary theme: Kick Chase \u0026 First Contact\n- Secondary theme: Open Field Tackle\n- Tags: Contact, Tracking, Kick Chase\n\n## Objective\nAttack:\n- Secure high ball and accelerate through space.\nDefense:\n- Track and execute effective open-field tackle.\n\n## Setup\n- 1 attacker and 1 defender, 10–15m apart.\n- Gate positioned between them.\n- Defender starts with ball.\n\n## Game Play\n- Defender kicks (drop kick or punt) to attacker.\n- Attacker catches and attempts to run through gate.\n- Defender chases and attempts tackle before gate.\n\n## Performance Factors\nAttack:\n- Catch with early communication.\n- Accelerate immediately after catch.\n- Protect ball into contact.\nDefense:\n- Immediate chase.\n- Track inside hip.\n- Win body height.",
+      "duration_seconds": 480,
+      "progressions": [
+        {
+          "id": "a3bbb496-f028-812b-add8-30ff17491a5c",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Add second chaser.",
+          "duration_seconds": null
+        },
+        {
+          "id": "6e492de5-ce05-8720-aae8-7b01e1201094",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Add support runner.",
+          "duration_seconds": null
+        },
+        {
+          "id": "30ece6a2-9f9f-8510-8a33-418c5f18ee8a",
+          "position": 2,
+          "title": "",
+          "content_markdown": "Increase kick distance.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "5f491328-6de8-889e-b904-b759323f9eb4",
+      "source_identity": "tackle-jackal-or-counter",
+      "title": "Tackle \u0026 Jackal or Counter",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 10–15 minutes\n- Game phases: multi_phase\n- Primary theme: Breakdown Contest\n- Secondary theme: Tackle Technique\n- Tags: Breakdown, Jackal, Counter-Ruck\n\n## Objective\n- Develop legal Jackal technique after tackle.\n- Teach decision between Jackal and counter-ruck.\n\n## Setup\n- 1 defender with tackle bag.\n- 1 attacker with ball and shield.\n- Gate marked at breakdown entry.\n\n## Game Play\n- Defender tackles bag.\n- Immediately regains feet and enters through gate.\n- Attacker either:\n  - Places ball on ground; or\n  - Shields ball.\n- Defender must:\n  - Jackal if ball available; or\n  - Counter-ruck if protected.\n\n## Performance Factors\n- Strong tackle entry.\n- Fast reload to feet.\n- Enter through gate.\n- Clear decision-making.",
+      "duration_seconds": 600,
+      "progressions": [
+        {
+          "id": "464062bc-cb70-8d22-9a1b-fe594ef369b1",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Add second defender.",
+          "duration_seconds": null
+        },
+        {
+          "id": "ad0508e5-72d0-8f92-ad73-277f42a9e618",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Add live ball carrier.",
+          "duration_seconds": null
+        },
+        {
+          "id": "97c5bf13-7399-8d20-8c80-ec0729f783f7",
+          "position": 2,
+          "title": "",
+          "content_markdown": "Add support cleaner.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "e329d77d-d4a5-8001-9633-48922ab6e766",
+      "source_identity": "jackal-support",
+      "title": "Jackal Support",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 8–12 minutes\n- Game phases: attack, defense, breakdown\n- Primary theme: Breakdown Support\n- Secondary theme: Tackle Assist\n- Tags: Breakdown, Team Defense\n\n## Objective\n- Develop coordinated tackle and Jackal roles.\n\n## Setup\n- 1 attacker.\n- 2 defenders.\n\n## Game Play\n- Attacker carries into space.\n- Defender 1 commits and tackles.\n- Defender 2 assists tackle, releases, then Jackals.\n\n## Performance Factors\n- Clear role communication.\n- First tackler secures body.\n- Second defender fast to feet.\n- Legal entry and strong base.",
+      "duration_seconds": 480,
+      "progressions": [
+        {
+          "id": "109e8307-71f6-801d-b9d2-2fd600cd81ee",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Add attacking support player.",
+          "duration_seconds": null
+        },
+        {
+          "id": "4d4491a9-9e28-87b7-9602-596627332d60",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Add live contest.",
+          "duration_seconds": null
+        },
+        {
+          "id": "d04476ad-cb36-8bfc-b04f-36b299375f38",
+          "position": 2,
+          "title": "",
+          "content_markdown": "Add scoring incentive for turnover.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "d74f7cc5-fc7b-8f77-965d-e59bc1d009d9",
+      "source_identity": "samoa-micro-contact-game",
+      "title": "Samoa (Micro Contact Game)",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 8–12 minutes\n- Game phases: multi_phase\n- Primary theme: Contact Dominance\n- Secondary theme: Close-Quarter Decision\n- Tags: Breakdown, Contact, Micro-Space\n\n## Objective\nAttack:\n- Complete pass under heavy pressure.\n- Fight for ground.\nDefense:\n- Drive attacker backward.\n- Disrupt ball movement.\n\n## Setup\n- 5m x 5m grid.\n- 2 attackers with ball.\n- 2 defenders with crash pads.\n\n## Game Play\n- Attack must complete pass and ground ball to score.\n- Defense applies pressure and attempts to push into touch.\n- Turnover and switch roles on drop or touch.\n\n## Performance Factors\n- Low body height.\n- Leg drive through contact.\n- Strong ball presentation.\n- Defense wins height and space.",
+      "duration_seconds": 480,
+      "progressions": [
+        {
+          "id": "cfa567ba-df7b-8109-b51c-a5e46082e6fa",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Remove pads.",
+          "duration_seconds": null
+        },
+        {
+          "id": "3d40e27f-c6c6-81e8-97d2-2f9e39111963",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Add third attacker.",
+          "duration_seconds": null
+        },
+        {
+          "id": "727ca310-44a9-8995-860a-3e8c579c8760",
+          "position": 2,
+          "title": "",
+          "content_markdown": "Add time constraint.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "9a25f45c-062a-8ae1-8ae6-928b6d79a03f",
+      "source_identity": "tackle-line-drill-contact-progression",
+      "title": "Tackle Line Drill (Contact Progression)",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 15–20 minutes\n- Game phases: attack, defense, breakdown\n- Primary theme: Multi-Phase Contact\n- Secondary theme: Reaction \u0026 Discipline\n- Tags: Contact, Phase Play, Organization\n\n## Objective\nAttack:\n- Support through contact and recycle quickly.\n- React quickly to penalties.\nDefense:\n- Track ball.\n- Tackle effectively.\n- Reset line quickly.\n\n## Setup\n- One attacking line.\n- One defensive line facing each other.\n- Ball starts in attacking line.\n\n## Game Play\n- Attack passes ball down line while stationary.\n- Defense tracks ball.\n- Coach calls “go.”\n- Ball carrier attacks with 2 nearest players supporting.\n- Defense tackles.\n- Attack rucks and passes ball back to line.\n- Random whistle indicates penalty.\n- Teams react:\n  - Defense back 10m.\n  - Attack reorganizes quickly.\n\n## Performance Factors\nAttack:\n- Quick support.\n- Ball speed from breakdown.\n- Identify space on penalty.\nDefense:\n- Close space early.\n- Win tackle height.\n- Fast reset on whistle.",
+      "duration_seconds": 900,
+      "progressions": [
+        {
+          "id": "32b0fbe6-e86e-8413-8ecb-263cd1a040ec",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Increase line speed.",
+          "duration_seconds": null
+        },
+        {
+          "id": "b0e5a783-afd8-8979-976c-5c21501ec810",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Add live ruck contest.",
+          "duration_seconds": null
+        },
+        {
+          "id": "748c9f9d-0f31-8829-bd33-3a5b685983a3",
+          "position": 2,
+          "title": "",
+          "content_markdown": "Add scoring zone.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "1699e5c3-0f65-84d0-9902-5ae7d6e8ff32",
+      "source_identity": "v2a-game",
+      "title": "V2A Game",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 10 minutes\n- Game phases: attack, defense\n- Primary theme: Defense Structure\n- Secondary theme: Attack Space\n- Tags: Positioning, Communication\n\n## Objective\n- Demonstrate importance of defensive alignment.\n\n## Setup\n- Cones in V shape for defenders.\n- Defenders restricted to channel.\n\n## Game Play\n- Attack tap and attack space.\n- Rotate defenders.\n\n### Scoring\n- Try = 1\n- Touch = 1\n\n## Performance Factors\nDefense:\n- Lateral movement.\n- Space denial.\nAttack:\n- Ball speed.\n- Attack weak shoulder.",
+      "duration_seconds": 600,
+      "progressions": [
+        {
+          "id": "cc20e6f2-1f6f-812d-9bf2-432acca6c0ff",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Move cones forward.",
+          "duration_seconds": null
+        },
+        {
+          "id": "620a0867-14a6-82c0-a302-0499c26d989f",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Add second phase.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "1a731940-0b59-87d7-a966-a815a30f38f8",
+      "source_identity": "fall-in-line",
+      "title": "Fall in Line",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 15–20 minutes\n- Game phases: multi_phase\n- Primary theme: Structured Play\n- Tags: Lane Discipline, Line Speed\n\n## Objective\n- Provide controlled game-like environment.\n\n## Setup\n- Field divided into 5m lanes.\n- Players stay in lane.\n\n## Game Play\n- Kick-off or tap start.\n- Defender back 5m after touch/tackle.\n- Turnover on error.\n\n## Performance Factors\nAttack:\n- Width and depth.\n- Ball speed.\n- Go forward.\nDefense:\n- Line speed.\n- Stay in lane.\n- Close space.",
+      "duration_seconds": 900,
+      "progressions": [
+        {
+          "id": "85b462bb-3239-8689-b0df-c947349b0bdd",
+          "position": 0,
+          "title": "",
+          "content_markdown": "One touch.",
+          "duration_seconds": null
+        },
+        {
+          "id": "efe7e863-2e93-852c-94c8-4360d1e54d64",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Two touch turnover.",
+          "duration_seconds": null
+        },
+        {
+          "id": "9eccb051-2b96-8ce2-9285-0379520398e7",
+          "position": 2,
+          "title": "",
+          "content_markdown": "Wrap.",
+          "duration_seconds": null
+        },
+        {
+          "id": "c683f157-a737-8e10-966c-34d73c9cd4ec",
+          "position": 3,
+          "title": "",
+          "content_markdown": "Live tackle.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "123ddd2d-8a94-89aa-b754-a4b066ae7229",
+      "source_identity": "rapid-attack",
+      "title": "Rapid Attack",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 10–15 minutes\n- Game phases: attack, defense, transition\n- Primary theme: Ball Speed \u0026 Reset\n- Secondary theme: Conditioning\n- Tags: Constraint Game, Tempo, Attack\n\n## Objective\nAttack:\n- Score repeatedly under time pressure.\n- Reset shape quickly after contact.\nDefense:\n- Organize rapidly.\n- Close space early.\n\n## Setup\n- Small-sided field.\n- One attacking team, one defending team.\n\n## Game Play\n- 60-second attacking rounds.\n- Attack attempts to score as many times as possible.\n- On touch/tackle, attack immediately retreats to start line and re-attacks.\n- Defense resets each rep.\n\n## Performance Factors\nAttack:\n- Quick retreat and reload.\n- Width and depth maintained.\n- Ball moved before contact.\nDefense:\n- Rapid organization.\n- Line speed under fatigue.",
+      "duration_seconds": 600,
+      "progressions": [
+        {
+          "id": "846e9bad-9068-87bb-bbc7-9fc681301d0b",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Add attacking overlap.",
+          "duration_seconds": null
+        },
+        {
+          "id": "a1e20e33-cb63-8d51-b141-7ac878c32001",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Add defensive overlap.",
+          "duration_seconds": null
+        },
+        {
+          "id": "3e1941d7-3d73-8da4-a1a8-e48945ce982c",
+          "position": 2,
+          "title": "",
+          "content_markdown": "Add second ball.",
+          "duration_seconds": null
+        },
+        {
+          "id": "9e189fbb-ce84-8758-8721-127b5b9a51f9",
+          "position": 3,
+          "title": "",
+          "content_markdown": "Two-touch turnover rule.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "0a9034a2-ba8f-81dd-b264-085b86432e7d",
+      "source_identity": "channel-pressure-game-2-channel-constraint",
+      "title": "Channel Pressure Game (2 Channel Constraint)",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 10–15 minutes\n- Game phases: attack, defense, transition\n- Primary theme: Fix \u0026 Finish\n- Secondary theme: Defensive Commitment\n- Tags: Constraint Game, Channel Play\n\n## Objective\nAttack:\n- Manipulate defender across multiple channels.\nDefense:\n- Recover and close space quickly.\n\n## Setup\n- Two adjacent channels (5m and 10m).\n- 2 attackers.\n- 1 defender.\n\n## Game Play\n- Attack first engages defender in 5m channel.\n- Defender must loop around cone before defending second channel.\n- Attack attempts to win both channels sequentially.\n\n### Constraint\n- Attack must commit defender before passing.\n- Score only if both channels are beaten.\n\n## Performance Factors\nAttack:\n- Late decision.\n- Square alignment.\n- Support inside and outside.\nDefense:\n- Fast transition.\n- Decisive commitment.",
+      "duration_seconds": 600,
+      "progressions": [
+        {
+          "id": "34632ad1-bbdc-80fa-be3c-c72f873b193a",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Add second defender in second channel.",
+          "duration_seconds": null
+        },
+        {
+          "id": "42d12211-851e-8504-8573-7624259b7db5",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Reduce time between channels.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "2abdb03a-c936-8918-bbc3-13124c2056cc",
+      "source_identity": "breakout-chaos-game",
+      "title": "Breakout Chaos Game",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 10–15 minutes\n- Game phases: attack, defense, transition\n- Primary theme: Transition Attack\n- Secondary theme: Defensive Recovery\n- Tags: Constraint Game, Chaos, Reaction\n\n## Objective\n- Develop immediate organization from disorganized start.\n\n## Setup\n- 10m x 10m grid.\n- Attack and defense begin lying on backs in touch.\n\n## Game Play\n- Defense calls “go.”\n- Both teams sprint into field.\n- Attack has one attempt to score.\n\n### Constraint\n- Single scoring opportunity.\n- No reset phases.\n\n## Performance Factors\nAttack:\n- Early communication.\n- Immediate role clarity.\n- Attack weak shoulder.\nDefense:\n- Recover line quickly.\n- Close space early.\n- Stay square under chaos.",
+      "duration_seconds": 600,
+      "progressions": [
+        {
+          "id": "0a3f3fd7-24b4-8400-af51-5fafd91a1646",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Increase grid size.",
+          "duration_seconds": null
+        },
+        {
+          "id": "9d844f6c-eeb0-866a-8170-9170893bb788",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Add additional phase.",
+          "duration_seconds": null
+        },
+        {
+          "id": "1cb15ae0-afba-87ea-8604-722c5bc2bc0e",
+          "position": 2,
+          "title": "",
+          "content_markdown": "Add numerical imbalance.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "a1148866-6488-86e4-85cc-c560c4206977",
+      "source_identity": "3v2-continuous-overload",
+      "title": "3v2 Continuous Overload",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 12–15 minutes\n- Game phases: attack, defense, transition\n- Primary theme: Exploit Space\n- Secondary theme: Support Lines\n- Tags: 7s, Overload, Transition\n\n## Objective\nAttack:\n- Convert 3v2 advantage consistently.\n- Maintain width and depth under speed.\nDefense:\n- Delay and force sideline.\n- Communicate inside-out coverage.\n\n## Setup\n- 15m wide channel, 20–25m long.\n- 3 attackers vs 2 defenders.\n- Ball starts with central attacker.\n\n## Game Play\n- Attack attempts to score.\n- On score or turnover, immediate new 3 attackers enter from opposite side.\n- Defenders stay for 2–3 reps before rotating.\n\n## Performance Factors\nAttack:\n- Fix defender before pass.\n- Attack weak shoulder.\n- Inside support always alive.\nDefense:\n- First defender commits.\n- Second defender tracks inside threat.\n- Communicate early.",
+      "duration_seconds": 720,
+      "progressions": [
+        {
+          "id": "3955dce9-7254-8aa8-ab01-30e8a1cd412c",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Reduce width.",
+          "duration_seconds": null
+        },
+        {
+          "id": "669b12f1-e3e9-8697-9db7-171a10e2f4b8",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Add retreating defender from behind.",
+          "duration_seconds": null
+        },
+        {
+          "id": "f5add34c-2002-8c66-a738-913995d3a471",
+          "position": 2,
+          "title": "",
+          "content_markdown": "Add 4th phase requirement.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "aac27360-8045-8460-b3fa-f5226d8f12ca",
+      "source_identity": "4-phase-score-or-turnover",
+      "title": "4-Phase Score or Turnover",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 15–20 minutes\n- Game phases: multi_phase\n- Primary theme: Multi-Phase Attack\n- Secondary theme: Ruck Speed\n- Tags: 7s, Phase Play, Conditioning\n\n## Objective\n- Maintain ball speed through 4 phases.\n- Preserve width under fatigue.\n\n## Setup\n- Half-field.\n- 5 attackers vs 4 defenders.\n- Coach counts phases aloud.\n\n## Game Play\n- Attack must score within 4 phases.\n- If ball slower than 3 seconds at ruck → automatic turnover.\n- If 4 phases completed without score → turnover.\n\n## Performance Factors\nAttack:\n- Clean within 2 seconds.\n- Immediate reload to width.\n- Forward momentum each phase.\nDefense:\n- Line speed every phase.\n- Tackle → bounce → rejoin.",
+      "duration_seconds": 900,
+      "progressions": [
+        {
+          "id": "07c3202c-9228-8ff0-ad46-72feb9c4ec21",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Equal numbers (5v5).",
+          "duration_seconds": null
+        },
+        {
+          "id": "490f0dc9-8da9-80ac-b874-dcf5b509984b",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Reduce to 3 phases.",
+          "duration_seconds": null
+        },
+        {
+          "id": "ae1db9da-e6fa-8beb-8fd4-fcabdf146ca9",
+          "position": 2,
+          "title": "",
+          "content_markdown": "Add fatigue (short shuttle before rep).",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "382772cc-68dc-8ac3-b87f-f96e7804dd20",
+      "source_identity": "tackle-reload-line-speed",
+      "title": "Tackle → Reload Line Speed",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 10–15 minutes\n- Game phases: attack, defense, transition\n- Primary theme: Defensive Reload\n- Secondary theme: Line Speed\n- Tags: 7s, Defense, Conditioning\n\n## Objective\n- Develop immediate reload after tackle.\n- Maintain line integrity under fatigue.\n\n## Setup\n- 4 defenders vs 3 attackers.\n- 20m channel.\n\n## Game Play\n- Attack runs phase.\n- Defender who makes tackle must:\n  - Bounce to feet.\n  - Rejoin defensive line.\n- Play continues for 3 phases.\n\n## Performance Factors\n- First defender wins height.\n- Immediate reload.\n- Line moves together.",
+      "duration_seconds": 600,
+      "progressions": [
+        {
+          "id": "939d35d4-08a1-865c-bc68-3f178af87109",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Add 4th attacker.",
+          "duration_seconds": null
+        },
+        {
+          "id": "ee20212f-c44b-8cbe-894f-7558d589217a",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Increase channel width.",
+          "duration_seconds": null
+        },
+        {
+          "id": "417ba5de-d772-8db8-a8ae-b35644ab1e69",
+          "position": 2,
+          "title": "",
+          "content_markdown": "Add scoring reward for turnover.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "e3dfe5be-3373-825b-b2cd-98c8f70fdda5",
+      "source_identity": "3v2-scramble-defense",
+      "title": "3v2 Scramble Defense",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 12–15 minutes\n- Game phases: attack, defense, transition\n- Primary theme: Transition Defense\n- Secondary theme: Communication\n- Tags: 7s, Scramble, Chaos\n\n## Objective\nDefense:\n- Recover shape under broken play.\n- Protect inside channel first.\nAttack:\n- Exploit numerical advantage quickly.\n\n## Setup\n- 3 attackers start with ball.\n- 2 defenders positioned staggered.\n- 20m x 20m grid.\n\n## Game Play\n- Attack begins unstructured.\n- Defense must communicate and recover.\n- If defense forces error or touch → win.\n\n## Performance Factors\nDefense:\n- Protect inside shoulder.\n- Delay, don’t dive.\n- Talk constantly.\nAttack:\n- Ball before contact.\n- Attack weak edge.",
+      "duration_seconds": 720,
+      "progressions": [
+        {
+          "id": "d10601eb-3faf-8b1d-943b-9e061d6055a7",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Add trailing defender.",
+          "duration_seconds": null
+        },
+        {
+          "id": "edce30e1-1067-8bec-8ecd-b1f61af4741b",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Add time limit (10 seconds to score).",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "c0813745-9311-857a-b35a-8765182c755f",
+      "source_identity": "clean-pass-2-second-ruck",
+      "title": "Clean \u0026 Pass (2-Second Ruck)",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 8–12 minutes\n- Game phases: attack, defense, breakdown\n- Primary theme: Ruck Speed\n- Secondary theme: Decision-Making\n- Tags: 7s, Breakdown Speed\n\n## Objective\n- Achieve sub-2-second ball at breakdown.\n- Reinforce 1-man clean efficiency.\n\n## Setup\n- 3 attackers vs 2 defenders.\n- Breakdown zone marked.\n\n## Game Play\n- Ball carrier enters contact.\n- 1 cleaner clears defender.\n- Scrum half must pass within 2 seconds.\n- Coach counts aloud.\n\n## Performance Factors\n- Clean through gate.\n- Low body height.\n- Immediate pass from base.",
+      "duration_seconds": 480,
+      "progressions": [
+        {
+          "id": "a1d775d6-a35b-8c24-ab1a-63870107380e",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Add second defender.",
+          "duration_seconds": null
+        },
+        {
+          "id": "4daf2f43-8185-8d4c-a570-58dd34e01ca3",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Add live Jackal threat.",
+          "duration_seconds": null
+        },
+        {
+          "id": "bc69674e-25cb-8cf9-95ec-c6b2824e40d5",
+          "position": 2,
+          "title": "",
+          "content_markdown": "Add phase continuation.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "25bb6951-2520-857e-a656-8263be16a777",
+      "source_identity": "transition-launch-game",
+      "title": "Transition Launch Game",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 12–15 minutes\n- Game phases: attack, defense, transition\n- Primary theme: Turnover Attack\n- Secondary theme: Awareness\n- Tags: 7s, Transition, Counter\n\n## Objective\n- Attack immediately from turnover.\n- Recognize unbalanced defense.\n\n## Setup\n- 5v5 half-field.\n- Coach randomly calls “turnover.”\n\n## Game Play\n- On turnover call, possession switches immediately.\n- New attacking team must exploit transition within 2 phases.\n\n## Performance Factors\n- Quick scan.\n- Immediate width.\n- Attack space before defense sets.",
+      "duration_seconds": 720,
+      "progressions": [
+        {
+          "id": "d5a17970-4a16-8e18-b4ee-205037fc22bd",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Add fatigue block before turnover.",
+          "duration_seconds": null
+        },
+        {
+          "id": "8d7dd0f8-5145-80f1-8f2f-d4011d7784b1",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Limit to 1 phase.",
+          "duration_seconds": null
+        },
+        {
+          "id": "f2afce32-046f-8916-ab7e-82f2c7714994",
+          "position": 2,
+          "title": "",
+          "content_markdown": "Add bonus point for first-phase score.",
+          "duration_seconds": null
+        }
+      ]
+    },
+    {
+      "id": "45b3f77c-4e5d-86ab-b286-f156a8fb9022",
+      "source_identity": "wide-to-wide-fatigue-game",
+      "title": "Wide-to-Wide Fatigue Game",
+      "summary": "",
+      "content_markdown": "## Metadata\n- Recommended duration: 10–15 minutes\n- Game phases: attack, transition\n- Primary theme: Width Under Fatigue\n- Secondary theme: Support Lines\n- Tags: 7s, Conditioning, Ball Speed\n\n## Objective\n- Maintain attacking width late in sequence.\n- Support inside and outside continuously.\n\n## Setup\n- Full width, 30–40m length.\n- 5v5.\n\n## Game Play\n- Attack must move ball touchline to touchline before scoring.\n- If ball goes to ground → turnover.\n- 45-second rounds.\n\n## Performance Factors\n- Quick hands.\n- Depth maintained.\n- Communicate reload shape.",
+      "duration_seconds": 600,
+      "progressions": [
+        {
+          "id": "b023dd36-c49f-8398-9e3a-c2345ad28a61",
+          "position": 0,
+          "title": "",
+          "content_markdown": "Reduce time.",
+          "duration_seconds": null
+        },
+        {
+          "id": "c4bf7b68-c370-819d-b922-da4923469784",
+          "position": 1,
+          "title": "",
+          "content_markdown": "Add second ball.",
+          "duration_seconds": null
+        },
+        {
+          "id": "aff1270d-cfc3-87e5-af79-6e2c47157f39",
+          "position": 2,
+          "title": "",
+          "content_markdown": "Add mandatory offload phase.",
+          "duration_seconds": null
+        }
+      ]
+    }
+  ]
+}

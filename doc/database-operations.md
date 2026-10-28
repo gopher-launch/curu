@@ -36,7 +36,7 @@ The application image also includes `/curu-migrate`; a deployment can run that b
 
 The command takes a PostgreSQL advisory lock, verifies the checksum and order of existing migration history, applies pending migrations transactionally, reconciles the documented runtime grants, and validates the effective runtime role boundary. Repeating it at the current version leaves schema and content unchanged while rechecking grants and restrictions. This build supports schema version 2.
 
-The initial schema contains owner-scoped activities, their ordered progressions, dataset-initialization metadata, archive timestamps, and positive revision tokens. Dataset initialization remains a separate future command; migration never seeds or replaces activities.
+The initial schema contains owner-scoped activities, their ordered progressions, dataset-initialization metadata, archive timestamps, and positive revision tokens. The bounded seed asset is documented in [`seed-library.md`](seed-library.md), but dataset initialization remains a separate future command; migration never seeds or replaces activities.
 
 ## Start the server
 
@@ -58,4 +58,4 @@ CURU_TEST_DATABASE_URL='postgres://postgres:...@127.0.0.1:5432/curu_test?sslmode
 go test ./internal/database -run TestPostgresMigrationAndRuntimeRestrictions -count=1
 ```
 
-The test changes database-wide `PUBLIC` temporary privileges, drops and recreates the `curu` schema, and creates roles named `curu_runtime_test` and `curu_runtime_assumable_test`; never point it at retained data. It first proves migration fails closed while inherited temporary, database/schema creation, or `SET ROLE` authority is available. It then proves startup compatibility is read-only, applies migration 1, inserts an existing fixture, applies migration 2, verifies retained content and repeatability, and confirms the runtime role can edit activity data but cannot create persistent or temporary tables, alter migration/initialization state, or permanently delete activities. Cleanup restores the usual `PUBLIC` temporary privilege.
+The test changes database-wide `PUBLIC` temporary privileges, drops and recreates the `curu` schema, and creates roles named `curu_runtime_test` and `curu_runtime_assumable_test`; never point it at retained data. It first proves migration fails closed while inherited temporary, database/schema creation, or `SET ROLE` authority is available. It then proves startup compatibility is read-only, applies migration 1, inserts an existing fixture, applies migration 2, verifies retained content and repeatability, loads the complete bounded seed asset and checks its 44/110 counts, and confirms the runtime role can edit activity data but cannot create persistent or temporary tables, alter migration/initialization state, or permanently delete activities. Cleanup restores the usual `PUBLIC` temporary privilege.

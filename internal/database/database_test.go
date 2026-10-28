@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gopher-launch/curu/internal/seed"
 	"gorm.io/gorm"
 )
 
@@ -183,6 +184,25 @@ func TestPostgresMigrationAndRuntimeRestrictions(t *testing.T) {
 	if err := admin.Raw("SELECT title FROM curu.activities WHERE id = ?", fixtureID).Scan(&title).Error; err != nil || title != "Retained activity" {
 		t.Fatalf("retained fixture title = %q, error = %v", title, err)
 	}
+	const seedOwnerID = "44444444-4444-4444-8444-444444444444"
+	library, err := seed.Load()
+	if err != nil {
+		t.Fatalf("seed.Load() error = %v", err)
+	}
+	if err := loadSeedFixture(admin, seedOwnerID, library); err != nil {
+		t.Fatalf("load seed fixture: %v", err)
+	}
+	var activityCount, progressionCount int64
+	if err := admin.Raw("SELECT count(*) FROM curu.activities WHERE owner_id = ?", seedOwnerID).Scan(&activityCount).Error; err != nil {
+		t.Fatalf("count seeded activities: %v", err)
+	}
+	if err := admin.Raw(`SELECT count(*) FROM curu.activity_progressions p
+		JOIN curu.activities a ON a.id = p.activity_id WHERE a.owner_id = ?`, seedOwnerID).Scan(&progressionCount).Error; err != nil {
+		t.Fatalf("count seeded progressions: %v", err)
+	}
+	if activityCount != seed.ExpectedActivities || progressionCount != seed.ExpectedProgressions {
+		t.Fatalf("seeded counts = %d/%d, want %d/%d", activityCount, progressionCount, seed.ExpectedActivities, seed.ExpectedProgressions)
+	}
 
 	runtime, err = Open(ctx, runtimeURL)
 	if err != nil {
@@ -215,6 +235,28 @@ func TestPostgresMigrationAndRuntimeRestrictions(t *testing.T) {
 	if err := runtime.Exec("INSERT INTO curu.dataset_initializations (kind) VALUES ('empty')").Error; err == nil {
 		t.Fatal("runtime role changed bootstrap metadata")
 	}
+}
+
+func loadSeedFixture(db *gorm.DB, ownerID string, library seed.Library) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		for _, activity := range library.Activities {
+			if err := tx.Exec(`INSERT INTO curu.activities
+				(id, owner_id, source_identity, title, summary, content_markdown, duration_seconds)
+				VALUES (?, ?, ?, ?, ?, ?, ?)`, activity.ID, ownerID, activity.SourceIdentity, activity.Title,
+				activity.Summary, activity.ContentMarkdown, activity.DurationSeconds).Error; err != nil {
+				return err
+			}
+			for _, progression := range activity.Progressions {
+				if err := tx.Exec(`INSERT INTO curu.activity_progressions
+					(id, activity_id, position, title, content_markdown, duration_seconds)
+					VALUES (?, ?, ?, ?, ?, ?)`, progression.ID, activity.ID, progression.Position,
+					progression.Title, progression.ContentMarkdown, progression.DurationSeconds).Error; err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
 }
 
 func currentDatabase(t *testing.T, db *gorm.DB) string {
