@@ -4,6 +4,7 @@ go 1.27.0
 
 require (
 	github.com/lestrrat-go/jwx/v3 v3.0.11
+	github.com/yuin/goldmark v1.8.6
 	gorm.io/driver/postgres v1.6.3
 	gorm.io/gorm v1.31.2
 )

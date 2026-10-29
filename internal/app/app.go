@@ -45,7 +45,10 @@ func New(cfg config.Config, logger *slog.Logger) (*App, error) {
 		return nil, fmt.Errorf("create authorization policy: %w", err)
 	}
 	application := &App{config: cfg, logger: logger, auth: authenticator}
-	handler, err := web.NewHandler(logger, func() bool { return application.ready.Load() && application.auth.Ready() }, authenticator, policy)
+	handler, err := web.NewHandler(logger, func() bool { return application.ready.Load() && application.auth.Ready() }, authenticator, policy, web.BrowserConfig{
+		PublicOrigin: cfg.Browser.PublicOrigin, TrustedProxyCIDRs: cfg.Browser.TrustedProxyCIDRs,
+		LoginURL: cfg.Browser.LoginURL, LogoutURL: cfg.Browser.LogoutURL,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("create HTTP handler: %w", err)
 	}

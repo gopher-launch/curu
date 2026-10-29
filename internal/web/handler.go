@@ -23,6 +23,7 @@ type handler struct {
 	ready     func() bool
 	auth      requestAuthenticator
 	policy    authorization.Policy
+	browser   BrowserConfig
 	templates *template.Template
 }
 
@@ -45,7 +46,7 @@ func PrincipalFromContext(ctx context.Context) (authorization.Principal, bool) {
 	return principal, ok
 }
 
-func NewHandler(logger *slog.Logger, ready func() bool, authenticator requestAuthenticator, policy authorization.Policy) (http.Handler, error) {
+func NewHandler(logger *slog.Logger, ready func() bool, authenticator requestAuthenticator, policy authorization.Policy, browser BrowserConfig) (http.Handler, error) {
 	templates, err := template.ParseFS(templateFiles, "templates/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
@@ -54,12 +55,15 @@ func NewHandler(logger *slog.Logger, ready func() bool, authenticator requestAut
 	if authenticator == nil {
 		return nil, fmt.Errorf("authenticator is required")
 	}
-	h := &handler{logger: logger, ready: ready, auth: authenticator, policy: policy, templates: templates}
+	if browser.PublicOrigin == "" {
+		return nil, fmt.Errorf("public origin is required")
+	}
+	h := &handler{logger: logger, ready: ready, auth: authenticator, policy: policy, browser: browser, templates: templates}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health/live", h.live)
 	mux.HandleFunc("GET /health/ready", h.readiness)
 	mux.HandleFunc("GET /", h.notFound)
-	return h.logRequests(h.authorizePrivateRequests(mux)), nil
+	return h.logRequests(h.authorizePrivateRequests(h.protectBrowserRequests(mux))), nil
 }
 
 func (h *handler) authorizePrivateRequests(next http.Handler) http.Handler {
@@ -97,6 +101,10 @@ func (h *handler) deny(w http.ResponseWriter, r *http.Request, status int, reaso
 	h.logger.Warn("security failure", "reason", reason, "request_id", requestLog.correlationID)
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	if status == http.StatusUnauthorized && r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Reswap", "none")
+		w.Header().Set("HX-Trigger", htmxAuthEventName)
+	}
 	w.WriteHeader(status)
 	_, _ = w.Write([]byte(http.StatusText(status) + "\n"))
 }
@@ -124,7 +132,9 @@ func (h *handler) notFound(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusNotFound)
-	data := struct{ Path string }{Path: r.URL.Path}
+	data := struct {
+		Path, CSRFToken, LoginURL, LogoutURL string
+	}{Path: r.URL.Path, CSRFToken: CSRFTokenFromRequest(r), LoginURL: h.browser.LoginURL, LogoutURL: h.browser.LogoutURL}
 	if err := h.templates.ExecuteTemplate(w, "not-found", data); err != nil {
 		h.logger.Error("render response failed", "error", err)
 	}

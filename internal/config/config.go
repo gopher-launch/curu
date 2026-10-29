@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -33,6 +34,16 @@ type Config struct {
 	IdleTimeout       time.Duration
 	JWT               JWTConfig
 	Owner             OwnerConfig
+	Browser           BrowserConfig
+}
+
+// BrowserConfig defines the provider-neutral public browser and gateway
+// boundary. PublicOrigin is deliberately independent of request headers.
+type BrowserConfig struct {
+	PublicOrigin      string
+	TrustedProxyCIDRs []netip.Prefix
+	LoginURL          string
+	LogoutURL         string
 }
 
 // OwnerConfig binds one exact external identity to the stable dataset owner.
@@ -82,8 +93,21 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 			Subject: valueOrDefault(lookup, "CURU_OWNER_SUBJECT", ""),
 			ID:      valueOrDefault(lookup, "CURU_OWNER_ID", ""),
 		},
+		Browser: BrowserConfig{
+			PublicOrigin: valueOrDefault(lookup, "CURU_PUBLIC_ORIGIN", ""),
+			LoginURL:     valueOrDefault(lookup, "CURU_LOGIN_URL", ""),
+			LogoutURL:    valueOrDefault(lookup, "CURU_LOGOUT_URL", ""),
+		},
 	}
 	cfg.JWT.Algorithms = splitComma(valueOrDefault(lookup, "CURU_JWT_ALGORITHMS", ""))
+	proxyCIDRs := splitComma(valueOrDefault(lookup, "CURU_TRUSTED_PROXY_CIDRS", ""))
+	for _, value := range proxyCIDRs {
+		prefix, err := netip.ParsePrefix(value)
+		if err != nil || prefix.String() != value {
+			return Config{}, fmt.Errorf("CURU_TRUSTED_PROXY_CIDRS: %q must be a canonical IP CIDR", value)
+		}
+		cfg.Browser.TrustedProxyCIDRs = append(cfg.Browser.TrustedProxyCIDRs, prefix)
+	}
 
 	var err error
 	if cfg.ShutdownTimeout, err = duration(lookup, "CURU_SHUTDOWN_TIMEOUT", cfg.ShutdownTimeout); err != nil {
@@ -122,8 +146,39 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	if err := validateOwner(cfg.Owner, cfg.JWT.Issuer); err != nil {
 		return Config{}, err
 	}
+	if err := validateBrowser(cfg.Browser); err != nil {
+		return Config{}, err
+	}
 
 	return cfg, nil
+}
+
+func validateBrowser(browser BrowserConfig) error {
+	if err := validateHTTPSOrigin(browser.PublicOrigin); err != nil {
+		return fmt.Errorf("CURU_PUBLIC_ORIGIN: %w", err)
+	}
+	for name, value := range map[string]string{
+		"CURU_LOGIN_URL": browser.LoginURL, "CURU_LOGOUT_URL": browser.LogoutURL,
+	} {
+		if value == "" {
+			continue
+		}
+		if err := validateHTTPSURL(value); err != nil {
+			return fmt.Errorf("%s: %w", name, err)
+		}
+	}
+	return nil
+}
+
+func validateHTTPSOrigin(value string) error {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return fmt.Errorf("must be an absolute HTTPS origin without user information, path, query, or fragment")
+	}
+	if parsed.String() != value {
+		return fmt.Errorf("must use its canonical URL spelling")
+	}
+	return nil
 }
 
 func validateOwner(owner OwnerConfig, trustedIssuer string) error {

@@ -62,5 +62,6 @@ func newTestConfig(address string) config.Config {
 			Issuer: "https://issuer.example", Subject: "coach-123",
 			ID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
 		},
+		Browser: config.BrowserConfig{PublicOrigin: "https://curu.example"},
 	}
 }

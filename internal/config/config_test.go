@@ -22,6 +22,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.JWT.Profile != "rfc9068" || cfg.JWT.ClockSkew != time.Minute || cfg.JWT.MaxLifetime != 15*time.Minute {
 		t.Errorf("JWT = %+v", cfg.JWT)
 	}
+	if cfg.Browser.PublicOrigin != "https://curu.example" || len(cfg.Browser.TrustedProxyCIDRs) != 0 {
+		t.Errorf("Browser = %+v", cfg.Browser)
+	}
 }
 
 func TestLoadOverrides(t *testing.T) {
@@ -43,6 +46,10 @@ func TestLoadOverrides(t *testing.T) {
 		"CURU_OWNER_ISSUER":        "https://issuer.example/tenant",
 		"CURU_OWNER_SUBJECT":       "coach-123",
 		"CURU_OWNER_ID":            "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+		"CURU_PUBLIC_ORIGIN":       "https://coach.example",
+		"CURU_TRUSTED_PROXY_CIDRS": "10.0.0.0/24,2001:db8::/32",
+		"CURU_LOGIN_URL":           "https://gateway.example/login",
+		"CURU_LOGOUT_URL":          "https://gateway.example/logout",
 	}
 	cfg, err := Load(func(name string) (string, bool) {
 		value, ok := values[name]
@@ -51,7 +58,7 @@ func TestLoadOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.ListenAddress != values["CURU_LISTEN_ADDRESS"] || cfg.ShutdownTimeout != 20*time.Second || cfg.ReadHeaderTimeout != 7*time.Second || cfg.IdleTimeout != 2*time.Minute || len(cfg.JWT.Algorithms) != 2 || cfg.JWT.ClockSkew != 30*time.Second {
+	if cfg.ListenAddress != values["CURU_LISTEN_ADDRESS"] || cfg.ShutdownTimeout != 20*time.Second || cfg.ReadHeaderTimeout != 7*time.Second || cfg.IdleTimeout != 2*time.Minute || len(cfg.JWT.Algorithms) != 2 || cfg.JWT.ClockSkew != 30*time.Second || len(cfg.Browser.TrustedProxyCIDRs) != 2 || cfg.Browser.LoginURL != values["CURU_LOGIN_URL"] {
 		t.Errorf("Load() = %+v", cfg)
 	}
 }
@@ -76,6 +83,11 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 		"wrong owner issuer":  {"CURU_OWNER_ISSUER": "https://other.example/tenant"},
 		"empty owner subject": {"CURU_OWNER_SUBJECT": ""},
 		"invalid owner ID":    {"CURU_OWNER_ID": "owner"},
+		"HTTP public origin":  {"CURU_PUBLIC_ORIGIN": "http://curu.example"},
+		"origin with path":    {"CURU_PUBLIC_ORIGIN": "https://curu.example/app"},
+		"noncanonical proxy":  {"CURU_TRUSTED_PROXY_CIDRS": "10.0.0.1/24"},
+		"invalid proxy":       {"CURU_TRUSTED_PROXY_CIDRS": "gateway.example"},
+		"HTTP login URL":      {"CURU_LOGIN_URL": "http://gateway.example/login"},
 	}
 	for name, values := range tests {
 		values := values
@@ -106,6 +118,7 @@ func lookupWithDatabase(values map[string]string) func(string) (string, bool) {
 		"CURU_OWNER_ISSUER":   "https://issuer.example/tenant",
 		"CURU_OWNER_SUBJECT":  "coach-123",
 		"CURU_OWNER_ID":       "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+		"CURU_PUBLIC_ORIGIN":  "https://curu.example",
 	}
 	return func(name string) (string, bool) {
 		if value, ok := values[name]; ok {

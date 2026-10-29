@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"html/template"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -70,7 +72,7 @@ func TestUnknownRouteUsesEscapedLayout(t *testing.T) {
 		t.Fatalf("status = %d", response.Code)
 	}
 	body := response.Body.String()
-	if !strings.Contains(body, "Curu") || strings.Contains(body, "<script>") {
+	if !strings.Contains(body, "Curu") || strings.Contains(body, "/<script>") || !strings.Contains(body, "/&lt;script&gt;") {
 		t.Errorf("body is missing layout or contains unescaped input: %q", body)
 	}
 }
@@ -80,12 +82,149 @@ func TestProductLikeMethodsAreUnavailable(t *testing.T) {
 
 	var ready atomic.Bool
 	handler := newTestHandler(t, ready.Load)
+	cookie := csrfCookie(t, handler)
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/activities", strings.NewReader("private=data"))
 	request.Header.Set("Authorization", "Bearer owner")
+	request.Header.Set("Origin", "https://curu.example")
+	request.Header.Set("X-CSRF-Token", cookie.Value)
+	request.AddCookie(cookie)
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusMethodNotAllowed {
 		t.Errorf("status = %d, want %d", response.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+func TestBrowserProtectionRejectsCrossOriginAndInvalidCSRF(t *testing.T) {
+	t.Parallel()
+
+	handler := newTestHandler(t, func() bool { return true })
+	cookie := csrfCookie(t, handler)
+	for _, test := range []struct {
+		name, origin, token, fetchSite string
+		status                         int
+	}{
+		{name: "missing origin", token: cookie.Value, status: http.StatusForbidden},
+		{name: "cross origin", origin: "https://attacker.example", token: cookie.Value, status: http.StatusForbidden},
+		{name: "cross-site fetch", origin: "https://curu.example", token: cookie.Value, fetchSite: "cross-site", status: http.StatusForbidden},
+		{name: "missing token", origin: "https://curu.example", status: http.StatusUnsupportedMediaType},
+		{name: "wrong token", origin: "https://curu.example", token: mustCSRFToken(t), status: http.StatusForbidden},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/activities", strings.NewReader("title=entered"))
+			request.Header.Set("Authorization", "Bearer owner")
+			if test.origin != "" {
+				request.Header.Set("Origin", test.origin)
+			}
+			if test.token != "" {
+				request.Header.Set("X-CSRF-Token", test.token)
+			}
+			if test.fetchSite != "" {
+				request.Header.Set("Sec-Fetch-Site", test.fetchSite)
+			}
+			request.AddCookie(cookie)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != test.status {
+				t.Errorf("status = %d, want %d", response.Code, test.status)
+			}
+		})
+	}
+}
+
+func TestSafePageReusesValidCSRFTokenAndConfiguresHTMX(t *testing.T) {
+	t.Parallel()
+
+	handler := newTestHandler(t, func() bool { return true })
+	cookie := csrfCookie(t, handler)
+	request := httptest.NewRequest(http.MethodGet, "/edit", nil)
+	request.Header.Set("Authorization", "Bearer owner")
+	request.AddCookie(cookie)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if setCookies := response.Result().Cookies(); len(setCookies) != 0 {
+		t.Errorf("valid CSRF cookie was rotated: %+v", setCookies)
+	}
+	body := response.Body.String()
+	if !strings.Contains(body, `name="curu-csrf-token" content="`+cookie.Value+`"`) || !strings.Contains(body, `headers["X-CSRF-Token"]`) {
+		t.Errorf("safe page does not configure HTMX CSRF: %q", body)
+	}
+}
+
+func TestFormMutationIsBoundedAndPreservesValidationInput(t *testing.T) {
+	t.Parallel()
+
+	handler := newValidationFixtureHandler(t)
+	cookie := csrfCookie(t, handler)
+	value := `<script>alert("private")</script>`
+	body := "csrf_token=" + cookie.Value + "&title=" + value
+	request := httptest.NewRequest(http.MethodPost, "/edit", strings.NewReader(body))
+	request.Header.Set("Authorization", "Bearer owner")
+	request.Header.Set("Origin", "https://curu.example")
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.AddCookie(cookie)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422; body = %q", response.Code, response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), "<script>") || !strings.Contains(response.Body.String(), template.HTMLEscapeString(value)) {
+		t.Errorf("validation response did not safely preserve input: %q", response.Body.String())
+	}
+
+	oversized := httptest.NewRequest(http.MethodPost, "/edit", strings.NewReader(strings.Repeat("x", maxRequestBody+1)))
+	oversized.Header.Set("Authorization", "Bearer owner")
+	oversized.Header.Set("Origin", "https://curu.example")
+	oversized.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	oversized.AddCookie(cookie)
+	tooLarge := httptest.NewRecorder()
+	handler.ServeHTTP(tooLarge, oversized)
+	if tooLarge.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("oversized status = %d, want 413", tooLarge.Code)
+	}
+}
+
+func TestHTMXAuthenticationFailurePreservesEditorDOM(t *testing.T) {
+	t.Parallel()
+
+	handler := newTestHandler(t, func() bool { return true })
+	request := httptest.NewRequest(http.MethodPost, "/activities", strings.NewReader("title=unsaved private value"))
+	request.Header.Set("Authorization", "Bearer expired")
+	request.Header.Set("HX-Request", "true")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusUnauthorized || response.Header().Get("WWW-Authenticate") != "Bearer" {
+		t.Fatalf("response = %d, challenge %q", response.Code, response.Header().Get("WWW-Authenticate"))
+	}
+	if response.Header().Get("HX-Reswap") != "none" || response.Header().Get("HX-Trigger") != htmxAuthEventName {
+		t.Errorf("HTMX preservation headers = reswap %q, trigger %q", response.Header().Get("HX-Reswap"), response.Header().Get("HX-Trigger"))
+	}
+	if strings.Contains(response.Body.String(), "unsaved private value") {
+		t.Errorf("response exposes submitted value: %q", response.Body.String())
+	}
+}
+
+func TestTrustedProxyAddressRequiresConfiguredImmediatePeer(t *testing.T) {
+	t.Parallel()
+
+	fixture := newClientAddressFixtureHandler(t)
+	for _, test := range []struct {
+		name, remote, forwarded, want string
+	}{
+		{name: "trusted peer", remote: "10.0.0.4:1234", forwarded: "203.0.113.7", want: "203.0.113.7"},
+		{name: "untrusted peer", remote: "192.0.2.4:1234", forwarded: "203.0.113.7", want: "192.0.2.4"},
+		{name: "appended chain ignored", remote: "10.0.0.4:1234", forwarded: "203.0.113.7, 192.0.2.8", want: "10.0.0.4"},
+	} {
+		request := httptest.NewRequest(http.MethodGet, "/address", nil)
+		request.RemoteAddr = test.remote
+		request.Header.Set("Authorization", "Bearer owner")
+		request.Header.Set("X-Forwarded-For", test.forwarded)
+		response := httptest.NewRecorder()
+		fixture.ServeHTTP(response, request)
+		if strings.TrimSpace(response.Body.String()) != test.want {
+			t.Errorf("%s address = %q, want %q", test.name, response.Body.String(), test.want)
+		}
 	}
 }
 
@@ -246,9 +385,70 @@ func newTestHandlerWithLogger(t *testing.T, ready func() bool, logger *slog.Logg
 	if err != nil {
 		t.Fatalf("NewPolicy() error = %v", err)
 	}
-	handler, err := NewHandler(logger, ready, fakeAuthenticator{}, policy)
+	handler, err := NewHandler(logger, ready, fakeAuthenticator{}, policy, BrowserConfig{PublicOrigin: "https://curu.example"})
 	if err != nil {
 		t.Fatalf("NewHandler() error = %v", err)
 	}
 	return handler
+}
+
+func csrfCookie(t *testing.T, handler http.Handler) *http.Cookie {
+	t.Helper()
+	request := httptest.NewRequest(http.MethodGet, "/edit", nil)
+	request.Header.Set("Authorization", "Bearer owner")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	for _, cookie := range response.Result().Cookies() {
+		if cookie.Name == csrfCookieName {
+			if !cookie.Secure || !cookie.HttpOnly || cookie.Path != "/" || cookie.SameSite != http.SameSiteLaxMode || cookie.Domain != "" {
+				t.Fatalf("CSRF cookie attributes = %+v", cookie)
+			}
+			return cookie
+		}
+	}
+	t.Fatal("CSRF cookie not issued")
+	return nil
+}
+
+func mustCSRFToken(t *testing.T) string {
+	t.Helper()
+	token, err := newCSRFToken()
+	if err != nil {
+		t.Fatalf("newCSRFToken() error = %v", err)
+	}
+	return token
+}
+
+func newValidationFixtureHandler(t *testing.T) http.Handler {
+	t.Helper()
+	h := newFixtureBoundary(t, BrowserConfig{PublicOrigin: "https://curu.example"})
+	fixture := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(`<input name="title" value="` + template.HTMLEscapeString(r.PostForm.Get("title")) + `">`))
+	})
+	return h.logRequests(h.authorizePrivateRequests(h.protectBrowserRequests(fixture)))
+}
+
+func newClientAddressFixtureHandler(t *testing.T) http.Handler {
+	t.Helper()
+	prefix := netip.MustParsePrefix("10.0.0.0/24")
+	h := newFixtureBoundary(t, BrowserConfig{PublicOrigin: "https://curu.example", TrustedProxyCIDRs: []netip.Prefix{prefix}})
+	fixture := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		address, _ := ClientAddressFromRequest(r)
+		_, _ = w.Write([]byte(address.String()))
+	})
+	return h.logRequests(h.authorizePrivateRequests(h.protectBrowserRequests(fixture)))
+}
+
+func newFixtureBoundary(t *testing.T, browser BrowserConfig) *handler {
+	t.Helper()
+	policy, err := authorization.NewPolicy(
+		authorization.ExternalIdentity{Issuer: "https://issuer.example/tenant", Subject: "coach-123"},
+		"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &handler{logger: slog.New(slog.NewTextHandler(io.Discard, nil)), ready: func() bool { return true }, auth: fakeAuthenticator{}, policy: policy, browser: browser}
 }

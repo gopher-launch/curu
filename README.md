@@ -36,6 +36,7 @@ CURU_JWT_ALGORITHMS='RS256' \
 CURU_OWNER_ISSUER='https://issuer.example/tenant' \
 CURU_OWNER_SUBJECT='coach-123' \
 CURU_OWNER_ID='00000000-0000-4000-8000-000000000001' \
+CURU_PUBLIC_ORIGIN='https://curu.example' \
 go run ./cmd/curu
 ```
 
@@ -84,7 +85,9 @@ docker run --rm \
   -e CURU_OWNER_ISSUER='https://issuer.example/tenant' \
   -e CURU_OWNER_SUBJECT='coach-123' \
   -e CURU_OWNER_ID='00000000-0000-4000-8000-000000000001' \
+  -e CURU_PUBLIC_ORIGIN='https://curu.example' \
+  -e CURU_TRUSTED_PROXY_CIDRS='10.0.0.0/24' \
   -p 127.0.0.1:8080:8080 curu:local
 ```
 
-This runtime implements explicit PostgreSQL migrations, read-only startup compatibility checks, separate explicit dataset initialization, RFC 9068 JWT validation, and deny-by-default single-owner authorization. The bounded coaching-library asset is documented in [`doc/seed-library.md`](doc/seed-library.md). Browser protections and product pages remain with their owning roadmap tasks.
+This runtime implements explicit PostgreSQL migrations, read-only startup compatibility checks, separate explicit dataset initialization, RFC 9068 JWT validation, deny-by-default single-owner authorization, and shared browser/HTMX protections. The bounded coaching-library asset is documented in [`doc/seed-library.md`](doc/seed-library.md); the gateway boundary is documented in [`doc/gateway.md`](doc/gateway.md). Product pages remain with their owning roadmap tasks.

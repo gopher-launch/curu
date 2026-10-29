@@ -4,6 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="curu-csrf-token" content="{{.CSRFToken}}">
   <title>{{block "title" .}}Curu{{end}}</title>
   <style>
     :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
@@ -14,8 +15,22 @@
   </style>
 </head>
 <body>
-  <header><nav aria-label="Primary"><a href="/">Curu</a></nav></header>
+  <header><nav aria-label="Primary"><a href="/">Curu</a>{{if .LogoutURL}} · <a href="{{.LogoutURL}}">Sign out</a>{{end}}</nav></header>
+  <aside id="authentication-required" hidden role="alert">
+    Your session expired. Your unsaved changes remain on this page.
+    {{if .LoginURL}}<a href="{{.LoginURL}}">Sign in again</a>{{else}}Sign in again through the application gateway.{{end}}
+  </aside>
   <main>{{block "content" .}}{{end}}</main>
+  <script>
+    document.addEventListener("htmx:configRequest", function (event) {
+      var token = document.querySelector('meta[name="curu-csrf-token"]').content;
+      if (token) event.detail.headers["X-CSRF-Token"] = token;
+    });
+    document.addEventListener("curu:authentication-required", function () {
+      document.getElementById("authentication-required").hidden = false;
+    });
+  </script>
 </body>
 </html>
 {{- end}}
+{{define "csrf-field"}}<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">{{end}}
