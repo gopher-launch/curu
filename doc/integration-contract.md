@@ -23,7 +23,7 @@ Validation completes before principal mapping and requires all of the following:
 - exact string equality for `iss`, the configured audience present in `aud`, and non-empty string `sub`;
 - numeric `iat` and `exp`, with `exp` later than `iat`, total lifetime no greater than a configured maximum (15 minutes by default), and current time before `exp`;
 - `iat` not unreasonably in the future and `nbf`, when present, already reached, allowing at most 60 seconds of configured clock skew; and
-- structurally valid claims with no duplicate JSON claim names.
+- structurally valid UTF-8 JSON protected-header and claims objects with no duplicate member names.
 
 Token-purpose rules and the dedicated resource audience must reject other JWT kinds as required by RFC 8725 [§3.11](https://www.rfc-editor.org/rfc/rfc8725.html#section-3.11) and [§3.12](https://www.rfc-editor.org/rfc/rfc8725.html#section-3.12). Changing deployment profiles does not relax the common signature, issuer, audience, algorithm, lifetime, or owner-binding checks. Issuer and subject matching remain case-sensitive; media-type comparison does not normalize identity claims.
 

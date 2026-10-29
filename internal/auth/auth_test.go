@@ -2,10 +2,12 @@ package auth
 
 import (
 	"context"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -238,6 +240,32 @@ func TestRejectsDisallowedAlgorithmDuplicateClaimsAndFallback(t *testing.T) {
 	badProfile.Profile = "generic-jwt"
 	if _, err := New(badProfile, fixture.server.Client()); err == nil {
 		t.Fatal("New() accepted an unsupported fallback profile")
+	}
+}
+
+func TestStandardProfileRejectsInvalidUTF8JSON(t *testing.T) {
+	fixture := newFixture(t, []string{"RS256"})
+	payload, err := json.Marshal(fixture.claims())
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalidHeader := append([]byte(`{"alg":"RS256","kid":"rsa-1","typ":"at+jw`), 0xff)
+	invalidHeader = append(invalidHeader, []byte(`"}`)...)
+	if _, err := fixture.auth.Validate(context.Background(), signRawRSA(t, invalidHeader, payload, fixture.rsaKey)); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("invalid UTF-8 header Validate() error = %v", err)
+	}
+	fixture.keys.mu.Lock()
+	requests := fixture.keys.requests
+	fixture.keys.mu.Unlock()
+	if requests != 0 {
+		t.Fatalf("JWKS requests = %d, want invalid header rejected before key lookup", requests)
+	}
+
+	invalidClaims := []byte(`{"iss":"` + fixture.issuer + `","sub":"coach-`)
+	invalidClaims = append(invalidClaims, 0xff)
+	invalidClaims = append(invalidClaims, []byte(`","aud":"curu-resource","client_id":"gateway","jti":"invalid-utf8","iat":`+jsonNumber(fixture.now.Unix())+`,"exp":`+jsonNumber(fixture.now.Add(10*time.Minute).Unix())+`}`)...)
+	if _, err := fixture.auth.Validate(context.Background(), signRawRSA(t, []byte(`{"alg":"RS256","kid":"rsa-1","typ":"at+jwt"}`), invalidClaims, fixture.rsaKey)); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("invalid UTF-8 claims Validate() error = %v", err)
 	}
 }
 
@@ -516,6 +544,19 @@ func signPayload(t *testing.T, payload []byte, typ, kid string, algorithm jwa.Si
 		t.Fatal(err)
 	}
 	return string(compact)
+}
+
+func signRawRSA(t *testing.T, header, payload []byte, key *rsa.PrivateKey) string {
+	t.Helper()
+	headerSegment := base64.RawURLEncoding.EncodeToString(header)
+	payloadSegment := base64.RawURLEncoding.EncodeToString(payload)
+	signingInput := headerSegment + "." + payloadSegment
+	digest := sha256.Sum256([]byte(signingInput))
+	signature, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, digest[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return signingInput + "." + base64.RawURLEncoding.EncodeToString(signature)
 }
 
 func signUnencodedPayload(t *testing.T, payload []byte, typ, kid string, algorithm jwa.SignatureAlgorithm, key any) string {
