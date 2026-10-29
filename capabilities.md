@@ -21,7 +21,7 @@
 - Safe surface: the default listener is loopback-only. No product-data route exists; unknown safe routes use the shared escaped HTML layout and unsafe or unimplemented routes remain unavailable.
 - Contributor interface: [`README.md`](README.md) defines the executable `go build ./cmd/curu`, `go test ./...`, and `go run ./cmd/curu` commands. [`doc/configuration.md`](doc/configuration.md) defines the implemented runtime settings.
 - Container interface: [`Dockerfile`](Dockerfile) builds the server and separate migration and initialization executables into a minimal image with TLS root certificates; all run as numeric non-root user `65532:65532`, and non-loopback binding must be selected explicitly by the deployment.
-- Deferred capability: application authorization, browser protections, and every activity/session/template behavior remain assigned to their roadmap tasks.
+- Subsequent delivery: CURU-015 and CURU-020 add authentication and single-owner authorization around this runtime shell. Browser protections and every activity/session/template behavior remain assigned to their roadmap tasks.
 
 ## PostgreSQL migration and compatibility boundary
 
@@ -31,7 +31,7 @@
 - Safe startup: the server uses only `CURU_DATABASE_URL` and performs a read-only exact-version/history checksum compatibility check. Startup never calls `AutoMigrate`, applies migrations, initializes content, or resets data.
 - Operator interface: [`doc/database-operations.md`](doc/database-operations.md) documents provider-independent connections, roles, migration/start commands, supported schema version, and the destructive scope of the opt-in disposable PostgreSQL verification.
 - Verification: focused tests cover embedded migration continuity/checksums and, when `CURU_TEST_DATABASE_URL` selects a disposable PostgreSQL target, fail-closed effective-privilege validation, fresh and forward migration, retained fixture content, repeat application, read-only startup compatibility, permitted runtime data writes, and denied persistent/temporary DDL, migration/initialization mutation, and permanent activity deletion.
-- Initialization boundary: CURU-004 uses this schema through a separate operator command without changing migration history or runtime grants. Product library behavior and owner authorization remain assigned to later tasks.
+- Initialization boundary: CURU-004 uses this schema through a separate operator command without changing migration history or runtime grants. CURU-020 uses the same stable owner UUID in its runtime binding; product library behavior remains assigned to later tasks.
 
 ## Bounded coaching-library seed
 
@@ -49,7 +49,7 @@
 - Safe repeat behavior: only an exact completion produces an `already_initialized` no-op. Seed retries must match the recorded seed identity/version and the owner established by all deterministic seeded activity rows. A different owner, a different recorded choice, missing seeded ownership evidence, or unrecorded existing activity is refused. Retries and ordinary server startup never synchronize or replace edited content.
 - Operator safety: [`doc/database-operations.md`](doc/database-operations.md) documents narrow initialization privileges, exact commands, disposable PostgreSQL verification, and a separate reset procedure guarded by the exact isolated database name. No web route or infrastructure lifecycle behavior is added.
 - Verification: local tests cover completion-record matching; opt-in disposable PostgreSQL checks cover fresh seed and empty initialization, same-owner no-op and different-owner refusal, concurrent invocation, induced partial failure rollback, non-empty refusal, exact 44/110 counts, edit preservation, and read-only startup compatibility.
-- Deferred capability: application authorization, product library routes, backup/restore evidence, and later activity/session behavior remain assigned to their roadmap tasks.
+- Subsequent delivery: CURU-020 adds application authorization without changing initialization. Product library routes, backup/restore evidence, and later activity/session behavior remain assigned to their roadmap tasks.
 
 ## Trusted JWT authentication
 
@@ -59,4 +59,13 @@
 - Principal boundary: successful validation yields only the exact issuer/subject external identity. Tokens, provider claims, emails, display names, roles, and groups do not enter application or domain behavior.
 - JWKS behavior: Curu fetches only the configured HTTPS endpoint with bounded time and response size, applies HTTP freshness precedence and overflow-safe current-age calculation with a five-minute default and 15-minute cap, supports planned overlap, rate-limits unknown-key refresh, and never extends an expired cache after failure. Ambiguous or invalid explicit freshness is treated as stale, while numeric age overflow saturates rather than becoming zero. A fresh cached known key remains usable during a refresh failure; otherwise the key dependency is unavailable.
 - Runtime integration: authentication trust configuration is required before startup. Liveness remains process-only, while readiness requires a non-expired usable key set. Local generated signing/JWKS fixtures cover both media types, RSA and EC validation, required/wrong claims, invalid UTF-8 and malformed Unicode escapes in protected headers and claims, valid escaped Unicode pairs, unencoded payload, critical-header and noncanonical-segment rejection, trust failures, rotation, HTTP freshness/current age including numeric overflow, cache failure, refresh limiting, duplicate credentials, and unsupported-profile rejection.
-- Deferred capability: CURU-020 owns the configured owner binding and use-case authorization policy. CURU-016 owns browser/HTMX authentication outcomes, CSRF, origin, and proxy protections. No product routes, login, issuer, exchange, production signer, or provider adapter are added by CURU-015.
+- Deferred capability: CURU-016 owns browser/HTMX authentication outcomes, CSRF, origin, and proxy protections. No product routes, login, issuer, exchange, production signer, or provider adapter are added by CURU-015.
+
+## Single-owner authorization
+
+- Delivery: CURU-020
+- Owner binding: runtime configuration binds one exact, case-sensitive issuer/subject identity to one canonical internal owner UUID. The owner issuer must match the configured JWT trust issuer; aliases, email, domains, wildcards, groups, and roles provide no fallback authority.
+- Application policy: the inward `internal/authorization` policy maps only that external identity and provides explicit read, mutate, archive, and recovery authorization checks against an exact resource owner. Unknown identities, actions, malformed owner identifiers, and other-owner resources are denied by default.
+- HTTP enforcement: every non-health route authenticates through the shared JWT adapter and then requires the owner mapping before dispatch. Missing/invalid credentials, valid unknown identities, and unavailable key evaluation produce detail-free `401`, `403`, and `503` responses respectively; each disables caching and every `401` carries the minimal `Bearer` challenge.
+- Safe exception: liveness and readiness retain their previously delivered coarse platform-probe behavior and expose no configuration, dependency detail, dataset, or identity data. There are still no product routes.
+- Deferred capability: CURU-016 owns CSRF, origin, trusted-proxy, HTMX session-expiry, and browser editor-preservation mechanics. Later product use cases must invoke the application policy at their own boundaries; HTTP enforcement is not a substitute for owner-scoped data checks.

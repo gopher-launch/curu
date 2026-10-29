@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/gopher-launch/curu/internal/authorization"
 )
 
 const (
@@ -30,6 +32,14 @@ type Config struct {
 	ReadHeaderTimeout time.Duration
 	IdleTimeout       time.Duration
 	JWT               JWTConfig
+	Owner             OwnerConfig
+}
+
+// OwnerConfig binds one exact external identity to the stable dataset owner.
+type OwnerConfig struct {
+	Issuer  string
+	Subject string
+	ID      string
 }
 
 // JWTConfig is the deployment-selected trust boundary for access tokens.
@@ -66,6 +76,11 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 			JWKSFetchTimeout:          defaultJWKSFetchTimeout,
 			JWKSDefaultCacheTTL:       defaultJWKSCacheTTL,
 			JWKSUnknownKIDRefreshRate: defaultJWKSRefreshLimit,
+		},
+		Owner: OwnerConfig{
+			Issuer:  valueOrDefault(lookup, "CURU_OWNER_ISSUER", ""),
+			Subject: valueOrDefault(lookup, "CURU_OWNER_SUBJECT", ""),
+			ID:      valueOrDefault(lookup, "CURU_OWNER_ID", ""),
 		},
 	}
 	cfg.JWT.Algorithms = splitComma(valueOrDefault(lookup, "CURU_JWT_ALGORITHMS", ""))
@@ -104,8 +119,27 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	if err := validateJWT(cfg.JWT); err != nil {
 		return Config{}, err
 	}
+	if err := validateOwner(cfg.Owner, cfg.JWT.Issuer); err != nil {
+		return Config{}, err
+	}
 
 	return cfg, nil
+}
+
+func validateOwner(owner OwnerConfig, trustedIssuer string) error {
+	if err := validateHTTPSURL(owner.Issuer); err != nil {
+		return fmt.Errorf("CURU_OWNER_ISSUER: %w", err)
+	}
+	if owner.Issuer != trustedIssuer {
+		return fmt.Errorf("CURU_OWNER_ISSUER: must exactly match CURU_JWT_ISSUER")
+	}
+	if strings.TrimSpace(owner.Subject) != owner.Subject || owner.Subject == "" {
+		return fmt.Errorf("CURU_OWNER_SUBJECT: must be non-empty without surrounding whitespace")
+	}
+	if _, err := authorization.NormalizeUUID(owner.ID); err != nil {
+		return fmt.Errorf("CURU_OWNER_ID: %w", err)
+	}
+	return nil
 }
 
 func validateJWT(cfg JWTConfig) error {

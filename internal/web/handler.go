@@ -1,12 +1,17 @@
 package web
 
 import (
+	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/gopher-launch/curu/internal/auth"
+	"github.com/gopher-launch/curu/internal/authorization"
 )
 
 //go:embed templates/*.html
@@ -15,21 +20,73 @@ var templateFiles embed.FS
 type handler struct {
 	logger    *slog.Logger
 	ready     func() bool
+	auth      requestAuthenticator
+	policy    authorization.Policy
 	templates *template.Template
 }
 
-func NewHandler(logger *slog.Logger, ready func() bool) (http.Handler, error) {
+type requestAuthenticator interface {
+	AuthenticateRequest(context.Context, []string) (auth.Principal, error)
+}
+
+type principalContextKey struct{}
+
+// PrincipalFromContext returns the internal owner principal established by
+// the shared authentication and authorization boundary.
+func PrincipalFromContext(ctx context.Context) (authorization.Principal, bool) {
+	principal, ok := ctx.Value(principalContextKey{}).(authorization.Principal)
+	return principal, ok
+}
+
+func NewHandler(logger *slog.Logger, ready func() bool, authenticator requestAuthenticator, policy authorization.Policy) (http.Handler, error) {
 	templates, err := template.ParseFS(templateFiles, "templates/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
 	}
 
-	h := &handler{logger: logger, ready: ready, templates: templates}
+	if authenticator == nil {
+		return nil, fmt.Errorf("authenticator is required")
+	}
+	h := &handler{logger: logger, ready: ready, auth: authenticator, policy: policy, templates: templates}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health/live", h.live)
 	mux.HandleFunc("GET /health/ready", h.readiness)
 	mux.HandleFunc("GET /", h.notFound)
-	return h.logRequests(mux), nil
+	return h.logRequests(h.authorizePrivateRequests(mux)), nil
+}
+
+func (h *handler) authorizePrivateRequests(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health/live" || r.URL.Path == "/health/ready" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		external, err := h.auth.AuthenticateRequest(r.Context(), r.Header.Values("Authorization"))
+		if err != nil {
+			if errors.Is(err, auth.ErrKeyService) {
+				h.deny(w, http.StatusServiceUnavailable, "authentication_unavailable")
+				return
+			}
+			w.Header().Set("WWW-Authenticate", "Bearer")
+			h.deny(w, http.StatusUnauthorized, "authentication_failed")
+			return
+		}
+		principal, err := h.policy.PrincipalFor(authorization.ExternalIdentity{Issuer: external.Issuer, Subject: external.Subject})
+		if err != nil {
+			h.deny(w, http.StatusForbidden, "authorization_denied")
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalContextKey{}, principal)))
+	})
+}
+
+func (h *handler) deny(w http.ResponseWriter, status int, reason string) {
+	h.logger.Warn("request denied", "reason", reason)
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(status)
+	_, _ = w.Write([]byte(http.StatusText(status) + "\n"))
 }
 
 func (h *handler) live(w http.ResponseWriter, _ *http.Request) {

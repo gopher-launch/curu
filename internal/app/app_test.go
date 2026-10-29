@@ -58,5 +58,9 @@ func newTestConfig(address string) config.Config {
 			ClockSkew: time.Minute, MaxLifetime: 15 * time.Minute, JWKSFetchTimeout: time.Second,
 			JWKSDefaultCacheTTL: 5 * time.Minute, JWKSUnknownKIDRefreshRate: time.Minute,
 		},
+		Owner: config.OwnerConfig{
+			Issuer: "https://issuer.example", Subject: "coach-123",
+			ID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+		},
 	}
 }

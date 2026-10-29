@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 
 	"github.com/gopher-launch/curu/internal/auth"
+	"github.com/gopher-launch/curu/internal/authorization"
 	"github.com/gopher-launch/curu/internal/config"
 	"github.com/gopher-launch/curu/internal/web"
 )
@@ -37,8 +38,14 @@ func New(cfg config.Config, logger *slog.Logger) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create authenticator: %w", err)
 	}
+	policy, err := authorization.NewPolicy(authorization.ExternalIdentity{
+		Issuer: cfg.Owner.Issuer, Subject: cfg.Owner.Subject,
+	}, cfg.Owner.ID)
+	if err != nil {
+		return nil, fmt.Errorf("create authorization policy: %w", err)
+	}
 	application := &App{config: cfg, logger: logger, auth: authenticator}
-	handler, err := web.NewHandler(logger, func() bool { return application.ready.Load() && application.auth.Ready() })
+	handler, err := web.NewHandler(logger, func() bool { return application.ready.Load() && application.auth.Ready() }, authenticator, policy)
 	if err != nil {
 		return nil, fmt.Errorf("create HTTP handler: %w", err)
 	}

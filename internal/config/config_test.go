@@ -40,6 +40,9 @@ func TestLoadOverrides(t *testing.T) {
 		"CURU_JWT_ALGORITHMS":      "RS256,ES256",
 		"CURU_JWT_CLOCK_SKEW":      "30s",
 		"CURU_JWT_MAX_LIFETIME":    "10m",
+		"CURU_OWNER_ISSUER":        "https://issuer.example/tenant",
+		"CURU_OWNER_SUBJECT":       "coach-123",
+		"CURU_OWNER_ID":            "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
 	}
 	cfg, err := Load(func(name string) (string, bool) {
 		value, ok := values[name]
@@ -70,6 +73,9 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 		"duplicate algorithm": {"CURU_JWT_ALGORITHMS": "RS256,RS256"},
 		"excessive skew":      {"CURU_JWT_CLOCK_SKEW": "61s"},
 		"excessive lifetime":  {"CURU_JWT_MAX_LIFETIME": "16m"},
+		"wrong owner issuer":  {"CURU_OWNER_ISSUER": "https://other.example/tenant"},
+		"empty owner subject": {"CURU_OWNER_SUBJECT": ""},
+		"invalid owner ID":    {"CURU_OWNER_ID": "owner"},
 	}
 	for name, values := range tests {
 		values := values
@@ -97,6 +103,9 @@ func lookupWithDatabase(values map[string]string) func(string) (string, bool) {
 		"CURU_JWT_AUDIENCE":   "https://curu.example",
 		"CURU_JWKS_URL":       "https://keys.example/jwks.json",
 		"CURU_JWT_ALGORITHMS": "RS256",
+		"CURU_OWNER_ISSUER":   "https://issuer.example/tenant",
+		"CURU_OWNER_SUBJECT":  "coach-123",
+		"CURU_OWNER_ID":       "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
 	}
 	return func(name string) (string, bool) {
 		if value, ok := values[name]; ok {
