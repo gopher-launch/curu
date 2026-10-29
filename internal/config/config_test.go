@@ -71,6 +71,7 @@ func TestValidateHTTPSOriginAcceptsCanonicalValues(t *testing.T) {
 		"https://curu.example:8443",
 		"https://123.example",
 		"https://example.255a",
+		"https://xn--fa-hia.example",
 		"https://192.0.2.1",
 		"https://[2001:db8::1]:8443",
 	} {
@@ -120,9 +121,14 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 		"origin numeric final label": {
 			"CURU_PUBLIC_ORIGIN": "https://example.255",
 		},
-		"noncanonical proxy": {"CURU_TRUSTED_PROXY_CIDRS": "10.0.0.1/24"},
-		"invalid proxy":      {"CURU_TRUSTED_PROXY_CIDRS": "gateway.example"},
-		"HTTP login URL":     {"CURU_LOGIN_URL": "http://gateway.example/login"},
+		"origin empty A-label": {"CURU_PUBLIC_ORIGIN": "https://xn--"},
+		"origin malformed A-label": {
+			"CURU_PUBLIC_ORIGIN": "https://xn--a",
+		},
+		"origin numeric A-label": {"CURU_PUBLIC_ORIGIN": "https://xn--0"},
+		"noncanonical proxy":     {"CURU_TRUSTED_PROXY_CIDRS": "10.0.0.1/24"},
+		"invalid proxy":          {"CURU_TRUSTED_PROXY_CIDRS": "gateway.example"},
+		"HTTP login URL":         {"CURU_LOGIN_URL": "http://gateway.example/login"},
 	}
 	for name, values := range tests {
 		values := values

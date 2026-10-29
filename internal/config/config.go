@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gopher-launch/curu/internal/authorization"
+	"golang.org/x/net/idna"
 )
 
 const (
@@ -22,6 +23,17 @@ const (
 	defaultJWKSFetchTimeout  = 5 * time.Second
 	defaultJWKSCacheTTL      = 5 * time.Minute
 	defaultJWKSRefreshLimit  = time.Minute
+)
+
+// browserIDNA mirrors the non-transitional UTS #46 processing used for a
+// WHATWG special-scheme host. Browsers disable STD3 and hyphen checks while
+// retaining label, joiner, and bidirectional validation.
+var browserIDNA = idna.New(
+	idna.MapForLookup(),
+	idna.Transitional(false),
+	idna.StrictDomainName(false),
+	idna.BidiRule(),
+	idna.CheckHyphens(false),
 )
 
 // Config contains the settings owned by the current HTTP runtime. Additional
@@ -191,6 +203,10 @@ func validateHTTPSOrigin(value string) error {
 	} else {
 		if strings.Contains(hostname, ":") {
 			return fmt.Errorf("host must be a valid DNS name or IP address")
+		}
+		asciiHostname, err := browserIDNA.ToASCII(hostname)
+		if err != nil || asciiHostname != hostname {
+			return fmt.Errorf("host must use its lowercase canonical browser ASCII spelling")
 		}
 		if hostEndsInNumber(hostname) {
 			return fmt.Errorf("numeric host must be a canonical IPv4 address")

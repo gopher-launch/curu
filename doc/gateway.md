@@ -11,7 +11,7 @@ Curu runs behind one trusted gateway hop. This document describes the implemente
 
 ## Forwarding and origin rules
 
-Each configured `CURU_TRUSTED_PROXY_CIDRS` entry identifies a possible immediate gateway peer. The gateway overwrites `X-Forwarded-For` with the single public client IP; appended chains are ignored. Curu ignores forwarding addresses from peers outside those CIDRs. The configured public origin is never inferred from `Host`, `Forwarded`, or `X-Forwarded-*`; noncanonical numeric host spellings that a browser would reinterpret are refused at startup.
+Each configured `CURU_TRUSTED_PROXY_CIDRS` entry identifies a possible immediate gateway peer. The gateway overwrites `X-Forwarded-For` with the single public client IP; appended chains are ignored. Curu ignores forwarding addresses from peers outside those CIDRs. The configured public origin is never inferred from `Host`, `Forwarded`, or `X-Forwarded-*`; malformed internationalized labels and noncanonical numeric host spellings that a browser would reject or reinterpret are refused at startup.
 
 Every unsafe browser request must carry the exact configured HTTPS `Origin`, a matching Curu CSRF cookie/token pair, and, when present, `Sec-Fetch-Site: same-origin`. The `__Host-curu_csrf` cookie is Curu-owned, secure, HTTP-only, same-site lax, host-only, and valid for `/`. Forms use `csrf_token`; HTMX uses `X-CSRF-Token`. Every authorized product request body, including a safe-method body, is capped at 1 MiB by the shared boundary, and receiving handlers must further allowlist their content type and validate fields. Product routes do not enable CORS.
 
