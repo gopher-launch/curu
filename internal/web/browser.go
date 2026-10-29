@@ -48,6 +48,7 @@ func ClientAddressFromRequest(r *http.Request) (netip.Addr, bool) {
 
 func (h *handler) protectBrowserRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
 		if r.URL.Path == "/health/live" || r.URL.Path == "/health/ready" {
 			next.ServeHTTP(w, r)
 			return
@@ -82,7 +83,6 @@ func (h *handler) protectBrowserRequests(next http.Handler) http.Handler {
 			return
 		}
 
-		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
 		provided, status := csrfTokenFromMutation(r)
 		if status != 0 {
 			h.rejectInput(w, status)

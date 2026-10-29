@@ -22,7 +22,7 @@ The Curu server reads runtime settings from environment variables and rejects ma
 | `CURU_OWNER_ISSUER` | required | Exact, case-sensitive issuer in the single-owner binding. It must match `CURU_JWT_ISSUER` for the one supported trust configuration. |
 | `CURU_OWNER_SUBJECT` | required | Exact, case-sensitive non-empty subject in the single-owner binding. No alias, email, group, role, domain, or wildcard matching is performed. |
 | `CURU_OWNER_ID` | required | Stable internal owner UUID used by the initialized dataset and application policy. Seeded deployments must use the same UUID supplied to `curu-initialize`. |
-| `CURU_PUBLIC_ORIGIN` | required | Exact public HTTPS origin, such as `https://curu.example`. No path, query, fragment, user information, or header-derived value is accepted. |
+| `CURU_PUBLIC_ORIGIN` | required | Exact public HTTPS origin, such as `https://curu.example`. The host and optional non-default port use their lowercase/canonical browser spelling; no path, query, fragment, user information, or header-derived value is accepted. |
 | `CURU_TRUSTED_PROXY_CIDRS` | empty | Comma-separated canonical IP CIDRs for immediate gateway peers. Forwarded client addresses from all other peers are ignored. |
 | `CURU_LOGIN_URL` | empty | Optional absolute HTTPS gateway sign-in URL shown after browser authentication expires. |
 | `CURU_LOGOUT_URL` | empty | Optional absolute HTTPS gateway sign-out URL shown in the shared layout. Curu does not perform logout. |

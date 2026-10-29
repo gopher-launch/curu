@@ -63,6 +63,21 @@ func TestLoadOverrides(t *testing.T) {
 	}
 }
 
+func TestValidateHTTPSOriginAcceptsCanonicalValues(t *testing.T) {
+	t.Parallel()
+
+	for _, origin := range []string{
+		"https://curu.example",
+		"https://curu.example:8443",
+		"https://192.0.2.1",
+		"https://[2001:db8::1]:8443",
+	} {
+		if err := validateHTTPSOrigin(origin); err != nil {
+			t.Errorf("validateHTTPSOrigin(%q) error = %v", origin, err)
+		}
+	}
+}
+
 func TestLoadRejectsInvalidValues(t *testing.T) {
 	t.Parallel()
 
@@ -85,9 +100,18 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 		"invalid owner ID":    {"CURU_OWNER_ID": "owner"},
 		"HTTP public origin":  {"CURU_PUBLIC_ORIGIN": "http://curu.example"},
 		"origin with path":    {"CURU_PUBLIC_ORIGIN": "https://curu.example/app"},
-		"noncanonical proxy":  {"CURU_TRUSTED_PROXY_CIDRS": "10.0.0.1/24"},
-		"invalid proxy":       {"CURU_TRUSTED_PROXY_CIDRS": "gateway.example"},
-		"HTTP login URL":      {"CURU_LOGIN_URL": "http://gateway.example/login"},
+		"origin empty query":  {"CURU_PUBLIC_ORIGIN": "https://curu.example?"},
+		"origin empty port":   {"CURU_PUBLIC_ORIGIN": "https://curu.example:"},
+		"origin invalid port": {"CURU_PUBLIC_ORIGIN": "https://curu.example:65536"},
+		"origin zero port":    {"CURU_PUBLIC_ORIGIN": "https://curu.example:0"},
+		"origin default port": {"CURU_PUBLIC_ORIGIN": "https://curu.example:443"},
+		"origin padded port":  {"CURU_PUBLIC_ORIGIN": "https://curu.example:0443"},
+		"origin uppercase host": {
+			"CURU_PUBLIC_ORIGIN": "https://CURU.example",
+		},
+		"noncanonical proxy": {"CURU_TRUSTED_PROXY_CIDRS": "10.0.0.1/24"},
+		"invalid proxy":      {"CURU_TRUSTED_PROXY_CIDRS": "gateway.example"},
+		"HTTP login URL":     {"CURU_LOGIN_URL": "http://gateway.example/login"},
 	}
 	for name, values := range tests {
 		values := values

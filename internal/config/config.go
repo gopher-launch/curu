@@ -172,13 +172,52 @@ func validateBrowser(browser BrowserConfig) error {
 
 func validateHTTPSOrigin(value string) error {
 	parsed, err := url.Parse(value)
-	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
 		return fmt.Errorf("must be an absolute HTTPS origin without user information, path, query, or fragment")
+	}
+	hostname := parsed.Hostname()
+	if hostname == "" || hostname != strings.ToLower(hostname) || !isASCII(hostname) || strings.Contains(hostname, "%") {
+		return fmt.Errorf("host must use its lowercase canonical ASCII spelling")
+	}
+	canonicalHost := hostname
+	if address, err := netip.ParseAddr(hostname); err == nil {
+		address = address.Unmap()
+		if hostname != address.String() {
+			return fmt.Errorf("IP address must use its canonical spelling")
+		}
+		if address.Is6() {
+			canonicalHost = "[" + hostname + "]"
+		}
+	} else if strings.Contains(hostname, ":") {
+		return fmt.Errorf("host must be a valid DNS name or IP address")
+	}
+	port := parsed.Port()
+	if port != "" {
+		portNumber, err := strconv.Atoi(port)
+		if err != nil || portNumber < 1 || portNumber > 65535 {
+			return fmt.Errorf("port must be a number from 1 through 65535")
+		}
+		if strconv.Itoa(portNumber) != port || portNumber == 443 {
+			return fmt.Errorf("port must use canonical non-default spelling")
+		}
+		canonicalHost += ":" + port
+	}
+	if parsed.Host != canonicalHost {
+		return fmt.Errorf("authority must use canonical host and port spelling")
 	}
 	if parsed.String() != value {
 		return fmt.Errorf("must use its canonical URL spelling")
 	}
 	return nil
+}
+
+func isASCII(value string) bool {
+	for _, character := range value {
+		if character > 127 {
+			return false
+		}
+	}
+	return true
 }
 
 func validateOwner(owner OwnerConfig, trustedIssuer string) error {

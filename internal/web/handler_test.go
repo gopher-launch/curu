@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"html/template"
 	"io"
 	"log/slog"
@@ -182,6 +183,30 @@ func TestFormMutationIsBoundedAndPreservesValidationInput(t *testing.T) {
 	handler.ServeHTTP(tooLarge, oversized)
 	if tooLarge.Code != http.StatusRequestEntityTooLarge {
 		t.Errorf("oversized status = %d, want 413", tooLarge.Code)
+	}
+}
+
+func TestSafeRequestBodyIsBounded(t *testing.T) {
+	t.Parallel()
+
+	handler := newBodyReadingFixtureHandler(t)
+	for _, test := range []struct {
+		name   string
+		size   int
+		status int
+	}{
+		{name: "at limit", size: maxRequestBody, status: http.StatusNoContent},
+		{name: "over limit", size: maxRequestBody + 1, status: http.StatusRequestEntityTooLarge},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, "/read-body", strings.NewReader(strings.Repeat("x", test.size)))
+			request.Header.Set("Authorization", "Bearer owner")
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != test.status {
+				t.Errorf("safe request status = %d, want %d", response.Code, test.status)
+			}
+		})
 	}
 }
 
@@ -437,6 +462,24 @@ func newClientAddressFixtureHandler(t *testing.T) http.Handler {
 	fixture := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		address, _ := ClientAddressFromRequest(r)
 		_, _ = w.Write([]byte(address.String()))
+	})
+	return h.logRequests(h.authorizePrivateRequests(h.protectBrowserRequests(fixture)))
+}
+
+func newBodyReadingFixtureHandler(t *testing.T) http.Handler {
+	t.Helper()
+	h := newFixtureBoundary(t, BrowserConfig{PublicOrigin: "https://curu.example"})
+	fixture := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, err := io.ReadAll(r.Body); err != nil {
+			var maxBytesError *http.MaxBytesError
+			if errors.As(err, &maxBytesError) {
+				w.WriteHeader(http.StatusRequestEntityTooLarge)
+				return
+			}
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	})
 	return h.logRequests(h.authorizePrivateRequests(h.protectBrowserRequests(fixture)))
 }
