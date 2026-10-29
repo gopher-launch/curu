@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"crypto/rand"
 	"embed"
 	"errors"
 	"fmt"
@@ -30,6 +31,12 @@ type requestAuthenticator interface {
 }
 
 type principalContextKey struct{}
+type requestLogContextKey struct{}
+
+type requestLogContext struct {
+	correlationID  string
+	securityDenied bool
+}
 
 // PrincipalFromContext returns the internal owner principal established by
 // the shared authentication and authorization boundary.
@@ -65,24 +72,29 @@ func (h *handler) authorizePrivateRequests(next http.Handler) http.Handler {
 		external, err := h.auth.AuthenticateRequest(r.Context(), r.Header.Values("Authorization"))
 		if err != nil {
 			if errors.Is(err, auth.ErrKeyService) {
-				h.deny(w, http.StatusServiceUnavailable, "authentication_unavailable")
+				h.deny(w, r, http.StatusServiceUnavailable, "authentication_unavailable")
 				return
 			}
 			w.Header().Set("WWW-Authenticate", "Bearer")
-			h.deny(w, http.StatusUnauthorized, "authentication_failed")
+			h.deny(w, r, http.StatusUnauthorized, "authentication_failed")
 			return
 		}
 		principal, err := h.policy.PrincipalFor(authorization.ExternalIdentity{Issuer: external.Issuer, Subject: external.Subject})
 		if err != nil {
-			h.deny(w, http.StatusForbidden, "authorization_denied")
+			h.deny(w, r, http.StatusForbidden, "authorization_denied")
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalContextKey{}, principal)))
 	})
 }
 
-func (h *handler) deny(w http.ResponseWriter, status int, reason string) {
-	h.logger.Warn("request denied", "reason", reason)
+func (h *handler) deny(w http.ResponseWriter, r *http.Request, status int, reason string) {
+	requestLog, _ := r.Context().Value(requestLogContextKey{}).(*requestLogContext)
+	if requestLog == nil {
+		requestLog = &requestLogContext{correlationID: rand.Text()}
+	}
+	requestLog.securityDenied = true
+	h.logger.Warn("security failure", "reason", reason, "request_id", requestLog.correlationID)
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(status)
@@ -144,11 +156,15 @@ func (h *handler) logRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
 		recorder := &responseRecorder{ResponseWriter: w}
-		next.ServeHTTP(recorder, r)
+		requestLog := &requestLogContext{correlationID: rand.Text()}
+		next.ServeHTTP(recorder, r.WithContext(context.WithValue(r.Context(), requestLogContextKey{}, requestLog)))
+		if requestLog.securityDenied {
+			return
+		}
 		status := recorder.status
 		if status == 0 {
 			status = http.StatusOK
 		}
-		h.logger.Info("HTTP request", "method", r.Method, "path", r.URL.Path, "status", status, "duration_ms", time.Since(started).Milliseconds())
+		h.logger.Info("HTTP request", "request_id", requestLog.correlationID, "method", r.Method, "path", r.URL.Path, "status", status, "duration_ms", time.Since(started).Milliseconds())
 	})
 }

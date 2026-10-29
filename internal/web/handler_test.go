@@ -1,7 +1,9 @@
 package web
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -156,6 +158,62 @@ func TestEveryNonHealthRouteUsesOwnerBoundary(t *testing.T) {
 	}
 }
 
+func TestSecurityFailureLogsContainOnlyReasonAndCorrelation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		token  string
+		reason string
+	}{
+		{name: "unauthenticated", token: "private-token", reason: "authentication_failed"},
+		{name: "unauthorized", token: "stranger", reason: "authorization_denied"},
+		{name: "authentication unavailable", token: "outage", reason: "authentication_unavailable"},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			var logs bytes.Buffer
+			handler := newTestHandlerWithLogger(t, func() bool { return false }, slog.New(slog.NewJSONHandler(&logs, nil)))
+			request := httptest.NewRequest(http.MethodPost, "/activities/secret-object?private=query", strings.NewReader("private=form"))
+			request.Header.Set("Authorization", "Bearer "+test.token)
+			request.Header.Set("Cookie", "private=cookie")
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+
+			decoder := json.NewDecoder(&logs)
+			var record map[string]any
+			if err := decoder.Decode(&record); err != nil {
+				t.Fatalf("decode security log: %v; log = %q", err, logs.String())
+			}
+			if decoder.More() {
+				t.Fatalf("unexpected additional log record: %q", logs.String())
+			}
+			if record["msg"] != "security failure" || record["reason"] != test.reason {
+				t.Errorf("security log = %#v", record)
+			}
+			requestID, ok := record["request_id"].(string)
+			if !ok || requestID == "" || len(requestID) > 64 {
+				t.Errorf("request_id = %#v", record["request_id"])
+			}
+			for _, forbidden := range []string{"method", "path", "status", "duration_ms", "issuer", "subject", "token", "cookie", "form"} {
+				if _, present := record[forbidden]; present {
+					t.Errorf("security log contains %q: %#v", forbidden, record)
+				}
+			}
+			for _, private := range []string{test.token, "secret-object", "private=query", "private=form", "private=cookie"} {
+				if strings.Contains(logs.String(), private) {
+					t.Errorf("security log exposes private value %q: %q", private, logs.String())
+				}
+			}
+			var extra map[string]any
+			if err := decoder.Decode(&extra); err != io.EOF {
+				t.Errorf("second log decode error = %v; record = %#v", err, extra)
+			}
+		})
+	}
+}
+
 type fakeAuthenticator struct{}
 
 func (fakeAuthenticator) AuthenticateRequest(_ context.Context, values []string) (auth.Principal, error) {
@@ -176,6 +234,11 @@ func (fakeAuthenticator) AuthenticateRequest(_ context.Context, values []string)
 
 func newTestHandler(t *testing.T, ready func() bool) http.Handler {
 	t.Helper()
+	return newTestHandlerWithLogger(t, ready, slog.New(slog.NewTextHandler(io.Discard, nil)))
+}
+
+func newTestHandlerWithLogger(t *testing.T, ready func() bool, logger *slog.Logger) http.Handler {
+	t.Helper()
 	policy, err := authorization.NewPolicy(
 		authorization.ExternalIdentity{Issuer: "https://issuer.example/tenant", Subject: "coach-123"},
 		"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -183,7 +246,7 @@ func newTestHandler(t *testing.T, ready func() bool) http.Handler {
 	if err != nil {
 		t.Fatalf("NewPolicy() error = %v", err)
 	}
-	handler, err := NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), ready, fakeAuthenticator{}, policy)
+	handler, err := NewHandler(logger, ready, fakeAuthenticator{}, policy)
 	if err != nil {
 		t.Fatalf("NewHandler() error = %v", err)
 	}
