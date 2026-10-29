@@ -243,7 +243,7 @@ func TestRejectsDisallowedAlgorithmDuplicateClaimsAndFallback(t *testing.T) {
 	}
 }
 
-func TestStandardProfileRejectsInvalidUTF8JSON(t *testing.T) {
+func TestStandardProfileRejectsInvalidUnicodeJSON(t *testing.T) {
 	fixture := newFixture(t, []string{"RS256"})
 	payload, err := json.Marshal(fixture.claims())
 	if err != nil {
@@ -251,8 +251,16 @@ func TestStandardProfileRejectsInvalidUTF8JSON(t *testing.T) {
 	}
 	invalidHeader := append([]byte(`{"alg":"RS256","kid":"rsa-1","typ":"at+jw`), 0xff)
 	invalidHeader = append(invalidHeader, []byte(`"}`)...)
-	if _, err := fixture.auth.Validate(context.Background(), signRawRSA(t, invalidHeader, payload, fixture.rsaKey)); !errors.Is(err, ErrInvalidCredentials) {
-		t.Fatalf("invalid UTF-8 header Validate() error = %v", err)
+	invalidHeaders := map[string][]byte{
+		"invalid UTF-8":      invalidHeader,
+		"unpaired surrogate": []byte(`{"alg":"RS256","kid":"rsa-1","typ":"at+jwt","probe":"\ud800"}`),
+	}
+	for name, header := range invalidHeaders {
+		t.Run("header "+name, func(t *testing.T) {
+			if _, err := fixture.auth.Validate(context.Background(), signRawRSA(t, header, payload, fixture.rsaKey)); !errors.Is(err, ErrInvalidCredentials) {
+				t.Fatalf("Validate() error = %v", err)
+			}
+		})
 	}
 	fixture.keys.mu.Lock()
 	requests := fixture.keys.requests
@@ -264,8 +272,27 @@ func TestStandardProfileRejectsInvalidUTF8JSON(t *testing.T) {
 	invalidClaims := []byte(`{"iss":"` + fixture.issuer + `","sub":"coach-`)
 	invalidClaims = append(invalidClaims, 0xff)
 	invalidClaims = append(invalidClaims, []byte(`","aud":"curu-resource","client_id":"gateway","jti":"invalid-utf8","iat":`+jsonNumber(fixture.now.Unix())+`,"exp":`+jsonNumber(fixture.now.Add(10*time.Minute).Unix())+`}`)...)
-	if _, err := fixture.auth.Validate(context.Background(), signRawRSA(t, []byte(`{"alg":"RS256","kid":"rsa-1","typ":"at+jwt"}`), invalidClaims, fixture.rsaKey)); !errors.Is(err, ErrInvalidCredentials) {
-		t.Fatalf("invalid UTF-8 claims Validate() error = %v", err)
+	validHeader := []byte(`{"alg":"RS256","kid":"rsa-1","typ":"at+jwt"}`)
+	invalidClaimsObjects := map[string][]byte{
+		"invalid UTF-8 subject":          invalidClaims,
+		"unpaired surrogate subject":     []byte(`{"iss":"` + fixture.issuer + `","sub":"coach-\ud800","aud":"curu-resource","client_id":"gateway","jti":"invalid-surrogate","iat":` + jsonNumber(fixture.now.Unix()) + `,"exp":` + jsonNumber(fixture.now.Add(10*time.Minute).Unix()) + `}`),
+		"unpaired surrogate member name": []byte(`{"iss":"` + fixture.issuer + `","sub":"coach-123","aud":"curu-resource","client_id":"gateway","jti":"invalid-name","iat":` + jsonNumber(fixture.now.Unix()) + `,"exp":` + jsonNumber(fixture.now.Add(10*time.Minute).Unix()) + `,"\udfff":"invalid"}`),
+	}
+	for name, claims := range invalidClaimsObjects {
+		t.Run("claims "+name, func(t *testing.T) {
+			if _, err := fixture.auth.Validate(context.Background(), signRawRSA(t, validHeader, claims, fixture.rsaKey)); !errors.Is(err, ErrInvalidCredentials) {
+				t.Fatalf("Validate() error = %v", err)
+			}
+		})
+	}
+
+	pairedClaims := []byte(`{"iss":"` + fixture.issuer + `","sub":"coach-\ud83d\ude80","aud":"curu-resource","client_id":"gateway","jti":"paired-surrogate","iat":` + jsonNumber(fixture.now.Unix()) + `,"exp":` + jsonNumber(fixture.now.Add(10*time.Minute).Unix()) + `}`)
+	principal, err := fixture.auth.Validate(context.Background(), signRawRSA(t, validHeader, pairedClaims, fixture.rsaKey))
+	if err != nil {
+		t.Fatalf("paired surrogate Validate() error = %v", err)
+	}
+	if principal.Subject != "coach-🚀" {
+		t.Errorf("paired surrogate subject = %q", principal.Subject)
 	}
 }
 

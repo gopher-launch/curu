@@ -660,6 +660,9 @@ func decodeUniqueObject(data []byte) (map[string]json.RawMessage, error) {
 	if !utf8.Valid(data) {
 		return nil, fmt.Errorf("invalid UTF-8 JSON")
 	}
+	if !validJSONSurrogateEscapes(data) {
+		return nil, fmt.Errorf("invalid JSON Unicode escape")
+	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
 	opening, err := decoder.Token()
@@ -692,4 +695,63 @@ func decodeUniqueObject(data []byte) (map[string]json.RawMessage, error) {
 		return nil, fmt.Errorf("trailing JSON data")
 	}
 	return result, nil
+}
+
+func validJSONSurrogateEscapes(data []byte) bool {
+	inString := false
+	for index := 0; index < len(data); index++ {
+		switch data[index] {
+		case '"':
+			inString = !inString
+		case '\\':
+			if !inString {
+				continue
+			}
+			index++
+			if index >= len(data) || data[index] != 'u' {
+				continue
+			}
+			value, ok := jsonHexEscape(data, index)
+			if !ok {
+				return false
+			}
+			index += 4
+			if value >= 0xdc00 && value <= 0xdfff {
+				return false
+			}
+			if value < 0xd800 || value > 0xdbff {
+				continue
+			}
+			if index+6 >= len(data) || data[index+1] != '\\' || data[index+2] != 'u' {
+				return false
+			}
+			low, ok := jsonHexEscape(data, index+2)
+			if !ok || low < 0xdc00 || low > 0xdfff {
+				return false
+			}
+			index += 6
+		}
+	}
+	return true
+}
+
+func jsonHexEscape(data []byte, uIndex int) (uint16, bool) {
+	if uIndex+4 >= len(data) {
+		return 0, false
+	}
+	var value uint16
+	for _, digit := range data[uIndex+1 : uIndex+5] {
+		value <<= 4
+		switch {
+		case digit >= '0' && digit <= '9':
+			value += uint16(digit - '0')
+		case digit >= 'a' && digit <= 'f':
+			value += uint16(digit-'a') + 10
+		case digit >= 'A' && digit <= 'F':
+			value += uint16(digit-'A') + 10
+		default:
+			return 0, false
+		}
+	}
+	return value, true
 }
