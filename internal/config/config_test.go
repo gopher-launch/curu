@@ -69,6 +69,8 @@ func TestValidateHTTPSOriginAcceptsCanonicalValues(t *testing.T) {
 	for _, origin := range []string{
 		"https://curu.example",
 		"https://curu.example:8443",
+		"https://123.example",
+		"https://example.255a",
 		"https://192.0.2.1",
 		"https://[2001:db8::1]:8443",
 	} {
@@ -108,6 +110,15 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 		"origin padded port":  {"CURU_PUBLIC_ORIGIN": "https://curu.example:0443"},
 		"origin uppercase host": {
 			"CURU_PUBLIC_ORIGIN": "https://CURU.example",
+		},
+		"origin shortened IPv4": {"CURU_PUBLIC_ORIGIN": "https://127.1"},
+		"origin octal IPv4":     {"CURU_PUBLIC_ORIGIN": "https://0177.0.0.1"},
+		"origin hexadecimal IPv4": {
+			"CURU_PUBLIC_ORIGIN": "https://0x7f000001",
+		},
+		"origin integer IPv4": {"CURU_PUBLIC_ORIGIN": "https://2130706433"},
+		"origin numeric final label": {
+			"CURU_PUBLIC_ORIGIN": "https://example.255",
 		},
 		"noncanonical proxy": {"CURU_TRUSTED_PROXY_CIDRS": "10.0.0.1/24"},
 		"invalid proxy":      {"CURU_TRUSTED_PROXY_CIDRS": "gateway.example"},

@@ -188,8 +188,13 @@ func validateHTTPSOrigin(value string) error {
 		if address.Is6() {
 			canonicalHost = "[" + hostname + "]"
 		}
-	} else if strings.Contains(hostname, ":") {
-		return fmt.Errorf("host must be a valid DNS name or IP address")
+	} else {
+		if strings.Contains(hostname, ":") {
+			return fmt.Errorf("host must be a valid DNS name or IP address")
+		}
+		if hostEndsInNumber(hostname) {
+			return fmt.Errorf("numeric host must be a canonical IPv4 address")
+		}
 	}
 	port := parsed.Port()
 	if port != "" {
@@ -209,6 +214,39 @@ func validateHTTPSOrigin(value string) error {
 		return fmt.Errorf("must use its canonical URL spelling")
 	}
 	return nil
+}
+
+// hostEndsInNumber implements the conservative portion of the WHATWG special
+// host check needed here. Such names are interpreted as IPv4 input by browsers,
+// so a value that did not already parse as canonical netip IPv4 must be refused.
+func hostEndsInNumber(hostname string) bool {
+	parts := strings.Split(hostname, ".")
+	if parts[len(parts)-1] == "" && len(parts) > 1 {
+		parts = parts[:len(parts)-1]
+	}
+	last := parts[len(parts)-1]
+	if last == "" {
+		return false
+	}
+	allDecimal := true
+	for _, character := range last {
+		if character < '0' || character > '9' {
+			allDecimal = false
+			break
+		}
+	}
+	if allDecimal {
+		return true
+	}
+	if len(last) < 2 || last[0] != '0' || (last[1] != 'x' && last[1] != 'X') {
+		return false
+	}
+	for _, character := range last[2:] {
+		if !((character >= '0' && character <= '9') || (character >= 'a' && character <= 'f') || (character >= 'A' && character <= 'F')) {
+			return false
+		}
+	}
+	return true
 }
 
 func isASCII(value string) bool {
