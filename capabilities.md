@@ -18,10 +18,10 @@
 
 - Delivery: CURU-002
 - Runtime shell: the Go module and `cmd/curu` provide a validated, foreground HTTP server with structured logging, graceful `SIGINT`/`SIGTERM` shutdown, and coarse liveness/readiness endpoints.
-- Safe surface: the default listener is loopback-only. No product-data route exists; unknown safe routes use the shared escaped HTML layout and unsafe or unimplemented routes remain unavailable.
+- Safe surface: the default listener is loopback-only. CURU-002 introduced no product-data route; unknown safe routes use the shared escaped HTML layout and unsafe or unimplemented routes remain unavailable.
 - Contributor interface: [`README.md`](README.md) defines the executable `go build ./cmd/curu`, `go test ./...`, and `go run ./cmd/curu` commands. [`doc/configuration.md`](doc/configuration.md) defines the implemented runtime settings.
 - Container interface: [`Dockerfile`](Dockerfile) builds the server and separate migration, initialization, and recovery-validation executables into a minimal image with TLS root certificates; all run as numeric non-root user `65532:65532`, and non-loopback binding must be selected explicitly by the deployment.
-- Subsequent delivery: CURU-015 and CURU-020 add authentication and single-owner authorization around this runtime shell. Browser protections and every activity/session/template behavior remain assigned to their roadmap tasks.
+- Subsequent delivery: CURU-015, CURU-020, and CURU-016 added authentication, single-owner authorization, and browser protections around this runtime shell. CURU-005 adds read-only activity library pages; mutation, session, and template behavior remains assigned to later roadmap tasks.
 
 ## PostgreSQL migration and compatibility boundary
 
@@ -49,7 +49,7 @@
 - Safe repeat behavior: only an exact completion produces an `already_initialized` no-op. Seed retries must match the recorded seed identity/version and the owner established by all deterministic seeded activity rows. A different owner, a different recorded choice, missing seeded ownership evidence, or unrecorded existing activity is refused. Retries and ordinary server startup never synchronize or replace edited content.
 - Operator safety: [`doc/database-operations.md`](doc/database-operations.md) documents narrow initialization privileges, exact commands, disposable PostgreSQL verification, and a separate reset procedure guarded by the exact isolated database name. No web route or infrastructure lifecycle behavior is added.
 - Verification: local tests cover completion-record matching; opt-in disposable PostgreSQL checks cover fresh seed and empty initialization, same-owner no-op and different-owner refusal, concurrent invocation, induced partial failure rollback, non-empty refusal, exact 44/110 counts, edit preservation, and read-only startup compatibility.
-- Subsequent delivery: CURU-020 adds application authorization without changing initialization. Product library routes, backup/restore evidence, and later activity/session behavior remain assigned to their roadmap tasks.
+- Subsequent delivery: CURU-020 adds application authorization without changing initialization. CURU-013 adds backup/restore evidence and CURU-005 adds read-only library routes; later activity mutation and session behavior remain assigned to their roadmap tasks.
 
 ## Trusted JWT authentication
 
@@ -67,14 +67,14 @@
 - Owner binding: runtime configuration binds one exact, case-sensitive issuer/subject identity to one canonical internal owner UUID. The owner issuer must match the configured JWT trust issuer; aliases, email, domains, wildcards, groups, and roles provide no fallback authority.
 - Application policy: the inward `internal/authorization` policy maps only that external identity and provides explicit read, mutate, archive, and recovery authorization checks against an exact resource owner. Unknown identities, actions, malformed owner identifiers, and other-owner resources are denied by default.
 - HTTP enforcement: every non-health route authenticates through the shared JWT adapter and then requires the owner mapping before dispatch. Missing/invalid credentials, valid unknown identities, and unavailable key evaluation produce detail-free `401`, `403`, and `503` responses respectively; each disables caching and every `401` carries the minimal `Bearer` challenge. Security denials emit one coarse reason plus a server-generated request correlation ID; the general access logger does not add method, path, status, or duration to that event.
-- Safe exception: liveness and readiness retain their previously delivered coarse platform-probe behavior and expose no configuration, dependency detail, dataset, or identity data. There are still no product routes.
+- Safe exception: liveness and readiness retain their previously delivered coarse platform-probe behavior and expose no configuration, dependency detail, dataset, or identity data. CURU-005 subsequently adds product read routes behind this boundary.
 - Subsequent delivery: CURU-016 adds CSRF, origin, trusted-proxy, HTMX session-expiry, and browser editor-preservation mechanics. Later product use cases must invoke the application policy at their own boundaries; HTTP enforcement is not a substitute for owner-scoped data checks.
 
 ## Protected browser and HTMX boundary
 
 - Delivery: CURU-016
 - Browser mutations: every authorized unsafe request requires the exact configured public HTTPS origin, an exact constant-time CSRF cookie/token match, and same-origin fetch metadata when supplied. The secure host-only HTTP-only same-site CSRF cookie is stable across open editors; authorized product request bodies, including safe-method bodies, are capped at 1 MiB and receiving handlers retain responsibility for narrower content-type and field validation.
-- Safe presentation: server templates remain contextually escaped. The bounded Markdown renderer omits raw HTML and unsafe link destinations before its output becomes trusted template HTML. No product-data route or database query is introduced, so product handlers still own field validation and parameterized owner-scoped persistence when delivered.
+- Safe presentation: server templates remain contextually escaped. The bounded Markdown renderer omits raw HTML and unsafe link destinations before its output becomes trusted template HTML. CURU-016 introduced no product-data route or database query; CURU-005 subsequently applies these protections to owner-scoped library reads.
 - HTMX expiry: every authentication `401` retains the minimal Bearer challenge. HTMX responses also suppress swaps and emit the stable `curu:authentication-required` event; the shared layout reveals a provider-neutral session-expired notice and optional gateway sign-in action without redirecting, replaying, or discarding the editor DOM.
 - Gateway boundary: runtime configuration requires an explicit public origin, optionally trusts only named immediate-proxy CIDRs for a single overwritten client address, and optionally renders HTTPS login/logout links. [`doc/gateway.md`](doc/gateway.md) assigns public TLS, session cookies, conflicting-header stripping, access-token injection, direct-access prevention, and private-hop protection to the deployment.
 - Verification: focused local handler tests cover normal and HTMX authentication failures, challenge/signal behavior, CSRF/origin/fetch-site rejection, secure cookie attributes, bounded and safely re-rendered invalid form input, escaped paths and Markdown, and trusted versus untrusted forwarding peers. No provider gateway or browser automation is claimed.
@@ -86,3 +86,12 @@
 - Included data: recovery evidence covers migration history, seeded or intentionally empty initialization metadata, owner-scoped activities including edited content/revisions/archive state/timestamps, and ordered progressions. Later schema tasks must extend the manifest and restore fixture for their own tables.
 - External boundary: [`doc/database-operations.md`](doc/database-operations.md) assigns scheduling, retention, protected backup storage, target provisioning, and restore execution to the data service. Database credentials, gateway sessions, JWT/JWKS trust, and deployment secrets are supplied anew; the stable internal owner binding must remain consistent with restored content.
 - Verification: the opt-in disposable PostgreSQL exercise creates distinct source and restore databases, captures an edited and archived 44-activity/110-progression seeded fixture, uses `pg_dump`/`pg_restore`, reconciles restricted runtime grants, and compares the restored manifest through the runtime role. It never targets retained data or provisions cloud infrastructure.
+
+## Protected activity library discovery
+
+- Delivery: CURU-005
+- Read-only library: authenticated owners can browse current, non-archived activities at `/activities` and open stable UUID detail links. The root route leads to the library; no create, edit, archive, advanced-filter, session, or template behavior is implied.
+- Basic discovery: optional `q` search is trimmed, bounded, case-insensitive, and treats `%`, `_`, and backslash literally. It matches titles, summaries, activity Markdown, and progression titles/content without requiring classification or interpreting seed grouping as a session stage.
+- Complete details: detail pages include summary and recommended duration when present, the full safely rendered activity Markdown, and ordered progressions with their titles, content, and optional durations. Empty-library and zero-match states are distinct.
+- Boundaries: the application use case rechecks read authorization, and PostgreSQL queries scope current rows to the exact internal owner. Missing, archived, malformed, guessed, and other-owner IDs do not disclose an activity. Shared JWT, owner, CSRF/browser, no-store, escaped-template, and safe-Markdown protections remain in force.
+- Verification: focused use-case and handler tests cover stable IDs, known content, search input, empty states, complete safe detail rendering, and denied access. The disposable PostgreSQL check covers title/text/progression search, literal wildcard handling, current-row loading, ordered progressions, owner isolation, and runtime-role restrictions.

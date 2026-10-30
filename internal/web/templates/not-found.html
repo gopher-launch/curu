@@ -1,6 +1,4 @@
-{{define "not-found"}}{{template "layout" .}}{{end}}
-{{define "title"}}Not found · Curu{{end}}
-{{define "content"}}
+{{define "not-found"}}{{template "layout-start" .}}
   <h1>Page not found</h1>
   <p>The requested page <code>{{.Path}}</code> is not available.</p>
-{{end}}
+{{template "layout-end" .}}{{end}}

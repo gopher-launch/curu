@@ -1,0 +1,23 @@
+{{define "activity-detail"}}{{template "layout-start" .}}
+  <p><a href="/activities">← All activities</a></p>
+  <article data-activity-id="{{.ID}}">
+    <h1>{{.Title}}</h1>
+    {{if .Summary}}<p>{{.Summary}}</p>{{end}}
+    {{if .Duration}}<p class="muted">Recommended duration: {{.Duration}}</p>{{end}}
+    <div class="markdown">{{.Content}}</div>
+    {{if .Progressions}}
+      <section aria-labelledby="progressions-heading">
+        <h2 id="progressions-heading">Progressions</h2>
+        <ol>
+          {{range .Progressions}}
+            <li>
+              {{if .Title}}<h3>{{.Title}}</h3>{{end}}
+              {{if .Duration}}<p class="muted">Recommended duration: {{.Duration}}</p>{{end}}
+              <div class="markdown">{{.Content}}</div>
+            </li>
+          {{end}}
+        </ol>
+      </section>
+    {{end}}
+  </article>
+{{template "layout-end" .}}{{end}}

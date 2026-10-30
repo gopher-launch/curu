@@ -8,7 +8,7 @@ updated: 2026-10-30
 
 ## Roadmap status and source
 
-This is the approved initial product baseline and task backlog for the new Curu repository. It was prepared from `curu-product-roadmap-draft.md` (SHA-256 `e8d6131c6917840ae93e54c303057ce99bd9884b54ff2e8dda9a0ff31e2dc901`). CURU-001 and CURU-014 delivered the documentation and integration-contract baseline. CURU-002 delivered the minimal runnable application shell. CURU-019 delivered explicit PostgreSQL migrations, restricted runtime grants, and read-only startup compatibility. CURU-003 delivered the bounded coaching-library seed asset. CURU-004 delivered safe explicit seeded or intentionally empty dataset initialization. CURU-015 delivered standard-profile JWT validation and stable external-principal mapping. CURU-020 delivered the exact single-owner binding, deny-by-default use-case policy, and shared non-health request authorization. CURU-016 delivered the shared browser, CSRF, origin, proxy-trust, and HTMX-expiry boundary. CURU-013 delivered application-owned recovery manifests and an isolated PostgreSQL backup/restore exercise; no product UI has been delivered yet.
+This is the approved initial product baseline and task backlog for the new Curu repository. It was prepared from `curu-product-roadmap-draft.md` (SHA-256 `e8d6131c6917840ae93e54c303057ce99bd9884b54ff2e8dda9a0ff31e2dc901`). CURU-001 and CURU-014 delivered the documentation and integration-contract baseline. CURU-002 delivered the minimal runnable application shell. CURU-019 delivered explicit PostgreSQL migrations, restricted runtime grants, and read-only startup compatibility. CURU-003 delivered the bounded coaching-library seed asset. CURU-004 delivered safe explicit seeded or intentionally empty dataset initialization. CURU-015 delivered standard-profile JWT validation and stable external-principal mapping. CURU-020 delivered the exact single-owner binding, deny-by-default use-case policy, and shared non-health request authorization. CURU-016 delivered the shared browser, CSRF, origin, proxy-trust, and HTMX-expiry boundary. CURU-013 delivered application-owned recovery manifests and an isolated PostgreSQL backup/restore exercise. CURU-005 delivered protected current-library browsing, literal title/text search, and complete activity detail pages.
 
 Chris and Chappie own product direction. The accepted baseline below incorporates the October 19 decisions and the CURU-014 authentication contract. Recovery-draft mechanics and template field mapping remain reviewable design work, not silently accepted implementation choices.
 
@@ -67,7 +67,7 @@ Recovery drafts preserve attempted user content separately from authoritative re
 ## Delivery rules
 
 - Execute/review one bounded Task at a time. Epics and Features organize work; only Kind: task entries can be selected. A milestone captures delivery scope across parents, not permission to implement a whole range.
-- CURU-001 made CURU-014 ready. Their documentation and reviewed integration-contract baselines made CURU-002 ready. The delivered application shell made CURU-019 ready; its delivered migration boundary made CURU-003 ready. The delivered bounded seed asset made CURU-004 ready; its delivered explicit initializer made CURU-015 ready. The delivered authentication adapter made CURU-020 ready; its delivered owner policy made CURU-016 ready. The delivered browser boundary made CURU-013 ready; its delivered recovery evidence makes CURU-005 the next ready Task. Other Tasks remain planned. Promote the next eligible Task through reviewed candidate reconciliation when its concrete prerequisites and acceptance are satisfied; do not promote unresolved product choices automatically.
+- CURU-001 made CURU-014 ready. Their documentation and reviewed integration-contract baselines made CURU-002 ready. The delivered application shell made CURU-019 ready; its delivered migration boundary made CURU-003 ready. The delivered bounded seed asset made CURU-004 ready; its delivered explicit initializer made CURU-015 ready. The delivered authentication adapter made CURU-020 ready; its delivered owner policy made CURU-016 ready. The delivered browser boundary made CURU-013 ready; its delivered recovery evidence made CURU-005 ready. The delivered library discovery boundary makes CURU-017 the next ready Task. Other Tasks remain planned. Promote the next eligible Task through reviewed candidate reconciliation when its concrete prerequisites and acceptance are satisfied; do not promote unresolved product choices automatically.
 - Every candidate includes relevant documentation, focused verification, and concise roadmap reconciliation. Source is the truth of implemented behavior. Preserve existing IDs; no Task is delivered solely because it appears in this document.
 - CURU-001 through CURU-018 retain their draft identities. CURU-019 through CURU-027 split broad scopes/add explicit authorization, recovery and template-boundary work; detailed outcomes below are authoritative.
 - Product choices remain with Chris/Chappie. Design Tasks may produce explicit proposals for operator review. Do not invent approvals, fabricate human field results or silently turn a design question into code.
@@ -399,7 +399,7 @@ CURU-009, CURU-026, CURU-010 and CURU-027 deliver independent duplication and te
 ## CURU-005 — Browse and search the current activity library
 
 - Kind: task
-- Status: ready
+- Status: delivered
 - Priority: high
 - Parent: CURU-F004
 - Depends on: CURU-004, CURU-016
@@ -418,7 +418,7 @@ CURU-009, CURU-026, CURU-010 and CURU-027 deliver independent duplication and te
 ## CURU-017 — Create and edit activities with explicit saves
 
 - Kind: task
-- Status: planned
+- Status: ready
 - Priority: high
 - Parent: CURU-F005
 - Depends on: CURU-005
@@ -722,6 +722,6 @@ CURU-009, CURU-026, CURU-010 and CURU-027 deliver independent duplication and te
 
 ## Next task boundary
 
-CURU-001 delivered the first product and architecture baseline documents without claiming application behavior. CURU-014 delivered the reviewed gateway/JWT, authorization, browser-security, and data-service contract without claiming application behavior. CURU-002 delivered the minimal runnable application shell. CURU-019 delivered the explicit PostgreSQL migration and restricted runtime boundary. CURU-003 delivered the bounded 44-activity/110-progression seed asset. CURU-004 delivered atomic explicit seeded or intentionally empty dataset initialization without startup seeding or synchronization over edited content. CURU-015 delivered standard-profile JWT validation and external-principal mapping. CURU-020 delivered the exact single-owner binding, inward action policy, and shared request authorization. CURU-016 delivered shared CSRF, origin, trusted-proxy, safe-rendering, and HTMX expiry handling without adding product routes. CURU-013 delivered content-free recovery manifests and a reproducible isolated PostgreSQL backup/restore verification. CURU-005 is the only ready Task and is the next bounded task.
+CURU-001 delivered the first product and architecture baseline documents without claiming application behavior. CURU-014 delivered the reviewed gateway/JWT, authorization, browser-security, and data-service contract without claiming application behavior. CURU-002 delivered the minimal runnable application shell. CURU-019 delivered the explicit PostgreSQL migration and restricted runtime boundary. CURU-003 delivered the bounded 44-activity/110-progression seed asset. CURU-004 delivered atomic explicit seeded or intentionally empty dataset initialization without startup seeding or synchronization over edited content. CURU-015 delivered standard-profile JWT validation and external-principal mapping. CURU-020 delivered the exact single-owner binding, inward action policy, and shared request authorization. CURU-016 delivered shared CSRF, origin, trusted-proxy, safe-rendering, and HTMX expiry handling. CURU-013 delivered content-free recovery manifests and a reproducible isolated PostgreSQL backup/restore verification. CURU-005 delivered protected, owner-scoped current-library browsing and literal case-insensitive search across activity and progression text, with stable-ID detail pages and safely rendered complete content. CURU-017 is the only ready Task and is the next bounded task.
 
 CURU-001 records accepted product boundaries; CURU-014's accepted design contract is recorded in `doc/integration-contract.md`. Template context conversion is deliberately resolved later by CURU-026 before CURU-010. No unfinished template decision blocks the library/session work.

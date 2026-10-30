@@ -9,12 +9,13 @@ import (
 	"time"
 
 	"github.com/gopher-launch/curu/internal/config"
+	"gorm.io/gorm"
 )
 
 func TestRunStopsAfterCancellation(t *testing.T) {
 	t.Parallel()
 
-	application, err := New(newTestConfig("127.0.0.1:0"), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	application, err := New(newTestConfig("127.0.0.1:0"), slog.New(slog.NewTextHandler(io.Discard, nil)), &gorm.DB{})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -34,7 +35,7 @@ func TestRunReportsBindFailure(t *testing.T) {
 	}
 	defer listener.Close()
 
-	application, err := New(newTestConfig(listener.Addr().String()), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	application, err := New(newTestConfig(listener.Addr().String()), slog.New(slog.NewTextHandler(io.Discard, nil)), &gorm.DB{})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}

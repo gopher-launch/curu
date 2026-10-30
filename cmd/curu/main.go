@@ -31,7 +31,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	application, err := app.New(cfg, logger)
+	application, err := app.New(cfg, logger, db)
 	if err != nil {
 		logger.Error("application initialization failed", "error", err)
 		os.Exit(1)

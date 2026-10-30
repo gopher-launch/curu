@@ -2,12 +2,14 @@ package database
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/gopher-launch/curu/internal/activity"
 	"github.com/gopher-launch/curu/internal/seed"
 	"gorm.io/gorm"
 )
@@ -211,6 +213,53 @@ func TestPostgresMigrationAndRuntimeRestrictions(t *testing.T) {
 	defer Close(runtime)
 	if err := CheckCompatibility(ctx, runtime); err != nil {
 		t.Fatalf("CheckCompatibility() error = %v", err)
+	}
+	repository, err := NewActivityRepository(runtime)
+	if err != nil {
+		t.Fatalf("NewActivityRepository() error = %v", err)
+	}
+	searchResults, err := repository.ListCurrent(ctx, seedOwnerID, "Release hands")
+	if err != nil {
+		t.Fatalf("ListCurrent() progression search error = %v", err)
+	}
+	if len(searchResults) == 0 {
+		t.Fatal("ListCurrent() progression search returned no seeded activity")
+	}
+	for _, item := range searchResults {
+		if item.OwnerID != seedOwnerID {
+			t.Fatalf("ListCurrent() crossed owner boundary: %+v", item)
+		}
+	}
+	for _, search := range []string{"Evasion Gauntlet", "acceleration"} {
+		results, err := repository.ListCurrent(ctx, seedOwnerID, search)
+		if err != nil || len(results) == 0 {
+			t.Fatalf("ListCurrent(%q) results = %+v, error = %v", search, results, err)
+		}
+	}
+	literalResults, err := repository.ListCurrent(ctx, seedOwnerID, "%_not-present")
+	if err != nil || len(literalResults) != 0 {
+		t.Fatalf("ListCurrent() literal metacharacter results = %+v, error = %v", literalResults, err)
+	}
+	seededDetail, err := repository.FindCurrent(ctx, seedOwnerID, library.Activities[0].ID)
+	if err != nil {
+		t.Fatalf("FindCurrent() seeded detail error = %v", err)
+	}
+	if seededDetail.Title != library.Activities[0].Title || len(seededDetail.Progressions) != len(library.Activities[0].Progressions) {
+		t.Fatalf("FindCurrent() detail = %+v", seededDetail)
+	}
+	otherOwner, err := repository.ListCurrent(ctx, ownerID, "Release hands")
+	if err != nil || len(otherOwner) != 0 {
+		t.Fatalf("ListCurrent() other-owner results = %+v, error = %v", otherOwner, err)
+	}
+	if err := admin.Exec("UPDATE curu.activities SET archived_at = current_timestamp WHERE id = ?", fixtureID).Error; err != nil {
+		t.Fatalf("archive repository fixture: %v", err)
+	}
+	archivedResults, err := repository.ListCurrent(ctx, ownerID, "Retained activity")
+	if err != nil || len(archivedResults) != 0 {
+		t.Fatalf("ListCurrent() archived results = %+v, error = %v", archivedResults, err)
+	}
+	if _, err := repository.FindCurrent(ctx, ownerID, fixtureID); !errors.Is(err, activity.ErrNotFound) {
+		t.Fatalf("FindCurrent() archived error = %v, want not found", err)
 	}
 	if err := runtime.Exec(`INSERT INTO curu.activities
         (id, owner_id, title) VALUES

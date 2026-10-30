@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/gopher-launch/curu/internal/activity"
 	"github.com/gopher-launch/curu/internal/auth"
 	"github.com/gopher-launch/curu/internal/authorization"
 )
@@ -75,6 +76,99 @@ func TestUnknownRouteUsesEscapedLayout(t *testing.T) {
 	body := response.Body.String()
 	if !strings.Contains(body, "Curu") || strings.Contains(body, "/<script>") || !strings.Contains(body, "/&lt;script&gt;") {
 		t.Errorf("body is missing layout or contains unescaped input: %q", body)
+	}
+}
+
+func TestActivityLibraryListSearchAndEmptyStates(t *testing.T) {
+	t.Parallel()
+
+	duration := 300
+	library := &fakeActivityLibrary{items: []activity.Summary{{
+		ID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", OwnerID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+		Title: "Evasion Gauntlet", Summary: "Footwork and acceleration", DurationSeconds: &duration,
+	}}}
+	handler := newTestHandlerWithLibrary(t, library)
+	request := httptest.NewRequest(http.MethodGet, "/activities?q=Evasion%20%26%20%3Cscript%3E", nil)
+	request.Header.Set("Authorization", "Bearer owner")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d; body = %q", response.Code, response.Body.String())
+	}
+	if library.search != "Evasion & <script>" || library.principal.OwnerID != "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" {
+		t.Fatalf("library input = principal %+v, search %q", library.principal, library.search)
+	}
+	body := response.Body.String()
+	if !strings.Contains(body, `href="/activities/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"`) || !strings.Contains(body, "Evasion Gauntlet") {
+		t.Errorf("list omitted stable link or known activity: %q", body)
+	}
+	if strings.Contains(body, "<script>Evasion") || !strings.Contains(body, "&lt;script&gt;") {
+		t.Errorf("search was not safely rendered: %q", body)
+	}
+
+	library.items = nil
+	empty := httptest.NewRecorder()
+	emptyRequest := httptest.NewRequest(http.MethodGet, "/activities", nil)
+	emptyRequest.Header.Set("Authorization", "Bearer owner")
+	handler.ServeHTTP(empty, emptyRequest)
+	if !strings.Contains(empty.Body.String(), "activity library is empty") {
+		t.Errorf("empty library state missing: %q", empty.Body.String())
+	}
+
+	noMatch := httptest.NewRecorder()
+	noMatchRequest := httptest.NewRequest(http.MethodGet, "/activities?q=unknown", nil)
+	noMatchRequest.Header.Set("Authorization", "Bearer owner")
+	handler.ServeHTTP(noMatch, noMatchRequest)
+	if !strings.Contains(noMatch.Body.String(), "No current activities match") {
+		t.Errorf("empty search state missing: %q", noMatch.Body.String())
+	}
+}
+
+func TestActivityDetailRendersCompleteSafeContent(t *testing.T) {
+	t.Parallel()
+
+	duration := 305
+	library := &fakeActivityLibrary{item: activity.Activity{
+		ID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", OwnerID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+		Title: "Known activity", Summary: "Useful summary", DurationSeconds: &duration,
+		ContentMarkdown: "## Setup\nUse **cones**.\n\n<script>private</script>\n\n[unsafe](javascript:alert(1))",
+		Progressions:    []activity.Progression{{Position: 0, Title: "Harder", ContentMarkdown: "Release hands."}},
+	}}
+	handler := newTestHandlerWithLibrary(t, library)
+	request := httptest.NewRequest(http.MethodGet, "/activities/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", nil)
+	request.Header.Set("Authorization", "Bearer owner")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d; body = %q", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	for _, wanted := range []string{"Known activity", "Useful summary", "305 seconds", "<h2>Setup</h2>", "<strong>cones</strong>", "Progressions", "Harder", "Release hands."} {
+		if !strings.Contains(body, wanted) {
+			t.Errorf("detail omitted %q: %q", wanted, body)
+		}
+	}
+	if strings.Contains(body, "<script>private</script>") || strings.Contains(body, `href="javascript:`) {
+		t.Errorf("detail rendered unsafe Markdown: %q", body)
+	}
+}
+
+func TestActivityRoutesDoNotReachLibraryForDeniedIdentity(t *testing.T) {
+	t.Parallel()
+
+	library := &fakeActivityLibrary{}
+	handler := newTestHandlerWithLibrary(t, library)
+	for _, path := range []string{"/activities", "/activities/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"} {
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		request.Header.Set("Authorization", "Bearer stranger")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusForbidden {
+			t.Errorf("%s status = %d, want 403", path, response.Code)
+		}
+	}
+	if library.calls != 0 {
+		t.Fatalf("denied requests reached library %d times", library.calls)
 	}
 }
 
@@ -396,6 +490,34 @@ func (fakeAuthenticator) AuthenticateRequest(_ context.Context, values []string)
 	}
 }
 
+type fakeActivityLibrary struct {
+	items     []activity.Summary
+	item      activity.Activity
+	err       error
+	principal authorization.Principal
+	search    string
+	id        string
+	calls     int
+}
+
+func (l *fakeActivityLibrary) List(_ context.Context, principal authorization.Principal, search string) ([]activity.Summary, error) {
+	l.calls++
+	l.principal, l.search = principal, search
+	return l.items, l.err
+}
+
+func (l *fakeActivityLibrary) Detail(_ context.Context, principal authorization.Principal, id string) (activity.Activity, error) {
+	l.calls++
+	l.principal, l.id = principal, id
+	if l.err != nil {
+		return activity.Activity{}, l.err
+	}
+	if l.item.ID == "" {
+		return activity.Activity{}, activity.ErrNotFound
+	}
+	return l.item, nil
+}
+
 func newTestHandler(t *testing.T, ready func() bool) http.Handler {
 	t.Helper()
 	return newTestHandlerWithLogger(t, ready, slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -410,9 +532,25 @@ func newTestHandlerWithLogger(t *testing.T, ready func() bool, logger *slog.Logg
 	if err != nil {
 		t.Fatalf("NewPolicy() error = %v", err)
 	}
-	handler, err := NewHandler(logger, ready, fakeAuthenticator{}, policy, BrowserConfig{PublicOrigin: "https://curu.example"})
+	handler, err := NewHandler(logger, ready, fakeAuthenticator{}, policy, &fakeActivityLibrary{}, BrowserConfig{PublicOrigin: "https://curu.example"})
 	if err != nil {
 		t.Fatalf("NewHandler() error = %v", err)
+	}
+	return handler
+}
+
+func newTestHandlerWithLibrary(t *testing.T, library activityLibrary) http.Handler {
+	t.Helper()
+	policy, err := authorization.NewPolicy(
+		authorization.ExternalIdentity{Issuer: "https://issuer.example/tenant", Subject: "coach-123"},
+		"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), func() bool { return true }, fakeAuthenticator{}, policy, library, BrowserConfig{PublicOrigin: "https://curu.example"})
+	if err != nil {
+		t.Fatal(err)
 	}
 	return handler
 }

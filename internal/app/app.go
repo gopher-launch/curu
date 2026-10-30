@@ -9,10 +9,13 @@ import (
 	"net/http"
 	"sync/atomic"
 
+	"github.com/gopher-launch/curu/internal/activity"
 	"github.com/gopher-launch/curu/internal/auth"
 	"github.com/gopher-launch/curu/internal/authorization"
 	"github.com/gopher-launch/curu/internal/config"
+	"github.com/gopher-launch/curu/internal/database"
 	"github.com/gopher-launch/curu/internal/web"
+	"gorm.io/gorm"
 )
 
 type App struct {
@@ -23,7 +26,7 @@ type App struct {
 	server *http.Server
 }
 
-func New(cfg config.Config, logger *slog.Logger) (*App, error) {
+func New(cfg config.Config, logger *slog.Logger, db *gorm.DB) (*App, error) {
 	if logger == nil {
 		return nil, errors.New("logger is required")
 	}
@@ -44,8 +47,16 @@ func New(cfg config.Config, logger *slog.Logger) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create authorization policy: %w", err)
 	}
+	repository, err := database.NewActivityRepository(db)
+	if err != nil {
+		return nil, fmt.Errorf("create activity repository: %w", err)
+	}
+	library, err := activity.NewLibrary(repository, policy)
+	if err != nil {
+		return nil, fmt.Errorf("create activity library: %w", err)
+	}
 	application := &App{config: cfg, logger: logger, auth: authenticator}
-	handler, err := web.NewHandler(logger, func() bool { return application.ready.Load() && application.auth.Ready() }, authenticator, policy, web.BrowserConfig{
+	handler, err := web.NewHandler(logger, func() bool { return application.ready.Load() && application.auth.Ready() }, authenticator, policy, library, web.BrowserConfig{
 		PublicOrigin: cfg.Browser.PublicOrigin, TrustedProxyCIDRs: cfg.Browser.TrustedProxyCIDRs,
 		LoginURL: cfg.Browser.LoginURL, LogoutURL: cfg.Browser.LogoutURL,
 	})

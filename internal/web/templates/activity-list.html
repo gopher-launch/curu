@@ -1,0 +1,24 @@
+{{define "activity-list"}}{{template "layout-start" .}}
+  <h1>Activities</h1>
+  <form action="/activities" method="get" role="search">
+    <label for="activity-search">Search activities</label>
+    <input id="activity-search" name="q" type="search" maxlength="200" value="{{.Search}}" placeholder="Title, instructions, or progression">
+    <button type="submit">Search</button>
+  </form>
+  {{if .Search}}<p>Results for <strong>{{.Search}}</strong>. <a href="/activities">Clear search</a></p>{{end}}
+  {{if .Activities}}
+    <ul class="activity-list">
+      {{range .Activities}}
+        <li>
+          <h2><a href="/activities/{{.ID}}">{{.Title}}</a></h2>
+          {{if .Summary}}<p>{{.Summary}}</p>{{end}}
+          {{if .Duration}}<p class="muted">Recommended duration: {{.Duration}}</p>{{end}}
+        </li>
+      {{end}}
+    </ul>
+  {{else if .Search}}
+    <p>No current activities match this search. Try a different word or <a href="/activities">show the whole library</a>.</p>
+  {{else}}
+    <p>The current activity library is empty. Activities can be added when library authoring is available.</p>
+  {{end}}
+{{template "layout-end" .}}{{end}}

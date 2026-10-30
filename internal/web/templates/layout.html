@@ -1,26 +1,38 @@
-{{define "layout" -}}
+{{define "layout-start" -}}
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="curu-csrf-token" content="{{.CSRFToken}}">
-  <title>{{block "title" .}}Curu{{end}}</title>
+  <title>{{.PageTitle}}</title>
   <style>
     :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
     body { margin: 0; }
     header, main { margin: auto; max-width: 48rem; padding: 1rem; }
     header { border-bottom: 1px solid currentColor; }
     nav a { color: inherit; font-weight: 700; text-decoration: none; }
+    form[role="search"] { display: flex; gap: .5rem; margin-block: 1rem; }
+    input[type="search"] { flex: 1; min-width: 0; padding: .65rem; }
+    button { padding: .65rem 1rem; }
+    .activity-list { list-style: none; padding: 0; }
+    .activity-list li { border-top: 1px solid color-mix(in srgb, currentColor 25%, transparent); padding-block: 1rem; }
+    .activity-list h2 { margin: 0 0 .25rem; }
+    .activity-list p { margin: .25rem 0; }
+    .muted { opacity: .75; }
+    .markdown { overflow-wrap: anywhere; }
   </style>
 </head>
 <body>
-  <header><nav aria-label="Primary"><a href="/">Curu</a>{{if .LogoutURL}} · <a href="{{.LogoutURL}}">Sign out</a>{{end}}</nav></header>
+  <header><nav aria-label="Primary"><a href="/activities">Curu</a>{{if .LogoutURL}} · <a href="{{.LogoutURL}}">Sign out</a>{{end}}</nav></header>
   <aside id="authentication-required" hidden role="alert">
     Your session expired. Your unsaved changes remain on this page.
     {{if .LoginURL}}<a href="{{.LoginURL}}">Sign in again</a>{{else}}Sign in again through the application gateway.{{end}}
   </aside>
-  <main>{{block "content" .}}{{end}}</main>
+  <main>
+{{- end}}
+{{define "layout-end" -}}
+  </main>
   <script>
     document.addEventListener("htmx:configRequest", function (event) {
       var token = document.querySelector('meta[name="curu-csrf-token"]').content;

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"embed"
@@ -9,8 +10,11 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/gopher-launch/curu/internal/activity"
 	"github.com/gopher-launch/curu/internal/auth"
 	"github.com/gopher-launch/curu/internal/authorization"
 )
@@ -23,12 +27,18 @@ type handler struct {
 	ready     func() bool
 	auth      requestAuthenticator
 	policy    authorization.Policy
+	library   activityLibrary
 	browser   BrowserConfig
 	templates *template.Template
 }
 
 type requestAuthenticator interface {
 	AuthenticateRequest(context.Context, []string) (auth.Principal, error)
+}
+
+type activityLibrary interface {
+	List(context.Context, authorization.Principal, string) ([]activity.Summary, error)
+	Detail(context.Context, authorization.Principal, string) (activity.Activity, error)
 }
 
 type principalContextKey struct{}
@@ -46,7 +56,7 @@ func PrincipalFromContext(ctx context.Context) (authorization.Principal, bool) {
 	return principal, ok
 }
 
-func NewHandler(logger *slog.Logger, ready func() bool, authenticator requestAuthenticator, policy authorization.Policy, browser BrowserConfig) (http.Handler, error) {
+func NewHandler(logger *slog.Logger, ready func() bool, authenticator requestAuthenticator, policy authorization.Policy, library activityLibrary, browser BrowserConfig) (http.Handler, error) {
 	templates, err := template.ParseFS(templateFiles, "templates/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
@@ -58,12 +68,175 @@ func NewHandler(logger *slog.Logger, ready func() bool, authenticator requestAut
 	if browser.PublicOrigin == "" {
 		return nil, fmt.Errorf("public origin is required")
 	}
-	h := &handler{logger: logger, ready: ready, auth: authenticator, policy: policy, browser: browser, templates: templates}
+	if library == nil {
+		return nil, fmt.Errorf("activity library is required")
+	}
+	h := &handler{logger: logger, ready: ready, auth: authenticator, policy: policy, library: library, browser: browser, templates: templates}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health/live", h.live)
 	mux.HandleFunc("GET /health/ready", h.readiness)
+	mux.HandleFunc("GET /{$}", h.activityIndexRedirect)
+	mux.HandleFunc("GET /activities", h.listActivities)
+	mux.HandleFunc("GET /activities/{id}", h.activityDetail)
 	mux.HandleFunc("GET /", h.notFound)
 	return h.logRequests(h.authorizePrivateRequests(h.protectBrowserRequests(mux))), nil
+}
+
+type pageData struct {
+	PageTitle string
+	CSRFToken string
+	LoginURL  string
+	LogoutURL string
+}
+
+type activityListData struct {
+	pageData
+	Activities []activitySummaryView
+	Search     string
+}
+
+type activitySummaryView struct {
+	ID       string
+	Title    string
+	Summary  string
+	Duration string
+}
+
+type progressionView struct {
+	Position int
+	Title    string
+	Content  template.HTML
+	Duration string
+}
+
+type activityDetailData struct {
+	pageData
+	ID           string
+	Title        string
+	Summary      string
+	Content      template.HTML
+	Duration     string
+	Progressions []progressionView
+}
+
+func (h *handler) activityIndexRedirect(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	http.Redirect(w, r, "/activities", http.StatusSeeOther)
+}
+
+func (h *handler) listActivities(w http.ResponseWriter, r *http.Request) {
+	principal, ok := PrincipalFromContext(r.Context())
+	if !ok {
+		h.deny(w, r, http.StatusForbidden, "authorization_denied")
+		return
+	}
+	if len(r.URL.Query()["q"]) > 1 {
+		h.rejectInput(w, http.StatusBadRequest)
+		return
+	}
+	search := strings.TrimSpace(r.URL.Query().Get("q"))
+	items, err := h.library.List(r.Context(), principal, search)
+	if errors.Is(err, activity.ErrInvalidQuery) {
+		h.rejectInput(w, http.StatusBadRequest)
+		return
+	}
+	if errors.Is(err, authorization.ErrDenied) {
+		h.deny(w, r, http.StatusForbidden, "authorization_denied")
+		return
+	}
+	if err != nil {
+		h.serverError(w, "list activities", err)
+		return
+	}
+	views := make([]activitySummaryView, len(items))
+	for index, item := range items {
+		views[index] = activitySummaryView{
+			ID: item.ID, Title: item.Title, Summary: item.Summary,
+			Duration: formatDuration(item.DurationSeconds),
+		}
+	}
+	h.render(w, "activity-list", activityListData{
+		pageData: h.page(r, "Activities · Curu"), Activities: views, Search: search,
+	})
+}
+
+func (h *handler) activityDetail(w http.ResponseWriter, r *http.Request) {
+	principal, ok := PrincipalFromContext(r.Context())
+	if !ok {
+		h.deny(w, r, http.StatusForbidden, "authorization_denied")
+		return
+	}
+	item, err := h.library.Detail(r.Context(), principal, r.PathValue("id"))
+	if errors.Is(err, activity.ErrNotFound) {
+		h.notFound(w, r)
+		return
+	}
+	if errors.Is(err, authorization.ErrDenied) {
+		h.deny(w, r, http.StatusForbidden, "authorization_denied")
+		return
+	}
+	if err != nil {
+		h.serverError(w, "read activity", err)
+		return
+	}
+	content, err := RenderMarkdown(item.ContentMarkdown)
+	if err != nil {
+		h.serverError(w, "render activity", err)
+		return
+	}
+	progressions := make([]progressionView, len(item.Progressions))
+	for index, progression := range item.Progressions {
+		rendered, err := RenderMarkdown(progression.ContentMarkdown)
+		if err != nil {
+			h.serverError(w, "render activity progression", err)
+			return
+		}
+		progressions[index] = progressionView{
+			Position: progression.Position + 1, Title: progression.Title,
+			Content: rendered, Duration: formatDuration(progression.DurationSeconds),
+		}
+	}
+	h.render(w, "activity-detail", activityDetailData{
+		pageData: h.page(r, item.Title+" · Curu"), ID: item.ID, Title: item.Title,
+		Summary: item.Summary, Content: content, Duration: formatDuration(item.DurationSeconds),
+		Progressions: progressions,
+	})
+}
+
+func (h *handler) page(r *http.Request, title string) pageData {
+	return pageData{PageTitle: title, CSRFToken: CSRFTokenFromRequest(r), LoginURL: h.browser.LoginURL, LogoutURL: h.browser.LogoutURL}
+}
+
+func (h *handler) render(w http.ResponseWriter, name string, data any) {
+	var body bytes.Buffer
+	if err := h.templates.ExecuteTemplate(&body, name, data); err != nil {
+		h.serverError(w, "render response", err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = body.WriteTo(w)
+}
+
+func (h *handler) serverError(w http.ResponseWriter, operation string, err error) {
+	h.logger.Error("request failed", "operation", operation, "error", err)
+	w.Header().Set("Cache-Control", "no-store")
+	http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+}
+
+func formatDuration(seconds *int) string {
+	if seconds == nil {
+		return ""
+	}
+	if *seconds%60 == 0 {
+		minutes := *seconds / 60
+		unit := "minutes"
+		if minutes == 1 {
+			unit = "minute"
+		}
+		return strconv.Itoa(minutes) + " " + unit
+	}
+	return strconv.Itoa(*seconds) + " seconds"
 }
 
 func (h *handler) authorizePrivateRequests(next http.Handler) http.Handler {
@@ -133,8 +306,9 @@ func (h *handler) notFound(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusNotFound)
 	data := struct {
-		Path, CSRFToken, LoginURL, LogoutURL string
-	}{Path: r.URL.Path, CSRFToken: CSRFTokenFromRequest(r), LoginURL: h.browser.LoginURL, LogoutURL: h.browser.LogoutURL}
+		pageData
+		Path string
+	}{pageData: h.page(r, "Not found · Curu"), Path: r.URL.Path}
 	if err := h.templates.ExecuteTemplate(w, "not-found", data); err != nil {
 		h.logger.Error("render response failed", "error", err)
 	}
