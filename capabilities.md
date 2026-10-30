@@ -20,7 +20,7 @@
 - Runtime shell: the Go module and `cmd/curu` provide a validated, foreground HTTP server with structured logging, graceful `SIGINT`/`SIGTERM` shutdown, and coarse liveness/readiness endpoints.
 - Safe surface: the default listener is loopback-only. No product-data route exists; unknown safe routes use the shared escaped HTML layout and unsafe or unimplemented routes remain unavailable.
 - Contributor interface: [`README.md`](README.md) defines the executable `go build ./cmd/curu`, `go test ./...`, and `go run ./cmd/curu` commands. [`doc/configuration.md`](doc/configuration.md) defines the implemented runtime settings.
-- Container interface: [`Dockerfile`](Dockerfile) builds the server and separate migration and initialization executables into a minimal image with TLS root certificates; all run as numeric non-root user `65532:65532`, and non-loopback binding must be selected explicitly by the deployment.
+- Container interface: [`Dockerfile`](Dockerfile) builds the server and separate migration, initialization, and recovery-validation executables into a minimal image with TLS root certificates; all run as numeric non-root user `65532:65532`, and non-loopback binding must be selected explicitly by the deployment.
 - Subsequent delivery: CURU-015 and CURU-020 add authentication and single-owner authorization around this runtime shell. Browser protections and every activity/session/template behavior remain assigned to their roadmap tasks.
 
 ## PostgreSQL migration and compatibility boundary
@@ -78,3 +78,11 @@
 - HTMX expiry: every authentication `401` retains the minimal Bearer challenge. HTMX responses also suppress swaps and emit the stable `curu:authentication-required` event; the shared layout reveals a provider-neutral session-expired notice and optional gateway sign-in action without redirecting, replaying, or discarding the editor DOM.
 - Gateway boundary: runtime configuration requires an explicit public origin, optionally trusts only named immediate-proxy CIDRs for a single overwritten client address, and optionally renders HTTPS login/logout links. [`doc/gateway.md`](doc/gateway.md) assigns public TLS, session cookies, conflicting-header stripping, access-token injection, direct-access prevention, and private-hop protection to the deployment.
 - Verification: focused local handler tests cover normal and HTMX authentication failures, challenge/signal behavior, CSRF/origin/fetch-site rejection, secure cookie attributes, bounded and safely re-rendered invalid form input, escaped paths and Markdown, and trusted versus untrusted forwarding peers. No provider gateway or browser automation is claimed.
+
+## Application data recovery evidence
+
+- Delivery: CURU-013
+- Recovery manifest: `cmd/curu-recovery-check` performs the application read-only compatibility check and emits counts plus a SHA-256 digest over every delivered schema-version-2 application field. It can compare an isolated restored database with a manifest captured from the fixed source state without exposing activity content, owner identifiers, or credentials.
+- Included data: recovery evidence covers migration history, seeded or intentionally empty initialization metadata, owner-scoped activities including edited content/revisions/archive state/timestamps, and ordered progressions. Later schema tasks must extend the manifest and restore fixture for their own tables.
+- External boundary: [`doc/database-operations.md`](doc/database-operations.md) assigns scheduling, retention, protected backup storage, target provisioning, and restore execution to the data service. Database credentials, gateway sessions, JWT/JWKS trust, and deployment secrets are supplied anew; the stable internal owner binding must remain consistent with restored content.
+- Verification: the opt-in disposable PostgreSQL exercise creates distinct source and restore databases, captures an edited and archived 44-activity/110-progression seeded fixture, uses `pg_dump`/`pg_restore`, reconciles restricted runtime grants, and compares the restored manifest through the runtime role. It never targets retained data or provisions cloud infrastructure.

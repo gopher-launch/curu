@@ -46,8 +46,9 @@ The following stable interface classes are required. Their exact executable comm
 | Start | One foreground server command validates configuration, starts safely, reports coarse readiness, and shuts down gracefully; absent security configuration cannot expose private placeholder data. | CURU-002, CURU-015, constrained by CURU-014 | Root `README.md` and `doc/configuration.md` |
 | Migrate | A separate explicit command applies ordered forward migrations using schema-owner credentials; ordinary server startup only checks compatibility. | CURU-019 | `doc/database-operations.md` |
 | Bootstrap | A separate explicit command initializes either the versioned seed or an intentionally empty dataset and reports no-op/refusal outcomes; it is never server startup. | CURU-004 | `doc/database-operations.md` |
+| Recovery validation | A read-only command captures application-owned evidence for a fixed backup state and compares it with an isolated restore; the data service still executes and retains backups. | CURU-013 | `doc/database-operations.md` |
 
-Disposable reset is a separate, clearly named test/operator action restricted to an explicitly selected isolated target. Backup and restore are external-service operations paired with Curu compatibility and post-restore checks. None of migrate, bootstrap, reset, backup, or restore is an incidental web request.
+Disposable reset is a separate, clearly named test/operator action restricted to an explicitly selected isolated target. Backup and restore are external-service operations paired with Curu compatibility and exact application-data manifest comparison. None of migrate, bootstrap, recovery validation, reset, backup, or restore is an incidental web request.
 
 ## Configuration and deployment boundary
 

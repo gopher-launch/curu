@@ -8,7 +8,7 @@ Curu is a greenfield Go application for maintaining activities and planning prac
 - PostgreSQL
 - Docker or another OCI builder/runtime only when building the container
 
-The server requires the deployment's RFC 9068 issuer, resource audience, allowed algorithms, and HTTPS JWKS endpoint. Local authentication tests use generated keys and do not require a live identity provider. Database provisioning and migration are described in [`doc/database-operations.md`](doc/database-operations.md).
+The server requires the deployment's RFC 9068 issuer, resource audience, allowed algorithms, and HTTPS JWKS endpoint. Local authentication tests use generated keys and do not require a live identity provider. Database provisioning, migration, and isolated backup/restore verification are described in [`doc/database-operations.md`](doc/database-operations.md).
 
 ## Build, test, and start
 
@@ -62,6 +62,10 @@ go run ./cmd/curu-initialize --mode=seed
 ```
 
 For an intentionally empty installation, omit `CURU_OWNER_ID` and use `--mode=empty`. Completed exact retries report `already_initialized`; seed retries must supply the same owner UUID, seed identity, and seed version. A different owner or initialization choice, or unrecorded existing content, is refused. Initialization is never performed by migration or server startup. Required privileges, disposable verification, and isolated reset are documented in [`doc/database-operations.md`](doc/database-operations.md).
+
+## Verify a restored database
+
+`cmd/curu-recovery-check` captures a content-free manifest before an externally operated backup and compares an isolated restore with it. The container includes the same command at `/curu-recovery-check`. Exact commands, credential separation, supported schema, and the disposable `pg_dump`/`pg_restore` exercise are documented in [`doc/database-operations.md`](doc/database-operations.md). The command does not schedule backups, provision storage, restore over an existing database, or reconfigure gateway trust.
 
 ## Container
 

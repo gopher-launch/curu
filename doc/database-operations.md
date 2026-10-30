@@ -39,6 +39,39 @@ The command takes a PostgreSQL advisory lock, verifies the checksum and order of
 
 The initial schema contains owner-scoped activities, their ordered progressions, dataset-initialization metadata, archive timestamps, and positive revision tokens. Migration never seeds or replaces activities.
 
+## Backup and restore recovery
+
+The external data service owns backup scheduling, retention, protected storage, and restore execution. Curu supports recovery when the restored database has the exact migration history required by the application build. This build requires schema version 2; its application dataset consists of migration history, dataset-initialization metadata, activities (including owner, revision, archive, timestamps, and all coaching content), and ordered activity progressions. Later schema-owning tasks must extend the recovery manifest and disposable fixture for their tables.
+
+Before a backup exercise, capture an application manifest using a read-only runtime connection. The command uses one read-only repeatable-read transaction, so its own counts and digest represent a consistent state. Application writes must still be quiesced between that capture and the backup, or both must come from the same fixed provider snapshot clone. The command emits counts and a SHA-256 digest, not content, owner identifiers, or credentials:
+
+```sh
+CURU_RECOVERY_DATABASE_URL='postgres://curu_runtime:...@db.example/curu?sslmode=require' \
+go run ./cmd/curu-recovery-check > curu-recovery-manifest.json
+```
+
+Treat the manifest as operational recovery evidence. It is not a backup and should be retained with the corresponding backup identifier. Do not compare a live manifest with a backup taken after intervening saves.
+
+Restore only into a newly created, isolated empty database. Never use these example operations to overwrite a retained database. A provider's equivalent snapshot/restore operation may replace `pg_dump` and `pg_restore`; Curu does not provision the target:
+
+```sh
+pg_dump --format=custom --no-owner --no-privileges \
+  --file=curu.dump "$CURU_BACKUP_SOURCE_DATABASE_URL"
+pg_restore --exit-on-error --no-owner --no-privileges \
+  --dbname="$CURU_ISOLATED_RESTORE_DATABASE_URL" curu.dump
+```
+
+Use the target's migration-owner credential to run the documented migration command against the restored target. At the current schema version this verifies migration checksums and reconciles restricted runtime grants without changing application content. Then use a newly supplied target runtime credential to compare the restore with the source manifest:
+
+```sh
+CURU_RECOVERY_DATABASE_URL='postgres://curu_runtime:...@isolated-db.example/curu_restore?sslmode=require' \
+go run ./cmd/curu-recovery-check --expect=curu-recovery-manifest.json
+```
+
+A successful comparison proves exact preservation of every currently delivered application field, the initialization record, edited and archived content, ordered progressions, and migration history. It also proves that the restored runtime credential can read the supported schema. A mismatch or compatibility failure is a failed recovery exercise; do not promote that target.
+
+Database backups intentionally do not contain JWT signing trust, gateway sessions, database passwords, or deployment secrets. Supply those anew. Configure the restored deployment's owner binding with the stable internal owner UUID represented by the restored content; issuer/subject rebinding remains deployment configuration under the integration contract. Validate the gateway/JWKS and readiness separately before any promotion. Recovery does not rerun initialization or synchronize the seed over edited content.
+
 ## Initialize the dataset
 
 Provision a login role for the one-shot initializer without elevated attributes, role memberships, database or schema creation, or temporary-table access. After migration, the schema owner grants it only the implemented initialization surface (substitute the actual quoted role name):
@@ -85,10 +118,10 @@ The mandatory local suite skips the database integration case unless an explicit
 
 ```sh
 CURU_TEST_DATABASE_URL='postgres://postgres:...@127.0.0.1:5432/curu_test?sslmode=disable' \
-go test ./internal/database -run 'TestPostgres(MigrationAndRuntimeRestrictions|DatasetInitialization)' -count=1
+go test ./internal/database -run 'TestPostgres(MigrationAndRuntimeRestrictions|DatasetInitialization|BackupRestoreRecovery)' -count=1
 ```
 
-The tests change database-wide `PUBLIC` temporary privileges, drop and recreate the `curu` schema, and create disposable roles named with `curu_runtime_test` or `curu_initializer_test`; never point them at retained data. They prove the migration and runtime boundary plus the narrow initializer grants, fresh seed and empty initialization, same-owner no-op and different-owner refusal, concurrent serialization, rollback after a mid-seed failure, refusal of unrecorded content, and preservation of a coach edit through retry and startup compatibility. Cleanup restores the usual `PUBLIC` temporary privilege.
+The tests change database-wide `PUBLIC` temporary privileges, drop and recreate the `curu` schema, create disposable roles, and create and drop two isolated databases whose names start with `curu_recovery_`; never point them at retained data. The selected user therefore needs disposable role, schema, and database authority, and the recovery case requires `pg_dump` and `pg_restore` on `PATH`. The checks prove the migration/runtime boundary, narrow initializer grants, initialization safety, and a custom-format backup/restore that retains the exact edited and archived seeded dataset and initialization metadata. The restore is validated through the restricted runtime role. Cleanup restores the usual `PUBLIC` temporary privilege used by the schema/initialization fixtures; recovery databases remain isolated and are dropped.
 
 ## Reset a named disposable target
 
