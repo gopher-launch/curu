@@ -22,6 +22,7 @@ copied into a ConfigMap or rendered manifest.
 | `database.bundled`, `database.external` | Exactly one database mode. The selected mode must reference an existing Secret whose selected key contains the restricted runtime PostgreSQL URL. CDP-003 will provision the bundled service. |
 | `identity.bundled`, `identity.external` | Exactly one identity mode. Trust inputs remain explicit in either mode. CDP-005 will provision bundled identity and its private configuration. |
 | `resources` | Curu CPU and memory requests/limits. |
+| `podLabels`, `podAnnotations` | Optional pod metadata. `podLabels` cannot override the chart-owned `app.kubernetes.io/name` or `app.kubernetes.io/instance` selector labels. |
 
 The selected runtime database Secret is the only Secret consumed by this chart
 foundation. It must already exist in the release namespace. Migration,
@@ -46,6 +47,9 @@ The script runs strict lint and render checks for bundled and external modes,
 confirms the chart has no dependencies, and proves rejection of floating image,
 contradictory or absent mode, absent Secret-reference, missing trust,
 mismatched owner-issuer, and unknown values inputs.
+It also rejects either chart-owned selector label under `podLabels` while
+confirming that non-reserved custom labels render once without changing the
+Deployment selector.
 The exact underlying lint and render commands are:
 
 ```sh

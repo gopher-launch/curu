@@ -41,4 +41,10 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- if eq (include "curu.runtimeSecret" .) "" -}}
 {{- fail "the selected database mode requires a non-empty runtimeSecret.name" -}}
 {{- end -}}
+{{- if hasKey .Values.podLabels "app.kubernetes.io/name" -}}
+{{- fail "podLabels must not override chart-owned label app.kubernetes.io/name" -}}
+{{- end -}}
+{{- if hasKey .Values.podLabels "app.kubernetes.io/instance" -}}
+{{- fail "podLabels must not override chart-owned label app.kubernetes.io/instance" -}}
+{{- end -}}
 {{- end -}}

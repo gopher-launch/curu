@@ -32,6 +32,12 @@ assert_contains "${bundled_render}" 'readOnlyRootFilesystem: true' 'container ro
 assert_contains "${bundled_render}" 'type: ClusterIP' 'Curu Service remains internal'
 assert_contains "${bundled_render}" 'name: "curu-runtime-database-fixture"' 'bundled mode selects its existing Secret'
 assert_contains "${external_render}" 'name: "external-curu-runtime-database-fixture"' 'external mode selects its existing Secret'
+assert_contains "${bundled_render}" 'curu.gopher-launch.dev/environment: fixture' 'non-reserved custom pod label is retained'
+
+if [[ "$(grep -Fc 'curu.gopher-launch.dev/environment: fixture' <<<"${bundled_render}")" -ne 1 ]]; then
+  echo 'non-reserved custom pod label must render exactly once' >&2
+  exit 1
+fi
 
 if grep -Fq 'postgres://' <<<"${bundled_render}${external_render}"; then
   echo 'rendered fixture must not contain a database credential' >&2
@@ -67,5 +73,7 @@ expect_rejected 'selected database mode without a Secret reference' --set-string
 expect_rejected 'owner issuer differing from trusted issuer' --set-string owner.issuer=https://other.test.invalid/realms/curu
 expect_rejected 'missing required trust input' --set-string trust.jwksURL=
 expect_rejected 'unknown values key' --set-string runtime.authenticationBypass=true
+expect_rejected 'chart-owned pod name label override' --set-string 'podLabels.app\.kubernetes\.io/name=rogue'
+expect_rejected 'chart-owned pod instance label override' --set-string 'podLabels.app\.kubernetes\.io/instance=rogue'
 
 echo 'chart validation passed'
