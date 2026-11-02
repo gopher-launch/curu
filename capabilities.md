@@ -1,5 +1,13 @@
 # Delivered capabilities
 
+## Owned deployment chart foundation
+
+- Delivery: CDP-001
+- Chart boundary: [`deploy/helm/curu/`](deploy/helm/curu/) is a dependency-free, repository-owned Helm chart foundation. It renders one Curu Deployment and one internal `ClusterIP` Service; Postgres, identity, edge routing, operator Jobs, kind bootstrap, and end-to-end installation remain assigned to later deployment tasks.
+- Explicit configuration: the bounded values schema requires a pinned Curu image input, public origin, RFC 9068 trust, exact owner binding, resource settings, one database mode, and one identity mode. The selected restricted runtime database URL comes only from an existing Secret; migration, initialization, database-administration, and identity-administration credentials are not accepted by the runtime Deployment.
+- Restricted runtime: the pod uses the image's numeric non-root identity, a read-only root filesystem, dropped capabilities, the runtime-default seccomp profile, and no service-account token mount. Curu remains responsible for rejecting invalid runtime configuration and for schema/JWKS readiness; the chart does not introduce an authentication bypass or startup data operation.
+- Verification: the pinned Helm validation interface strictly lints and renders bundled/external fixtures, confirms the absence of chart dependencies and credentials in rendered examples, asserts the internal/restricted workload boundary, and rejects floating image, contradictory mode, missing Secret-reference, and mismatched owner-issuer inputs. This is render/configuration evidence only; it does not establish a live database, issuer, cluster, browser login, laptop result, or network-policy enforcement.
+
 ## Documentation baseline
 
 - Delivery: CURU-001

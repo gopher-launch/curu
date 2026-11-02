@@ -1,0 +1,70 @@
+# Curu image inputs are deliberately explicit and have no floating defaults.
+image:
+  repository: ""
+  tag: ""
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+replicaCount: 1
+
+service:
+  port: 8080
+
+runtime:
+  publicOrigin: ""
+  trustedProxyCIDRs: ""
+  loginURL: ""
+  logoutURL: ""
+  shutdownTimeout: 10s
+  readHeaderTimeout: 5s
+  idleTimeout: 60s
+
+trust:
+  profile: rfc9068
+  issuer: ""
+  audience: ""
+  jwksURL: ""
+  algorithms:
+    - RS256
+  clockSkew: 60s
+  maxLifetime: 15m
+  jwksFetchTimeout: 5s
+  jwksDefaultCacheTTL: 5m
+  jwksUnknownKIDRefreshInterval: 1m
+
+owner:
+  issuer: ""
+  subject: ""
+  id: ""
+
+database:
+  bundled:
+    enabled: true
+    runtimeSecret:
+      name: ""
+      key: database-url
+  external:
+    enabled: false
+    runtimeSecret:
+      name: ""
+      key: database-url
+
+identity:
+  bundled:
+    enabled: true
+  external:
+    enabled: false
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 32Mi
+  limits:
+    cpu: 250m
+    memory: 128Mi
+
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

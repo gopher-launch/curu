@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-This directory records the accepted deployment MVP design and its [implementation roadmap](roadmap.md). It does not yet contain a Helm chart, kind configuration, or deployment scripts. No Helm install command, running environment, browser trial, or network-isolation result is claimed by these documents. The next deployment Task is CDP-001.
+This directory records the accepted deployment MVP design and its [implementation roadmap](roadmap.md). The owned chart foundation now lives at [`helm/curu/`](helm/curu/), with only the Curu Deployment, internal Service, explicit configuration boundary, and render checks implemented. It does not yet contain kind configuration or deployment scripts. No Helm install command, running environment, browser trial, or network-isolation result is claimed. The next deployment Task is CDP-002.
 
 The first target is Chris's HP Ubuntu laptop running a single-node kind cluster. The objective is a reproducible, authenticated installation of the current activity library, with every runtime component deployed by an owned Helm chart. Paid services, hosted identity, public internet hosting, and cloud infrastructure are not prerequisites. Local HTTPS and the application's existing security checks remain part of ordinary development.
 
@@ -69,7 +69,15 @@ Persist database files outside an ephemeral kind node container using the bootst
 
 ## Operator interfaces and verification
 
-No deployment command is implemented yet. Each owning Task must add exact working commands to this README as it delivers an interface; planned workflow names are not executable commands.
+The chart validation command below is implemented. Each later owning Task must add exact working commands to this README as it delivers an interface; planned workflow names remain non-executable until then.
+
+From the repository root, with Helm `v4.2.4`, run:
+
+```sh
+deploy/helm/curu/tests/validate.sh
+```
+
+The check uses pinned, non-runnable `.invalid` fixture image inputs to lint and render the bundled and external configuration modes, assert the dependency-free chart boundary, and reject contradictory or incomplete security-sensitive selections. Exact individual commands and the values contract are documented in the [chart README](helm/curu/README.md). This is manifest/configuration evidence only, not a live component or browser result.
 
 | Planned interface | Owning Tasks | Required result |
 | --- | --- | --- |

@@ -1,0 +1,29 @@
+{{- include "curu.validate" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "curu.fullname" . }}-runtime
+  labels:
+    {{- include "curu.labels" . | nindent 4 }}
+data:
+  CURU_LISTEN_ADDRESS: {{ printf "0.0.0.0:%d" (.Values.service.port | int) | quote }}
+  CURU_SHUTDOWN_TIMEOUT: {{ .Values.runtime.shutdownTimeout | quote }}
+  CURU_READ_HEADER_TIMEOUT: {{ .Values.runtime.readHeaderTimeout | quote }}
+  CURU_IDLE_TIMEOUT: {{ .Values.runtime.idleTimeout | quote }}
+  CURU_JWT_PROFILE: {{ .Values.trust.profile | quote }}
+  CURU_JWT_ISSUER: {{ .Values.trust.issuer | quote }}
+  CURU_JWT_AUDIENCE: {{ .Values.trust.audience | quote }}
+  CURU_JWKS_URL: {{ .Values.trust.jwksURL | quote }}
+  CURU_JWT_ALGORITHMS: {{ join "," .Values.trust.algorithms | quote }}
+  CURU_JWT_CLOCK_SKEW: {{ .Values.trust.clockSkew | quote }}
+  CURU_JWT_MAX_LIFETIME: {{ .Values.trust.maxLifetime | quote }}
+  CURU_JWKS_FETCH_TIMEOUT: {{ .Values.trust.jwksFetchTimeout | quote }}
+  CURU_JWKS_DEFAULT_CACHE_TTL: {{ .Values.trust.jwksDefaultCacheTTL | quote }}
+  CURU_JWKS_UNKNOWN_KID_REFRESH_INTERVAL: {{ .Values.trust.jwksUnknownKIDRefreshInterval | quote }}
+  CURU_OWNER_ISSUER: {{ .Values.owner.issuer | quote }}
+  CURU_OWNER_SUBJECT: {{ .Values.owner.subject | quote }}
+  CURU_OWNER_ID: {{ .Values.owner.id | quote }}
+  CURU_PUBLIC_ORIGIN: {{ .Values.runtime.publicOrigin | quote }}
+  CURU_TRUSTED_PROXY_CIDRS: {{ .Values.runtime.trustedProxyCIDRs | quote }}
+  CURU_LOGIN_URL: {{ .Values.runtime.loginURL | quote }}
+  CURU_LOGOUT_URL: {{ .Values.runtime.logoutURL | quote }}

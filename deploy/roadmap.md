@@ -25,7 +25,7 @@ The deployment baseline is documented in [README.md](README.md). These documents
 ## Selection and reconciliation
 
 - Select one bounded `Kind: task` entry from this roadmap. Do not infer deployment task selection from the root roadmap or assume a runner selects this file automatically.
-- CDP-001 is initially the only ready deployment Task. Other Tasks remain planned. After reviewing a delivered prerequisite, promote the next core Task only when its concrete inputs and acceptance are satisfied. Optional/follow-up Tasks require deliberate selection; they never become a gate on the core milestone merely because their prerequisites are delivered.
+- CDP-001 delivered the owned chart and configuration boundary. CDP-002 is the next ready deployment Task; later Tasks remain planned. After reviewing a delivered prerequisite, promote the next core Task only when its concrete inputs and acceptance are satisfied. Optional/follow-up Tasks require deliberate selection; they never become a gate on the core milestone merely because their prerequisites are delivered.
 - `Depends on` references are confined to this roadmap. Existing application capabilities are source/contract prerequisites, not duplicated Tasks or unresolved cross-roadmap dependency IDs. Application changes need explicitly bounded scope in their owning workstream.
 - Preserve IDs. Reconcile affected templates, README interfaces, guidance, and roadmap readiness in the same candidate. Split oversized Tasks before widening execution scope. No task is delivered because it appears here or because manifests render.
 - Use disposable resources for destructive tests. Routine validation needs no paid provider or real retained-data reset. Keep operational progress, review verdicts, and pending integration notes in external records.
@@ -44,33 +44,13 @@ The selected application image supplies the HTTP server plus `/curu-migrate`, `/
 
 D1 includes actual target-browser acceptance, distinct from automated disposable-cluster verification. Phone acceptance is recorded only if performed. Neither optional row is a prerequisite for D1, and D1 does not claim a hosted or fully isolated production deployment.
 
-## CDP-001 — Establish the owned Helm chart and configuration boundary
+## CDP-002 — Prepare reproducible kind, storage, and local HTTPS inputs
 
 - Kind: task
 - Status: ready
 - Priority: high
 - Parent: none
 - Depends on: none
-
-**Objective:** Create a small chart foundation that later component Tasks can extend without changing the accepted ownership and security boundaries.
-
-**Acceptance criteria:**
-
-- Create `deploy/helm/curu/` with chart metadata, owned helpers/templates, values documentation, a bounded values schema, and exact lint/render commands. Include the Curu Deployment and internal Service using the existing image/runtime interface; later components are not claimed runnable yet.
-- Define image/version inputs, explicit internal listener/public origin, trust/owner configuration, resource settings, and Secret/configuration references without committing credentials or adding an authentication bypass. Pin selected tooling and test image inputs; publish no floating image defaults.
-- Establish bundled/external Postgres and identity configuration modes and reject contradictory selections. External Secret references are supported; later Tasks own bundled component provisioning. Keep chart dependencies empty and avoid cluster operators or gateway controllers.
-- Use non-root/restricted Curu settings and disable unnecessary service-account token mounts. Preserve required Curu startup validation rather than supplying insecure defaults.
-- Add meaningful render/configuration rejection checks that later Tasks extend; reconcile README with implemented paths and commands only.
-
-**Verification:** Helm lint/render with disposable placeholder inputs, invalid configuration rejection, bundled/external render cases, and a check for absent chart dependencies. No live application, identity, database, or laptop-browser result is required or claimed.
-
-## CDP-002 — Prepare reproducible kind, storage, and local HTTPS inputs
-
-- Kind: task
-- Status: planned
-- Priority: high
-- Parent: none
-- Depends on: CDP-001
 
 **Objective:** Establish the local host/cluster boundary without introducing a second deployment topology.
 
@@ -244,4 +224,4 @@ D1 includes actual target-browser acceptance, distinct from automated disposable
 
 ## Next task boundary
 
-CDP-001 is the only ready deployment Task. It establishes chart/configuration/render interfaces, not the entire deployment. CDP-002 through CDP-008 remain the core planned implementation sequence; CDP-009 and CDP-010 are optional/follow-up work. Application readiness continues to be managed independently in the root roadmap.
+CDP-002 is the only ready deployment Task. CDP-001 delivered chart/configuration/render interfaces, not an entire deployment. CDP-003 through CDP-008 remain the core planned implementation sequence; CDP-009 and CDP-010 are optional/follow-up work. Application readiness continues to be managed independently in the root roadmap.

@@ -1,0 +1,25 @@
+image:
+  repository: registry.example.invalid/curu
+  tag: "1959b2d24efa30455ebc60b9bef4b15930c9fab2"
+runtime:
+  publicOrigin: https://curu.test.invalid
+trust:
+  issuer: https://identity.external.invalid/realms/curu
+  audience: curu
+  jwksURL: https://identity.external.invalid/realms/curu/protocol/openid-connect/certs
+owner:
+  issuer: https://identity.external.invalid/realms/curu
+  subject: owner-fixture
+  id: 00000000-0000-4000-8000-000000000001
+database:
+  bundled:
+    enabled: false
+  external:
+    enabled: true
+    runtimeSecret:
+      name: external-curu-runtime-database-fixture
+identity:
+  bundled:
+    enabled: false
+  external:
+    enabled: true

@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["image", "replicaCount", "service", "runtime", "trust", "owner", "database", "identity", "resources"],
+  "properties": {
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "tag", "pullPolicy", "pullSecrets"],
+      "properties": {
+        "repository": {"type": "string", "minLength": 1},
+        "tag": {"type": "string", "minLength": 1, "not": {"enum": ["latest"]}},
+        "pullPolicy": {"type": "string", "enum": ["Always", "IfNotPresent", "Never"]},
+        "pullSecrets": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        }
+      }
+    },
+    "replicaCount": {"type": "integer", "minimum": 1, "maximum": 1},
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["port"],
+      "properties": {"port": {"type": "integer", "minimum": 1024, "maximum": 65535}}
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["publicOrigin", "trustedProxyCIDRs", "loginURL", "logoutURL", "shutdownTimeout", "readHeaderTimeout", "idleTimeout"],
+      "properties": {
+        "publicOrigin": {"type": "string", "pattern": "^https://[^/]+$"},
+        "trustedProxyCIDRs": {"type": "string"},
+        "loginURL": {"type": "string", "pattern": "^(|https://.+)$"},
+        "logoutURL": {"type": "string", "pattern": "^(|https://.+)$"},
+        "shutdownTimeout": {"type": "string", "minLength": 1},
+        "readHeaderTimeout": {"type": "string", "minLength": 1},
+        "idleTimeout": {"type": "string", "minLength": 1}
+      }
+    },
+    "trust": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "issuer", "audience", "jwksURL", "algorithms", "clockSkew", "maxLifetime", "jwksFetchTimeout", "jwksDefaultCacheTTL", "jwksUnknownKIDRefreshInterval"],
+      "properties": {
+        "profile": {"type": "string", "enum": ["rfc9068"]},
+        "issuer": {"type": "string", "pattern": "^https://.+"},
+        "audience": {"type": "string", "minLength": 1},
+        "jwksURL": {"type": "string", "pattern": "^https://.+"},
+        "algorithms": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "enum": ["RS256", "ES256"]}
+        },
+        "clockSkew": {"type": "string", "minLength": 1},
+        "maxLifetime": {"type": "string", "minLength": 1},
+        "jwksFetchTimeout": {"type": "string", "minLength": 1},
+        "jwksDefaultCacheTTL": {"type": "string", "minLength": 1},
+        "jwksUnknownKIDRefreshInterval": {"type": "string", "minLength": 1}
+      }
+    },
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["issuer", "subject", "id"],
+      "properties": {
+        "issuer": {"type": "string", "pattern": "^https://.+"},
+        "subject": {"type": "string", "minLength": 1},
+        "id": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"}
+      }
+    },
+    "database": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bundled", "external"],
+      "properties": {
+        "bundled": {"$ref": "#/definitions/databaseMode"},
+        "external": {"$ref": "#/definitions/databaseMode"}
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "bundled": {"properties": {"enabled": {"const": true}}},
+            "external": {"properties": {"enabled": {"const": false}}}
+          }
+        },
+        {
+          "properties": {
+            "bundled": {"properties": {"enabled": {"const": false}}},
+            "external": {"properties": {"enabled": {"const": true}}}
+          }
+        }
+      ]
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bundled", "external"],
+      "properties": {
+        "bundled": {"$ref": "#/definitions/enabledMode"},
+        "external": {"$ref": "#/definitions/enabledMode"}
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "bundled": {"properties": {"enabled": {"const": true}}},
+            "external": {"properties": {"enabled": {"const": false}}}
+          }
+        },
+        {
+          "properties": {
+            "bundled": {"properties": {"enabled": {"const": false}}},
+            "external": {"properties": {"enabled": {"const": true}}}
+          }
+        }
+      ]
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requests", "limits"],
+      "properties": {
+        "requests": {"$ref": "#/definitions/resourceList"},
+        "limits": {"$ref": "#/definitions/resourceList"}
+      }
+    },
+    "podAnnotations": {"type": "object"},
+    "podLabels": {"type": "object"},
+    "nodeSelector": {"type": "object"},
+    "tolerations": {"type": "array"},
+    "affinity": {"type": "object"}
+  },
+  "definitions": {
+    "secretReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "key"],
+      "properties": {
+        "name": {"type": "string"},
+        "key": {"type": "string", "minLength": 1}
+      }
+    },
+    "databaseMode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "runtimeSecret"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "runtimeSecret": {"$ref": "#/definitions/secretReference"}
+      }
+    },
+    "enabledMode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled"],
+      "properties": {"enabled": {"type": "boolean"}}
+    },
+    "resourceList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cpu", "memory"],
+      "properties": {
+        "cpu": {"type": "string", "minLength": 1},
+        "memory": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

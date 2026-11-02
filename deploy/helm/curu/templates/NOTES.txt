@@ -1,0 +1,3 @@
+CDP-001 renders only the Curu Deployment and its internal ClusterIP Service.
+Bundled Postgres, bundled identity, operator Jobs, local HTTPS, and browser routing
+are intentionally not implemented by this chart foundation.
