@@ -1,7 +1,7 @@
 ---
 version: 1
 project: curu-deploy
-updated: 2026-11-01
+updated: 2026-11-03
 ---
 
 # Curu deployment roadmap
@@ -25,7 +25,7 @@ The deployment baseline is documented in [README.md](README.md). These documents
 ## Selection and reconciliation
 
 - Select one bounded `Kind: task` entry from this roadmap. Do not infer deployment task selection from the root roadmap or assume a runner selects this file automatically.
-- CDP-001 delivered the owned chart and configuration boundary. CDP-002 is the next ready deployment Task; later Tasks remain planned. After reviewing a delivered prerequisite, promote the next core Task only when its concrete inputs and acceptance are satisfied. Optional/follow-up Tasks require deliberate selection; they never become a gate on the core milestone merely because their prerequisites are delivered.
+- CDP-001 delivered the owned chart and configuration boundary, and CDP-002 delivered the reproducible local kind, storage, image, name, and trust inputs. CDP-003 is the next ready deployment Task; later core Tasks remain planned. After reviewing a delivered prerequisite, promote the next core Task only when its concrete inputs and acceptance are satisfied. Optional/follow-up Tasks require deliberate selection; they never become a gate on the core milestone merely because their prerequisites are delivered.
 - `Depends on` references are confined to this roadmap. Existing application capabilities are source/contract prerequisites, not duplicated Tasks or unresolved cross-roadmap dependency IDs. Application changes need explicitly bounded scope in their owning workstream.
 - Preserve IDs. Reconcile affected templates, README interfaces, guidance, and roadmap readiness in the same candidate. Split oversized Tasks before widening execution scope. No task is delivered because it appears here or because manifests render.
 - Use disposable resources for destructive tests. Routine validation needs no paid provider or real retained-data reset. Keep operational progress, review verdicts, and pending integration notes in external records.
@@ -44,33 +44,13 @@ The selected application image supplies the HTTP server plus `/curu-migrate`, `/
 
 D1 includes actual target-browser acceptance, distinct from automated disposable-cluster verification. Phone acceptance is recorded only if performed. Neither optional row is a prerequisite for D1, and D1 does not claim a hosted or fully isolated production deployment.
 
-## CDP-002 — Prepare reproducible kind, storage, and local HTTPS inputs
+## CDP-003 — Provision bundled Postgres and separated database authority
 
 - Kind: task
 - Status: ready
 - Priority: high
 - Parent: none
 - Depends on: none
-
-**Objective:** Establish the local host/cluster boundary without introducing a second deployment topology.
-
-**Acceptance criteria:**
-
-- Add versioned single-node kind configuration under `deploy/kind/` and a bounded bootstrap interface under `deploy/scripts/`. Document Ubuntu/container-runtime/tool prerequisites and collect explicit host storage and resource inputs instead of assuming the laptop's capacity.
-- Configure edge-only host port mappings, an explicit Kubernetes context/namespace, and a repeatable application image build/load path. Avoid exposing Kubernetes administration or backend ports to the LAN as an incidental default.
-- Supply stable local application and identity names, certificate/Secret inputs, and a local CA trust workflow for the laptop browser and in-cluster clients. Keep the CA private key outside workloads; do not use TLS verification skips. The bootstrap must make any host trust changes explicit.
-- Establish persistent laptop storage mounted into kind, with documented retention and reattachment behavior on pod restart, release removal, and cluster recreation. Keep destructive reset separate from ordinary bootstrap/teardown.
-- Record private-hop assumptions and NetworkPolicy enforcement as unverified unless actually exercised. Do not install a replacement CNI as a mandatory dependency or block this Task on isolation verification.
-
-**Verification:** Repeated disposable cluster creation, expected port/mount configuration, persistence of a disposable volume marker across the documented lifecycle, and representative host/pod HTTPS trust and resolution checks. Component-specific issuer routing is completed by CDP-005/CDP-006; no library login is claimed here.
-
-## CDP-003 — Provision bundled Postgres and separated database authority
-
-- Kind: task
-- Status: planned
-- Priority: high
-- Parent: none
-- Depends on: CDP-002
 
 **Objective:** Supply a persistent local data service with the roles required by Curu and Keycloak, while supporting an external database service.
 
@@ -209,7 +189,7 @@ D1 includes actual target-browser acceptance, distinct from automated disposable
 - Status: planned
 - Priority: low
 - Parent: none
-- Depends on: CDP-002
+- Depends on: none
 
 **Objective:** Exercise actual policy enforcement separately from the accepted local-development milestone.
 
@@ -224,4 +204,4 @@ D1 includes actual target-browser acceptance, distinct from automated disposable
 
 ## Next task boundary
 
-CDP-002 is the only ready deployment Task. CDP-001 delivered chart/configuration/render interfaces, not an entire deployment. CDP-003 through CDP-008 remain the core planned implementation sequence; CDP-009 and CDP-010 are optional/follow-up work. Application readiness continues to be managed independently in the root roadmap.
+CDP-003 is the only ready deployment Task. CDP-001 delivered chart/configuration/render interfaces and CDP-002 delivered the local cluster boundary, not an entire deployment. CDP-004 through CDP-008 remain the core planned implementation sequence; CDP-009 and CDP-010 are optional/follow-up work and stay planned even though CDP-010's dependency is satisfied. Application readiness continues to be managed independently in the root roadmap.

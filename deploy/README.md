@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-This directory records the accepted deployment MVP design and its [implementation roadmap](roadmap.md). The owned chart foundation now lives at [`helm/curu/`](helm/curu/), with only the Curu Deployment, internal Service, explicit configuration boundary, and render checks implemented. It does not yet contain kind configuration or deployment scripts. No Helm install command, running environment, browser trial, or network-isolation result is claimed. The next deployment Task is CDP-002.
+This directory records the accepted deployment MVP design and its [implementation roadmap](roadmap.md). The owned chart foundation lives at [`helm/curu/`](helm/curu/), and the local cluster interface lives at [`kind/`](kind/) and [`scripts/`](scripts/). The chart still contains only the Curu Deployment, internal Service, explicit configuration boundary, and render checks; the kind interface establishes the host/cluster, image, storage, name, and trust inputs used by later component Tasks. No Helm install, identity provider, browser login, or network-isolation result is claimed. The next deployment Task is CDP-003.
 
 The first target is Chris's HP Ubuntu laptop running a single-node kind cluster. The objective is a reproducible, authenticated installation of the current activity library, with every runtime component deployed by an owned Helm chart. Paid services, hosted identity, public internet hosting, and cloud infrastructure are not prerequisites. Local HTTPS and the application's existing security checks remain part of ordinary development.
 
@@ -28,7 +28,7 @@ NGINX is an ordinary chart-owned reverse proxy, not the community ingress-nginx 
 
 - Define every bundled component and operator Job directly in this repository's templates. No vendor or other third-party subcharts, transitive chart dependencies, or bootstrap downloads of component charts are allowed. Upstream container images are allowed.
 - Pin tool, image, and chart-release inputs to reviewed versions; do not use floating `latest` references. Record the Curu source revision and selected image identity with deployment evidence. The owning Tasks select concrete compatible versions and publish exact executable commands.
-- Keep kind configuration in `deploy/kind/` and operator automation in `deploy/scripts/`. These are intended locations, not currently implemented interfaces. Bootstrap creates/configures the cluster and host prerequisites; Helm deploys the runtime components.
+- Keep kind configuration in `deploy/kind/` and operator automation in `deploy/scripts/`. Bootstrap creates/configures the cluster and host prerequisites; Helm deploys the runtime components.
 - Define a bounded values schema, with explicit configuration and existing Secret references for external Postgres or identity. Validate inconsistent bundled/external selections before a deployment can expose Curu. Keep cloud-provider configuration outside application/domain code.
 - Generate development secrets once or accept operator-supplied Secrets. Reuse them on ordinary upgrades; never regenerate database passwords, OAuth client credentials, session keys, or owner bindings implicitly. Keep secrets out of committed values, rendered examples, routine logs, and command output. A Kubernetes Secret is not itself an encryption-at-rest guarantee.
 - Do not mount a service-account API token into workloads that do not need Kubernetes API access. Use narrowly scoped RBAC only where an operator workflow needs it, and apply non-root/restricted container settings compatible with the selected images.
@@ -67,9 +67,156 @@ External-database mode must support explicit endpoints, database names, Secret r
 
 Persist database files outside an ephemeral kind node container using the bootstrap's named laptop-storage input. Document pod restart, release removal/reinstall, cluster recreation, and explicit data deletion separately, including any manual volume reattachment required. Recreating a cluster or upgrading a chart must not authorize wiping that storage. Persistence is not backup or host-failure recovery.
 
+## Local kind boundary
+
+### Prerequisites and explicit inputs
+
+The implemented interface targets an x86-64 Ubuntu laptop with Docker Engine.
+It requires Docker with a running daemon, kind `v0.30.0`, kubectl `v1.34.1`,
+OpenSSL, curl, and standard Ubuntu `sudo`/`update-ca-certificates` commands for
+the optional host-trust change. Helm `v4.2.4` remains the chart-validation
+version. The disposable acceptance run used Docker Engine `29.2.0` and OpenSSL
+`3.5.5`; those versions record evidence rather than impose an unneeded exact
+runtime check. Bootstrap pins the kind node to Kubernetes `v1.34.0` by digest
+and refuses different kind/kubectl client versions.
+
+Choose these inputs deliberately before bootstrap:
+
+- an absolute host directory on storage intended to survive cluster deletion;
+- the capacity to declare for the retained local PV (this is scheduling
+  metadata and does not manufacture or reserve laptop disk space);
+- Docker CPU and memory limits that fit the laptop; and
+- the loopback HTTPS port, `8443` by default.
+
+For example, from the repository root:
+
+```sh
+deploy/scripts/bootstrap-kind.sh \
+  --storage-dir /srv/curu-kind \
+  --storage-capacity 20Gi \
+  --cpus 4 \
+  --memory 6g \
+  --https-port 8443
+```
+
+The fixed cluster is `curu-local`, its explicit context is `kind-curu-local`,
+and its default namespace is `curu-system`. Bootstrap makes that namespace the
+context default, but every repository command still supplies the context and
+namespace. The Kubernetes API uses kind's random loopback port. The only fixed
+workload mapping is `127.0.0.1:8443` to the future edge NodePort `30443`; no
+backend or administration port is mapped to the LAN.
+
+Build the current checkout and load a source-bound, non-floating image into the
+node:
+
+```sh
+deploy/scripts/load-curu-image.sh
+```
+
+The default image is `curu:<full-git-commit>`. `--image` selects another tagged,
+non-`latest` local name, and `--no-build` reloads an already inspected local
+image. The loader refuses dirty application build inputs and requires the
+image's source-revision label to equal the checkout commit. A later chart
+values file must use the selected name with an appropriate local pull policy;
+loading an image does not install Curu.
+
+### Local names and HTTPS trust
+
+The stable browser/application name is `curu.test`; the stable identity name is
+`identity.curu.test`. Bootstrap configures in-cluster DNS to resolve both names
+to the future `curu-edge.curu-system.svc.cluster.local` Service. CDP-005 and
+CDP-006 still own component-specific issuer and edge routing.
+
+Keep local PKI outside the repository and retained workload directory:
+
+```sh
+deploy/scripts/prepare-local-tls.sh \
+  --pki-dir /home/chris/.local/share/curu/pki
+```
+
+The command creates the CA once and reuses complete existing material. It
+refuses a partial PKI instead of rotating implicitly. The host retains
+`ca.key`; workloads receive only the leaf key/certificate in Secret
+`curu-system/curu-local-edge-tls` and public `ca.crt` in ConfigMap
+`curu-system/curu-local-ca`. Both names are certificate SANs and are verified
+before those inputs are applied. CA renewal/rotation is an explicit operator
+operation and must be coordinated with host and workload trust.
+
+Review the generated CA fingerprint, then explicitly install the managed host
+names and CA in Ubuntu's system trust store:
+
+```sh
+deploy/scripts/configure-host-trust.sh install \
+  --ca-cert /home/chris/.local/share/curu/pki/ca.crt
+```
+
+This is the only bootstrap operation that invokes `sudo`; it reports that it
+changes `/etc/hosts` and `/usr/local/share/ca-certificates` before the operator
+runs it. Browsers with a private trust store require a separate explicit CA
+import. After CDP-006 supplies the edge on the default port, verify host
+resolution and trust with:
+
+```sh
+deploy/scripts/configure-host-trust.sh check \
+  --ca-cert /home/chris/.local/share/curu/pki/ca.crt \
+  --https-port 8443
+```
+
+Use `configure-host-trust.sh remove` to remove only the managed hosts line and
+Ubuntu CA file; remove any browser-private import separately. No command uses a
+TLS verification skip.
+
+### Storage and teardown lifecycle
+
+The host directory is mounted at `/var/local-path-provisioner` in the kind
+node. Bootstrap creates the `curu-local-retained` no-provisioner StorageClass
+and the `curu-local-data` PV at stable node path
+`/var/local-path-provisioner/curu-data`, with reclaim policy `Retain`. CDP-003
+will bind the database claim to that PV.
+
+| Event | Retention and reattachment |
+| --- | --- |
+| Pod restart or replacement | The same bound claim and host directory remain. |
+| Helm release removal | The retained PV/host data are not an instruction to delete data; claim ownership and keep policy are completed by the owning component Task. |
+| `delete-kind-cluster.sh` | Kubernetes objects disappear with the node, but the marked host directory and PKI remain. Rerunning bootstrap with the same host directory recreates the PV; the later component claim must bind the same stable PV/path. |
+| Host failure or disk loss | Not covered. Local persistence is not a backup. |
+
+Ordinary teardown is deliberately non-destructive:
+
+```sh
+deploy/scripts/delete-kind-cluster.sh
+```
+
+Only after cluster deletion, erase retained workload data with the separately
+named and confirmed operation:
+
+```sh
+deploy/scripts/reset-kind-storage.sh \
+  --storage-dir /srv/curu-kind \
+  --confirm-curu-local-data-loss
+```
+
+The reset refuses an unmarked directory or a running `curu-local` cluster. It
+uses the already-pinned kind node image so it can remove database files owned
+by container UIDs, preserves the directory marker, and irreversibly deletes
+retained workload data below that exact directory. It does not remove PKI or
+host trust.
+
+### Local security qualification
+
+The laptop administrator, Docker daemon, kind node, and pod network are trusted
+for this local topology. The future NGINX edge is the only host-facing workload
+and will be Curu's immediate trusted proxy. ClusterIP Services and loopback
+mapping limit incidental exposure but do not prove pod isolation or protect an
+administrator-controlled node. kind's default CNI is retained; NetworkPolicy
+enforcement was not exercised and remains explicitly unverified. This local
+qualification neither relaxes Curu JWT/owner checks and HTTPS verification nor
+establishes a hosted-production boundary. CDP-010 owns actual enforcement
+evidence.
+
 ## Operator interfaces and verification
 
-The chart validation command below is implemented. Each later owning Task must add exact working commands to this README as it delivers an interface; planned workflow names remain non-executable until then.
+The chart and kind validation commands below are implemented. Each later owning Task must add exact working commands to this README as it delivers an interface; planned workflow names remain non-executable until then.
 
 From the repository root, with Helm `v4.2.4`, run:
 
@@ -79,10 +226,38 @@ deploy/helm/curu/tests/validate.sh
 
 The check uses pinned, non-runnable `.invalid` fixture image inputs to lint and render the bundled and external configuration modes, assert the dependency-free chart boundary, and reject contradictory or incomplete security-sensitive selections. Exact individual commands and the values contract are documented in the [chart README](helm/curu/README.md). This is manifest/configuration evidence only, not a live component or browser result.
 
+Validate scripts and static exposure/storage invariants without creating a
+cluster:
+
+```sh
+deploy/scripts/validate-kind.sh
+```
+
+Exercise two disposable cluster creations, image build/load, port and mount
+configuration, a marker across pod and cluster recreation, and representative
+host/pod HTTPS trust and name resolution:
+
+```sh
+check_root=$(mktemp -d /tmp/curu-kind-check.XXXXXX)
+deploy/scripts/verify-kind-disposable.sh \
+  --storage-dir "$check_root/storage" \
+  --pki-dir "$check_root/pki" \
+  --storage-capacity 2Gi \
+  --cpus 2 \
+  --memory 3g \
+  --https-port 18443
+```
+
+The live check refuses an existing `curu-local` cluster or non-empty supplied
+directories, uses pinned verification images, deletes its cluster, and retains
+the disposable host directories for inspection/removal by the operator. Its
+temporary TLS edge proves bootstrap inputs only; it is not the CDP-006 gateway
+and makes no login or library claim.
+
 | Planned interface | Owning Tasks | Required result |
 | --- | --- | --- |
 | Validate/render chart | CDP-001, extended by later chart Tasks | Lint, render, reject inconsistent inputs, and check bundled/external configurations |
-| Prepare local cluster and trust | CDP-002 | Versioned kind, port/storage configuration, certificates, and documented trust steps |
+| Prepare local cluster and trust | CDP-002 | Implemented versioned kind, port/storage configuration, certificates, trust steps, and disposable checks |
 | Prepare data service | CDP-003 | Ready Postgres and appropriately separated database authority |
 | Migrate and initialize | CDP-004 | Explicit, bounded Jobs with safe retry/refusal behavior |
 | Configure identity | CDP-005 | Repeatable realm/client/owner setup and compatible tokens |

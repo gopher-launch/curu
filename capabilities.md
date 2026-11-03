@@ -1,5 +1,13 @@
 # Delivered capabilities
 
+## Reproducible local kind and trust inputs
+
+- Delivery: CDP-002
+- Host/cluster boundary: the versioned single-node kind template and bounded scripts create fixed cluster `curu-local`, explicit context `kind-curu-local`, and namespace `curu-system` from required host storage, declared PV capacity, CPU, and memory inputs. The pinned Kubernetes node maps only future edge NodePort `30443` to a configurable host-loopback HTTPS port; kind administration remains loopback-only and backend ports are not published.
+- Image and persistence: the image loader builds the current repository revision into a non-floating local Curu image and loads it into the named node. The marked host directory backs stable retained PV `curu-local-data`; ordinary cluster deletion retains host data, while a separate confirmed reset refuses a running cluster or unmarked directory. This is laptop persistence, not backup or host-failure recovery.
+- Local HTTPS inputs: stable `curu.test` and `identity.curu.test` names resolve on the host through an explicit managed hosts change and in-cluster through the future `curu-edge` Service. PKI preparation creates/reuses a host-held local CA, verifies both certificate names, uploads only the leaf TLS key/certificate and public CA, and provides explicit Ubuntu trust install/check/removal steps without disabling verification.
+- Verification and qualification: static checks reject invalid resource/storage inputs and assert loopback exposure/retention. The disposable live check exercises two cluster creations, source image build/load and reload, expected Docker port/mount configuration, marker retention across pod and cluster recreation, and CA-verified HTTPS from both the host and a pod. NetworkPolicy enforcement remains unverified; the laptop administrator, Docker/kind node, and pod network are the trusted local boundary. No database, issuer, gateway login, library access, LAN exposure, or target-laptop acceptance is claimed.
+
 ## Owned deployment chart foundation
 
 - Delivery: CDP-001

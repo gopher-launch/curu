@@ -1,0 +1,26 @@
+# Rendered by deploy/scripts/bootstrap-kind.sh.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: curu-local-retained
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Retain
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: curu-local-data
+  labels:
+    app.kubernetes.io/part-of: curu
+    curu.local/storage: retained
+spec:
+  capacity:
+    storage: __STORAGE_CAPACITY__
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: curu-local-retained
+  hostPath:
+    path: /var/local-path-provisioner/curu-data
+    type: DirectoryOrCreate

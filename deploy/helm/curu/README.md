@@ -1,9 +1,11 @@
 # Curu Helm chart
 
 This is the repository-owned Helm chart for Curu. CDP-001 supplies only the
-Curu Deployment and an internal `ClusterIP` Service. It does not yet provision
-Postgres, Keycloak, NGINX, OAuth2 Proxy, migration/initialization Jobs, local
-TLS, or a runnable end-to-end installation.
+Curu Deployment and an internal `ClusterIP` Service. CDP-002 supplies the
+separate local kind/image/storage/name/trust bootstrap described in
+[`../../README.md`](../../README.md), but does not add chart components. The
+chart does not yet provision Postgres, Keycloak, NGINX, OAuth2 Proxy,
+migration/initialization Jobs, or a runnable end-to-end installation.
 
 ## Required inputs
 
@@ -30,8 +32,8 @@ initialization, database-administration, and identity-administration
 credentials are deliberately not accepted by the Curu Deployment.
 
 The fixture image repository uses the reserved `.invalid` domain and is a
-render-only input. It cannot be pulled. A real installation must bind an image
-built from the recorded source revision; lifecycle automation is owned by later
+render-only input. It cannot be pulled. The CDP-002 image loader builds and
+loads a source-bound local image, but installing it remains owned by later
 tasks.
 
 ## Validation
