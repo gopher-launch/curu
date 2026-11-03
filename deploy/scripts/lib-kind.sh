@@ -84,6 +84,40 @@ curu_validate_capacity() {
   fi
 }
 
+curu_prepare_storage_dir() {
+  local storage_dir=$1 marker
+  marker="${storage_dir}/.curu-kind-storage"
+
+  if [[ -L "${storage_dir}" ]]; then
+    printf 'storage directory must not be a symbolic link: %s\n' "${storage_dir}" >&2
+    return 1
+  fi
+  if [[ -e "${storage_dir}" && ! -d "${storage_dir}" ]]; then
+    printf 'storage path is not a directory: %s\n' "${storage_dir}" >&2
+    return 1
+  fi
+  if [[ ! -e "${storage_dir}" ]]; then
+    install -d -m 0750 -- "${storage_dir}"
+  fi
+
+  if [[ -e "${marker}" || -L "${marker}" ]]; then
+    if [[ ! -f "${marker}" || -L "${marker}" ]] || \
+       [[ "$(cat -- "${marker}")" != "${CURU_CLUSTER_NAME}" ]]; then
+      printf 'storage marker does not belong to %s: %s\n' "${CURU_CLUSTER_NAME}" "${storage_dir}" >&2
+      return 1
+    fi
+    return 0
+  fi
+
+  if find "${storage_dir}" -mindepth 1 -maxdepth 1 -print -quit | grep -q .; then
+    printf 'refusing to claim non-empty unmarked storage directory: %s\n' "${storage_dir}" >&2
+    return 1
+  fi
+
+  chmod 0750 "${storage_dir}"
+  (set -o noclobber; umask 0027; printf '%s\n' "${CURU_CLUSTER_NAME}" >"${marker}")
+}
+
 curu_escape_sed_replacement() {
   printf '%s' "$1" | sed 's/[&|\\]/\\&/g'
 }

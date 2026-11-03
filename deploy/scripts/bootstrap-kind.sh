@@ -62,16 +62,7 @@ if kind get clusters | grep -Fxq "${CURU_CLUSTER_NAME}"; then
   exit 1
 fi
 
-install -d -m 0750 -- "${storage_dir}"
-if [[ -e "${storage_dir}/.curu-kind-storage" ]]; then
-  if [[ "$(cat -- "${storage_dir}/.curu-kind-storage")" != "${CURU_CLUSTER_NAME}" ]]; then
-    printf 'storage marker does not belong to %s: %s\n' "${CURU_CLUSTER_NAME}" "${storage_dir}" >&2
-    exit 1
-  fi
-else
-  printf '%s\n' "${CURU_CLUSTER_NAME}" >"${storage_dir}/.curu-kind-storage"
-  chmod 0640 "${storage_dir}/.curu-kind-storage"
-fi
+curu_prepare_storage_dir "${storage_dir}"
 
 repo_root=$(curu_repo_root)
 rendered_config=$(mktemp)

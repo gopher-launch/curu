@@ -5,6 +5,11 @@ set -o nounset
 set -o pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
+storage_check_root=$(mktemp -d)
+cleanup() {
+  rm -rf -- "${storage_check_root}"
+}
+trap cleanup EXIT
 
 for script in "${repo_root}"/deploy/scripts/*.sh; do
   bash -n "${script}"
@@ -43,5 +48,26 @@ if "${repo_root}/deploy/scripts/bootstrap-kind.sh" --storage-dir /tmp/curu-check
   printf 'bootstrap accepted an invalid memory limit\n' >&2
   exit 1
 fi
+
+unowned_storage="${storage_check_root}/unowned"
+mkdir "${unowned_storage}"
+printf 'unrelated host data\n' >"${unowned_storage}/preexisting-data"
+if bash -c 'source "$1"; curu_prepare_storage_dir "$2"' _ \
+  "${repo_root}/deploy/scripts/lib-kind.sh" "${unowned_storage}" 2>"${storage_check_root}/unowned-error"; then
+  printf 'bootstrap storage ownership accepted a non-empty unmarked directory\n' >&2
+  exit 1
+fi
+grep -Fq 'refusing to claim non-empty unmarked storage directory' "${storage_check_root}/unowned-error"
+[[ -f "${unowned_storage}/preexisting-data" ]]
+[[ ! -e "${unowned_storage}/.curu-kind-storage" ]]
+
+owned_storage="${storage_check_root}/owned"
+bash -c 'source "$1"; curu_prepare_storage_dir "$2"' _ \
+  "${repo_root}/deploy/scripts/lib-kind.sh" "${owned_storage}"
+printf 'retained workload data\n' >"${owned_storage}/retained-data"
+bash -c 'source "$1"; curu_prepare_storage_dir "$2"' _ \
+  "${repo_root}/deploy/scripts/lib-kind.sh" "${owned_storage}"
+grep -Fxq 'curu-local' "${owned_storage}/.curu-kind-storage"
+[[ -f "${owned_storage}/retained-data" ]]
 
 printf 'kind bootstrap static validation passed\n'

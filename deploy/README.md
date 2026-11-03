@@ -82,7 +82,9 @@ and refuses different kind/kubectl client versions.
 
 Choose these inputs deliberately before bootstrap:
 
-- an absolute host directory on storage intended to survive cluster deletion;
+- a dedicated absolute host directory on storage intended to survive cluster
+  deletion; it must be absent, empty and unmarked, or already carry the valid
+  Curu ownership marker from an earlier bootstrap;
 - the capacity to declare for the retained local PV (this is scheduling
   metadata and does not manufacture or reserve laptop disk space);
 - Docker CPU and memory limits that fit the laptop; and
@@ -105,6 +107,11 @@ context default, but every repository command still supplies the context and
 namespace. The Kubernetes API uses kind's random loopback port. The only fixed
 workload mapping is `127.0.0.1:8443` to the future edge NodePort `30443`; no
 backend or administration port is mapped to the LAN.
+
+Bootstrap refuses to claim a symbolic link, a non-directory path, or a
+non-empty unmarked directory. It never adds its reset-authorizing marker beside
+pre-existing unowned files. A directory with the valid marker remains reusable
+for cluster recreation and may contain retained workload data.
 
 Build the current checkout and load a source-bound, non-floating image into the
 node:
@@ -196,11 +203,12 @@ deploy/scripts/reset-kind-storage.sh \
   --confirm-curu-local-data-loss
 ```
 
-The reset refuses an unmarked directory or a running `curu-local` cluster. It
-uses the already-pinned kind node image so it can remove database files owned
-by container UIDs, preserves the directory marker, and irreversibly deletes
-retained workload data below that exact directory. It does not remove PKI or
-host trust.
+The reset refuses a symbolic link, an unmarked directory, or a running
+`curu-local` cluster. The implemented bootstrap creates its marker only in a
+new or empty dedicated directory. Reset uses the already-pinned kind node image
+so it can remove database files owned by container UIDs, preserves the
+directory marker, and irreversibly deletes retained workload data below that
+exact directory. It does not remove PKI or host trust.
 
 ### Local security qualification
 

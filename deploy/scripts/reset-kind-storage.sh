@@ -33,11 +33,15 @@ done
 curu_require_command kind
 curu_require_command docker
 curu_require_absolute_dir "${storage_dir}" 'storage directory'
+if [[ -L "${storage_dir}" || ! -d "${storage_dir}" ]]; then
+  printf 'refusing to reset a symbolic link or non-directory path: %s\n' "${storage_dir}" >&2
+  exit 1
+fi
 if kind get clusters | grep -Fxq "${CURU_CLUSTER_NAME}"; then
   printf 'delete cluster %s before resetting its storage\n' "${CURU_CLUSTER_NAME}" >&2
   exit 1
 fi
-if [[ ! -f "${storage_dir}/.curu-kind-storage" ]] || \
+if [[ ! -f "${storage_dir}/.curu-kind-storage" || -L "${storage_dir}/.curu-kind-storage" ]] || \
    [[ "$(cat -- "${storage_dir}/.curu-kind-storage")" != "${CURU_CLUSTER_NAME}" ]]; then
   printf 'refusing to reset an unmarked directory: %s\n' "${storage_dir}" >&2
   exit 1
