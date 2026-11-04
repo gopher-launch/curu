@@ -1,3 +1,7 @@
-CDP-001 renders only the Curu Deployment and its internal ClusterIP Service.
-Bundled Postgres, bundled identity, operator Jobs, local HTTPS, and browser routing
-are intentionally not implemented by this chart foundation.
+The chart includes Curu's internal Service and the CDP-003 PostgreSQL data
+service. In bundled mode, role preparation runs after install and upgrade while
+the retained PVC and credential Secret are kept across release removal.
+
+Migration, initialization, bundled identity, local HTTPS, and browser routing
+are not implemented yet. A running PostgreSQL service is not a migrated or
+initialized Curu installation.

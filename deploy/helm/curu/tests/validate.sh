@@ -30,8 +30,14 @@ assert_contains "${bundled_render}" 'automountServiceAccountToken: false' 'servi
 assert_contains "${bundled_render}" 'runAsNonRoot: true' 'pod runs as non-root'
 assert_contains "${bundled_render}" 'readOnlyRootFilesystem: true' 'container root filesystem is read-only'
 assert_contains "${bundled_render}" 'type: ClusterIP' 'Curu Service remains internal'
-assert_contains "${bundled_render}" 'name: "curu-runtime-database-fixture"' 'bundled mode selects its existing Secret'
+assert_contains "${bundled_render}" 'name: "curu-postgres-credentials-fixture"' 'bundled mode selects its existing scoped Secret'
 assert_contains "${external_render}" 'name: "external-curu-runtime-database-fixture"' 'external mode selects its existing Secret'
+assert_contains "${bundled_render}" 'kind: StatefulSet' 'bundled mode owns PostgreSQL'
+assert_contains "${bundled_render}" 'kind: PersistentVolumeClaim' 'bundled mode owns persistent storage claim'
+assert_contains "${bundled_render}" 'helm.sh/hook: post-install,post-upgrade' 'role preparation is repeatable on install and upgrade'
+assert_contains "${bundled_render}" 'REVOKE ALL ON DATABASE %I FROM PUBLIC' 'role preparation removes PUBLIC database authority'
+assert_contains "${bundled_render}" 'NOINHERIT' 'service roles cannot inherit membership authority'
+assert_contains "${external_render}" 'secretName: "external-postgres-ca-fixture"' 'external CA trust is mounted explicitly'
 assert_contains "${bundled_render}" 'curu.gopher-launch.dev/environment: fixture' 'non-reserved custom pod label is retained'
 
 if [[ "$(grep -Fc 'curu.gopher-launch.dev/environment: fixture' <<<"${bundled_render}")" -ne 1 ]]; then
@@ -45,8 +51,19 @@ if grep -Fq 'postgres://' <<<"${bundled_render}${external_render}"; then
 fi
 
 if [[ "$(grep -c '^kind: Deployment$' <<<"${bundled_render}")" -ne 1 ]] ||
-   [[ "$(grep -c '^kind: Service$' <<<"${bundled_render}")" -ne 1 ]]; then
-  echo 'CDP-001 must render exactly one Deployment and one Service' >&2
+   [[ "$(grep -c '^kind: StatefulSet$' <<<"${bundled_render}")" -ne 1 ]] ||
+   [[ "$(grep -c '^kind: Service$' <<<"${bundled_render}")" -ne 2 ]]; then
+  echo 'bundled mode must render one Curu Deployment, one Postgres StatefulSet, and two Services' >&2
+  exit 1
+fi
+
+if grep -Eq '^kind: (StatefulSet|PersistentVolumeClaim|Job)$' <<<"${external_render}"; then
+  echo 'external mode must not provision or administer the external database' >&2
+  exit 1
+fi
+
+if grep -Fq 'kind: Secret' <<<"${bundled_render}${external_render}"; then
+  echo 'rendered fixtures must use existing Secrets and contain no generated credential object' >&2
   exit 1
 fi
 
@@ -69,7 +86,9 @@ expect_rejected 'both database modes enabled' --set database.external.enabled=tr
 expect_rejected 'no database mode enabled' --set database.bundled.enabled=false
 expect_rejected 'both identity modes enabled' --set identity.external.enabled=true
 expect_rejected 'no identity mode enabled' --set identity.bundled.enabled=false
-expect_rejected 'selected database mode without a Secret reference' --set-string database.bundled.runtimeSecret.name=
+expect_rejected 'invalid bundled role identifier' --set-string database.bundled.names.runtimeRole=curu-runtime
+expect_rejected 'external mode without endpoint' --set database.bundled.enabled=false --set database.external.enabled=true
+expect_rejected 'external verified TLS without CA' -f "${fixture_dir}/external-values.yaml" --set-string database.external.tls.caSecret.name=
 expect_rejected 'owner issuer differing from trusted issuer' --set-string owner.issuer=https://other.test.invalid/realms/curu
 expect_rejected 'missing required trust input' --set-string trust.jwksURL=
 expect_rejected 'unknown values key' --set-string runtime.authenticationBypass=true

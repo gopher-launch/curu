@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-This directory records the accepted deployment MVP design and its [implementation roadmap](roadmap.md). The owned chart foundation lives at [`helm/curu/`](helm/curu/), and the local cluster interface lives at [`kind/`](kind/) and [`scripts/`](scripts/). The chart still contains only the Curu Deployment, internal Service, explicit configuration boundary, and render checks; the kind interface establishes the host/cluster, image, storage, name, and trust inputs used by later component Tasks. No Helm install, identity provider, browser login, or network-isolation result is claimed. The next deployment Task is CDP-003.
+This directory records the accepted deployment MVP design and its [implementation roadmap](roadmap.md). The owned chart lives at [`helm/curu/`](helm/curu/), and the local cluster interface lives at [`kind/`](kind/) and [`scripts/`](scripts/). The chart contains the Curu Deployment/internal Service and CDP-003's persistent PostgreSQL service with separated database authority. The kind interface establishes the host/cluster, image, storage, name, and trust inputs used by later component Tasks. No migrated/initialized installation, identity provider, browser login, or network-isolation result is claimed. The next deployment Task is CDP-004.
 
 The first target is Chris's HP Ubuntu laptop running a single-node kind cluster. The objective is a reproducible, authenticated installation of the current activity library, with every runtime component deployed by an owned Helm chart. Paid services, hosted identity, public internet hosting, and cloud infrastructure are not prerequisites. Local HTTPS and the application's existing security checks remain part of ordinary development.
 
@@ -63,7 +63,7 @@ Deployment automation sequences database readiness/preparation, explicit migrati
 
 For the library demonstration, deliberately select seed mode and the stable owner UUID: the current asset has 44 activities and 110 progressions. Exact initialization retries are no-ops; conflicting choices are refused. The root application documentation is authoritative if implemented schema or seed versions later change.
 
-External-database mode must support explicit endpoints, database names, Secret references, TLS mode and CA trust, and separately supplied operator/runtime connections. Support an already provisioned database/roles without requiring provider-superuser access from the application. Document the selected internal database transport policy too; do not copy a development-only connection policy into an external environment silently.
+External-database mode supports explicit endpoints, database names, scoped Secret references, TLS mode and CA trust, and separately supplied administration/migration/initializer/runtime/Keycloak connections. It provisions nothing externally and never gives provider-administrator access to Curu. Bundled mode uses plaintext PostgreSQL transport only on the trusted local pod network; this qualified local policy is not a hosted-environment default or evidence of pod isolation.
 
 Persist database files outside an ephemeral kind node container using the bootstrap's named laptop-storage input. Document pod restart, release removal/reinstall, cluster recreation, and explicit data deletion separately, including any manual volume reattachment required. Recreating a cluster or upgrading a chart must not authorize wiping that storage. Persistence is not backup or host-failure recovery.
 
@@ -224,7 +224,7 @@ evidence.
 
 ## Operator interfaces and verification
 
-The chart and kind validation commands below are implemented. Each later owning Task must add exact working commands to this README as it delivers an interface; planned workflow names remain non-executable until then.
+The chart, PostgreSQL, and kind validation commands below are implemented. Each later owning Task must add exact working commands to this README as it delivers an interface; planned workflow names remain non-executable until then.
 
 From the repository root, with Helm `v4.2.4`, run:
 
@@ -232,7 +232,15 @@ From the repository root, with Helm `v4.2.4`, run:
 deploy/helm/curu/tests/validate.sh
 ```
 
-The check uses pinned, non-runnable `.invalid` fixture image inputs to lint and render the bundled and external configuration modes, assert the dependency-free chart boundary, and reject contradictory or incomplete security-sensitive selections. Exact individual commands and the values contract are documented in the [chart README](helm/curu/README.md). This is manifest/configuration evidence only, not a live component or browser result.
+The check uses pinned, non-runnable `.invalid` fixture image inputs to lint and render the bundled and external configuration modes without credential content, assert the dependency-free chart boundary, and reject contradictory or incomplete security-sensitive selections. Exact values and database contracts are documented in the [chart README](helm/curu/README.md).
+
+Exercise the database boundary in its own disposable kind cluster:
+
+```sh
+deploy/scripts/verify-postgres-disposable.sh
+```
+
+This live check never targets `curu-local`. It verifies readiness, restart persistence, repeatable role preparation, effective runtime/`PUBLIC` restrictions, Curu/Keycloak separation, generated-Secret stability through upgrade, and an external-mode connection fixture. It deletes its disposable cluster and does not migrate or initialize the Curu schema.
 
 Validate scripts and static exposure/storage invariants without creating a
 cluster:
@@ -266,7 +274,7 @@ and makes no login or library claim.
 | --- | --- | --- |
 | Validate/render chart | CDP-001, extended by later chart Tasks | Lint, render, reject inconsistent inputs, and check bundled/external configurations |
 | Prepare local cluster and trust | CDP-002 | Implemented versioned kind, port/storage configuration, certificates, trust steps, and disposable checks |
-| Prepare data service | CDP-003 | Ready Postgres and appropriately separated database authority |
+| Prepare data service | CDP-003 | Implemented ready Postgres, retained storage, stable scoped credentials, and separated database authority |
 | Migrate and initialize | CDP-004 | Explicit, bounded Jobs with safe retry/refusal behavior |
 | Configure identity | CDP-005 | Repeatable realm/client/owner setup and compatible tokens |
 | Authenticate browser traffic | CDP-006 | HTTPS, owner access, refresh/expiry/logout, safe header handling |

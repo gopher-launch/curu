@@ -1,0 +1,93 @@
+{{- if .Values.database.bundled.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "curu.postgresName" . }}-prepare
+  labels:
+    {{- include "curu.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres-prepare
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 240
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        {{- include "curu.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: postgres-prepare
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: prepare
+          image: {{ include "curu.postgresImage" . | quote }}
+          imagePullPolicy: {{ .Values.database.bundled.image.pullPolicy }}
+          command: ["/opt/curu/prepare.sh"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: POSTGRES_HOST
+              value: {{ include "curu.postgresName" . | quote }}
+            - name: POSTGRES_PORT
+              value: {{ .Values.database.bundled.service.port | quote }}
+            - name: CURU_DATABASE
+              value: {{ .Values.database.bundled.names.curuDatabase | quote }}
+            - name: KEYCLOAK_DATABASE
+              value: {{ .Values.database.bundled.names.keycloakDatabase | quote }}
+            - name: MIGRATION_ROLE
+              value: {{ .Values.database.bundled.names.migrationRole | quote }}
+            - name: INITIALIZER_ROLE
+              value: {{ .Values.database.bundled.names.initializerRole | quote }}
+            - name: RUNTIME_ROLE
+              value: {{ .Values.database.bundled.names.runtimeRole | quote }}
+            - name: KEYCLOAK_ROLE
+              value: {{ .Values.database.bundled.names.keycloakRole | quote }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "curu.postgresSecretName" . | quote }}
+                  key: admin-password
+            - name: MIGRATION_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "curu.postgresSecretName" . | quote }}
+                  key: migration-password
+            - name: INITIALIZER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "curu.postgresSecretName" . | quote }}
+                  key: initializer-password
+            - name: RUNTIME_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "curu.postgresSecretName" . | quote }}
+                  key: runtime-password
+            - name: KEYCLOAK_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "curu.postgresSecretName" . | quote }}
+                  key: keycloak-password
+          volumeMounts:
+            - name: prepare
+              mountPath: /opt/curu
+              readOnly: true
+      volumes:
+        - name: prepare
+          configMap:
+            name: {{ include "curu.postgresName" . }}-prepare
+            defaultMode: 0555
+{{- end }}

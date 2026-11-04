@@ -1,0 +1,23 @@
+{{- if .Values.database.bundled.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "curu.postgresName" . }}
+  labels:
+    {{- include "curu.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.database.bundled.storage.storageClassName | quote }}
+  resources:
+    requests:
+      storage: {{ .Values.database.bundled.storage.size | quote }}
+  {{- with .Values.database.bundled.storage.selectorLabels }}
+  selector:
+    matchLabels:
+      {{- toYaml . | nindent 6 }}
+  {{- end }}
+{{- end }}

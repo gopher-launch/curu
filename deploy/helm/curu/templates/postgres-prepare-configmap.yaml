@@ -1,0 +1,77 @@
+{{- if .Values.database.bundled.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "curu.postgresName" . }}-prepare
+  labels:
+    {{- include "curu.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres-prepare
+data:
+  prepare.sh: |
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    readonly psql_admin=(psql --host="${POSTGRES_HOST}" --port="${POSTGRES_PORT}" --username=postgres --no-password --set=ON_ERROR_STOP=1 --set=VERBOSITY=terse)
+
+    until pg_isready --host="${POSTGRES_HOST}" --port="${POSTGRES_PORT}" --username=postgres --dbname=postgres >/dev/null 2>&1; do
+      if (( SECONDS >= 180 )); then
+        echo 'PostgreSQL did not become ready within 180 seconds' >&2
+        exit 1
+      fi
+      sleep 2
+    done
+
+    "${psql_admin[@]}" --dbname=postgres \
+      --set=migration_role="${MIGRATION_ROLE}" --set=migration_password="${MIGRATION_PASSWORD}" \
+      --set=initializer_role="${INITIALIZER_ROLE}" --set=initializer_password="${INITIALIZER_PASSWORD}" \
+      --set=runtime_role="${RUNTIME_ROLE}" --set=runtime_password="${RUNTIME_PASSWORD}" \
+      --set=keycloak_role="${KEYCLOAK_ROLE}" --set=keycloak_password="${KEYCLOAK_PASSWORD}" \
+      --set=curu_database="${CURU_DATABASE}" --set=keycloak_database="${KEYCLOAK_DATABASE}" <<'SQL'
+    SELECT format('CREATE ROLE %I LOGIN', :'migration_role') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'migration_role') \gexec
+    SELECT format('CREATE ROLE %I LOGIN', :'initializer_role') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'initializer_role') \gexec
+    SELECT format('CREATE ROLE %I LOGIN', :'runtime_role') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'runtime_role') \gexec
+    SELECT format('CREATE ROLE %I LOGIN', :'keycloak_role') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'keycloak_role') \gexec
+
+    SELECT format('ALTER ROLE %I WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT PASSWORD %L', :'migration_role', :'migration_password') \gexec
+    SELECT format('ALTER ROLE %I WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT PASSWORD %L', :'initializer_role', :'initializer_password') \gexec
+    SELECT format('ALTER ROLE %I WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT PASSWORD %L', :'runtime_role', :'runtime_password') \gexec
+    SELECT format('ALTER ROLE %I WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT PASSWORD %L', :'keycloak_role', :'keycloak_password') \gexec
+
+    SELECT format('REVOKE %I FROM %I', parent.rolname, member.rolname)
+      FROM pg_auth_members membership
+      JOIN pg_roles parent ON parent.oid = membership.roleid
+      JOIN pg_roles member ON member.oid = membership.member
+      WHERE member.rolname IN (:'migration_role', :'initializer_role', :'runtime_role', :'keycloak_role') \gexec
+
+    SELECT format('CREATE DATABASE %I OWNER postgres TEMPLATE template0', :'curu_database')
+      WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'curu_database') \gexec
+    SELECT format('CREATE DATABASE %I OWNER postgres TEMPLATE template0', :'keycloak_database')
+      WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'keycloak_database') \gexec
+
+    REVOKE CREATE, TEMPORARY ON DATABASE postgres FROM PUBLIC;
+    REVOKE CONNECT ON DATABASE postgres FROM PUBLIC;
+    SELECT format('REVOKE ALL ON DATABASE %I FROM PUBLIC', :'curu_database') \gexec
+    SELECT format('REVOKE ALL ON DATABASE %I FROM PUBLIC', :'keycloak_database') \gexec
+    SELECT format('GRANT CONNECT, CREATE ON DATABASE %I TO %I', :'curu_database', :'migration_role') \gexec
+    SELECT format('GRANT CONNECT ON DATABASE %I TO %I', :'curu_database', :'initializer_role') \gexec
+    SELECT format('GRANT CONNECT ON DATABASE %I TO %I', :'curu_database', :'runtime_role') \gexec
+    SELECT format('GRANT CONNECT, TEMPORARY ON DATABASE %I TO %I', :'keycloak_database', :'keycloak_role') \gexec
+    SQL
+
+    "${psql_admin[@]}" --dbname=postgres <<'SQL'
+    REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+    SQL
+
+    "${psql_admin[@]}" --dbname="${CURU_DATABASE}" --set=migration_role="${MIGRATION_ROLE}" <<'SQL'
+    REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+    REVOKE ALL ON SCHEMA public FROM PUBLIC;
+    SQL
+
+    "${psql_admin[@]}" --dbname="${KEYCLOAK_DATABASE}" --set=keycloak_role="${KEYCLOAK_ROLE}" <<'SQL'
+    REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+    REVOKE ALL ON SCHEMA public FROM PUBLIC;
+    SELECT format('GRANT USAGE, CREATE ON SCHEMA public TO %I', :'keycloak_role') \gexec
+    SQL
+
+    echo 'PostgreSQL roles and databases prepared'
+{{- end }}

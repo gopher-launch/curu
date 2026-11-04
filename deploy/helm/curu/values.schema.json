@@ -77,8 +77,8 @@
       "additionalProperties": false,
       "required": ["bundled", "external"],
       "properties": {
-        "bundled": {"$ref": "#/definitions/databaseMode"},
-        "external": {"$ref": "#/definitions/databaseMode"}
+        "bundled": {"$ref": "#/definitions/bundledDatabase"},
+        "external": {"$ref": "#/definitions/externalDatabase"}
       },
       "oneOf": [
         {
@@ -150,15 +150,96 @@
         "key": {"type": "string", "minLength": 1}
       }
     },
-    "databaseMode": {
+    "bundledDatabase": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["enabled", "runtimeSecret"],
+      "required": ["enabled", "image", "credentialsSecret", "names", "service", "storage", "resources"],
       "properties": {
         "enabled": {"type": "boolean"},
-        "runtimeSecret": {"$ref": "#/definitions/secretReference"}
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["repository", "tag", "digest", "pullPolicy"],
+          "properties": {
+            "repository": {"type": "string", "minLength": 1},
+            "tag": {"type": "string", "minLength": 1, "not": {"enum": ["latest"]}},
+            "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+            "pullPolicy": {"type": "string", "enum": ["Always", "IfNotPresent", "Never"]}
+          }
+        },
+        "credentialsSecret": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["existingName"],
+          "properties": {"existingName": {"type": "string"}}
+        },
+        "names": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["curuDatabase", "keycloakDatabase", "migrationRole", "initializerRole", "runtimeRole", "keycloakRole"],
+          "properties": {
+            "curuDatabase": {"$ref": "#/definitions/postgresIdentifier"},
+            "keycloakDatabase": {"$ref": "#/definitions/postgresIdentifier"},
+            "migrationRole": {"$ref": "#/definitions/postgresIdentifier"},
+            "initializerRole": {"$ref": "#/definitions/postgresIdentifier"},
+            "runtimeRole": {"$ref": "#/definitions/postgresIdentifier"},
+            "keycloakRole": {"$ref": "#/definitions/postgresIdentifier"}
+          }
+        },
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["port"],
+          "properties": {"port": {"type": "integer", "minimum": 1024, "maximum": 65535}}
+        },
+        "storage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["storageClassName", "size", "selectorLabels"],
+          "properties": {
+            "storageClassName": {"type": "string", "minLength": 1},
+            "size": {"type": "string", "pattern": "^[1-9][0-9]*(Mi|Gi|Ti)$"},
+            "selectorLabels": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "string", "minLength": 1}}
+          }
+        },
+        "resources": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["requests", "limits"],
+          "properties": {
+            "requests": {"$ref": "#/definitions/resourceList"},
+            "limits": {"$ref": "#/definitions/resourceList"}
+          }
+        }
       }
     },
+    "externalDatabase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "host", "port", "curuDatabase", "keycloakDatabase", "tls", "administrationSecret", "migrationSecret", "initializerSecret", "runtimeSecret", "keycloakSecret"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "host": {"type": "string"},
+        "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "curuDatabase": {"type": "string"},
+        "keycloakDatabase": {"type": "string"},
+        "tls": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "caSecret"],
+          "properties": {
+            "mode": {"type": "string", "enum": ["disable", "require", "verify-ca", "verify-full"]},
+            "caSecret": {"$ref": "#/definitions/secretReference"}
+          }
+        },
+        "administrationSecret": {"$ref": "#/definitions/secretReference"},
+        "migrationSecret": {"$ref": "#/definitions/secretReference"},
+        "initializerSecret": {"$ref": "#/definitions/secretReference"},
+        "runtimeSecret": {"$ref": "#/definitions/secretReference"},
+        "keycloakSecret": {"$ref": "#/definitions/secretReference"}
+      }
+    },
+    "postgresIdentifier": {"type": "string", "pattern": "^[a-z_][a-z0-9_]{0,62}$"},
     "enabledMode": {
       "type": "object",
       "additionalProperties": false,

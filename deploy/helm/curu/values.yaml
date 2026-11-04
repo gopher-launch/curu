@@ -40,12 +40,58 @@ owner:
 database:
   bundled:
     enabled: true
+    image:
+      repository: postgres
+      tag: 17.6-bookworm
+      digest: sha256:f3bd19c606e442c3d7bdfa8002e03fe260a1023351e0ea4598032022b68dd6e3
+      pullPolicy: IfNotPresent
+    credentialsSecret:
+      existingName: ""
+    names:
+      curuDatabase: curu
+      keycloakDatabase: keycloak
+      migrationRole: curu_migration
+      initializerRole: curu_initializer
+      runtimeRole: curu_runtime
+      keycloakRole: keycloak
+    service:
+      port: 5432
+    storage:
+      storageClassName: curu-local-retained
+      size: 20Gi
+      selectorLabels:
+        curu.local/storage: retained
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+  external:
+    enabled: false
+    host: ""
+    port: 5432
+    curuDatabase: ""
+    keycloakDatabase: ""
+    tls:
+      mode: verify-full
+      caSecret:
+        name: ""
+        key: ca.crt
+    administrationSecret:
+      name: ""
+      key: database-url
+    migrationSecret:
+      name: ""
+      key: database-url
+    initializerSecret:
+      name: ""
+      key: database-url
     runtimeSecret:
       name: ""
       key: database-url
-  external:
-    enabled: false
-    runtimeSecret:
+    keycloakSecret:
       name: ""
       key: database-url
 

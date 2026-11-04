@@ -1,7 +1,7 @@
 ---
 version: 1
 project: curu-deploy
-updated: 2026-11-03
+updated: 2026-11-04
 ---
 
 # Curu deployment roadmap
@@ -25,7 +25,7 @@ The deployment baseline is documented in [README.md](README.md). These documents
 ## Selection and reconciliation
 
 - Select one bounded `Kind: task` entry from this roadmap. Do not infer deployment task selection from the root roadmap or assume a runner selects this file automatically.
-- CDP-001 delivered the owned chart and configuration boundary, and CDP-002 delivered the reproducible local kind, storage, image, name, and trust inputs. CDP-003 is the next ready deployment Task; later core Tasks remain planned. After reviewing a delivered prerequisite, promote the next core Task only when its concrete inputs and acceptance are satisfied. Optional/follow-up Tasks require deliberate selection; they never become a gate on the core milestone merely because their prerequisites are delivered.
+- CDP-001 delivered the owned chart and configuration boundary, CDP-002 delivered the reproducible local kind/storage/image/name/trust inputs, and CDP-003 delivered persistent PostgreSQL plus separated database authority. CDP-004 is the next ready deployment Task; later core Tasks remain planned. After reviewing a delivered prerequisite, promote the next core Task only when its concrete inputs and acceptance are satisfied. Optional/follow-up Tasks require deliberate selection; they never become a gate on the core milestone merely because their prerequisites are delivered.
 - `Depends on` references are confined to this roadmap. Existing application capabilities are source/contract prerequisites, not duplicated Tasks or unresolved cross-roadmap dependency IDs. Application changes need explicitly bounded scope in their owning workstream.
 - Preserve IDs. Reconcile affected templates, README interfaces, guidance, and roadmap readiness in the same candidate. Split oversized Tasks before widening execution scope. No task is delivered because it appears here or because manifests render.
 - Use disposable resources for destructive tests. Routine validation needs no paid provider or real retained-data reset. Keep operational progress, review verdicts, and pending integration notes in external records.
@@ -44,33 +44,13 @@ The selected application image supplies the HTTP server plus `/curu-migrate`, `/
 
 D1 includes actual target-browser acceptance, distinct from automated disposable-cluster verification. Phone acceptance is recorded only if performed. Neither optional row is a prerequisite for D1, and D1 does not claim a hosted or fully isolated production deployment.
 
-## CDP-003 — Provision bundled Postgres and separated database authority
+## CDP-004 — Sequence explicit migration and seeded initialization Jobs
 
 - Kind: task
 - Status: ready
 - Priority: high
 - Parent: none
 - Depends on: none
-
-**Objective:** Supply a persistent local data service with the roles required by Curu and Keycloak, while supporting an external database service.
-
-**Acceptance criteria:**
-
-- Add owned templates for one Postgres instance, internal Service, probes, and persistent storage. Create separate Curu and Keycloak databases/credentials; prevent ordinary application credentials from acquiring the other service's authority.
-- Provision administration, migration-owner, initializer, and restricted runtime roles independently. Apply platform-wide `PUBLIC` restrictions required by the existing migration validator. Reserve post-migration initializer object grants for CDP-004.
-- Generate or accept scoped Secrets once and reuse them on upgrades; rotation is explicit. Do not pass administrator or schema-owner credentials to the Curu runtime. Keep secrets out of routine diagnostics and rendered examples.
-- Support bundled-disabled mode with explicit endpoints, credentials, and TLS/CA inputs, including existing externally provisioned databases/roles. Do not require the Curu runtime to provision external services or hold provider-administrator access.
-- Document the selected bundled-database transport/trust policy and the resource/storage configuration. Do not add database operators, replication, or cloud provisioning.
-
-**Verification:** Disposable Postgres readiness/restart persistence, repeatable role preparation, effective runtime privilege restrictions including `PUBLIC`, separation of Curu/Keycloak authority, Secret stability across upgrade, and an external-mode fixture using a disposable database rather than a paid service.
-
-## CDP-004 — Sequence explicit migration and seeded initialization Jobs
-
-- Kind: task
-- Status: planned
-- Priority: high
-- Parent: none
-- Depends on: CDP-003
 
 **Objective:** Make the application's existing data-lifecycle commands usable through deployment-owned Jobs without changing ordinary startup.
 
@@ -204,4 +184,4 @@ D1 includes actual target-browser acceptance, distinct from automated disposable
 
 ## Next task boundary
 
-CDP-003 is the only ready deployment Task. CDP-001 delivered chart/configuration/render interfaces and CDP-002 delivered the local cluster boundary, not an entire deployment. CDP-004 through CDP-008 remain the core planned implementation sequence; CDP-009 and CDP-010 are optional/follow-up work and stay planned even though CDP-010's dependency is satisfied. Application readiness continues to be managed independently in the root roadmap.
+CDP-004 is the only ready deployment Task. CDP-001 delivered chart/configuration/render interfaces, CDP-002 delivered the local cluster boundary, and CDP-003 delivered the persistent data service and role boundary; these do not constitute a migrated, initialized, or authenticated installation. CDP-005 through CDP-008 remain the core planned implementation sequence; CDP-009 and CDP-010 are optional/follow-up work and stay planned even though CDP-010's dependency is satisfied. Application readiness continues to be managed independently in the root roadmap.

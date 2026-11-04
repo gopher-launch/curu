@@ -53,6 +53,10 @@ spec:
                 secretKeyRef:
                   name: {{ include "curu.runtimeSecret" . | quote }}
                   key: {{ include "curu.runtimeSecretKey" . | quote }}
+            {{- if and .Values.database.external.enabled (ne .Values.database.external.tls.caSecret.name "") }}
+            - name: PGSSLROOTCERT
+              value: /etc/curu/database/ca.crt
+            {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}
@@ -75,6 +79,21 @@ spec:
             failureThreshold: 3
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          {{- if and .Values.database.external.enabled (ne .Values.database.external.tls.caSecret.name "") }}
+          volumeMounts:
+            - name: database-ca
+              mountPath: /etc/curu/database
+              readOnly: true
+          {{- end }}
+      {{- if and .Values.database.external.enabled (ne .Values.database.external.tls.caSecret.name "") }}
+      volumes:
+        - name: database-ca
+          secret:
+            secretName: {{ .Values.database.external.tls.caSecret.name | quote }}
+            items:
+              - key: {{ .Values.database.external.tls.caSecret.key | quote }}
+                path: ca.crt
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

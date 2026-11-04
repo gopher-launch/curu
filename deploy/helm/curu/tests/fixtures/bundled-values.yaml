@@ -13,7 +13,9 @@ owner:
   id: 00000000-0000-4000-8000-000000000001
 database:
   bundled:
-    runtimeSecret:
-      name: curu-runtime-database-fixture
+    credentialsSecret:
+      existingName: curu-postgres-credentials-fixture
+    storage:
+      size: 1Gi
 podLabels:
   curu.gopher-launch.dev/environment: fixture

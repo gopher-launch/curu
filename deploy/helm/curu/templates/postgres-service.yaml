@@ -1,0 +1,19 @@
+{{- if .Values.database.bundled.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "curu.postgresName" . }}
+  labels:
+    {{- include "curu.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "curu.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+  ports:
+    - name: postgres
+      port: {{ .Values.database.bundled.service.port }}
+      targetPort: postgres
+      protocol: TCP
+{{- end }}

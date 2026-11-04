@@ -16,8 +16,23 @@ database:
     enabled: false
   external:
     enabled: true
+    host: postgres.external.invalid
+    curuDatabase: curu
+    keycloakDatabase: keycloak
+    tls:
+      mode: verify-full
+      caSecret:
+        name: external-postgres-ca-fixture
+    administrationSecret:
+      name: external-postgres-administration-fixture
+    migrationSecret:
+      name: external-curu-migration-fixture
+    initializerSecret:
+      name: external-curu-initializer-fixture
     runtimeSecret:
       name: external-curu-runtime-database-fixture
+    keycloakSecret:
+      name: external-keycloak-database-fixture
 identity:
   bundled:
     enabled: false
