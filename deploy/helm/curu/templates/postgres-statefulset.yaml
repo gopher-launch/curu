@@ -53,19 +53,19 @@ spec:
               containerPort: {{ .Values.database.bundled.service.port }}
           startupProbe:
             exec:
-              command: ["sh", "-ec", "pg_isready -U postgres -d postgres"]
+              command: ["sh", "-ec", "pg_isready -U postgres -d postgres --port={{ .Values.database.bundled.service.port }}"]
             periodSeconds: 2
             timeoutSeconds: 2
             failureThreshold: 60
           readinessProbe:
             exec:
-              command: ["sh", "-ec", "pg_isready -U postgres -d postgres"]
+              command: ["sh", "-ec", "pg_isready -U postgres -d postgres --port={{ .Values.database.bundled.service.port }}"]
             periodSeconds: 5
             timeoutSeconds: 2
             failureThreshold: 3
           livenessProbe:
             exec:
-              command: ["sh", "-ec", "pg_isready -U postgres -d postgres"]
+              command: ["sh", "-ec", "pg_isready -U postgres -d postgres --port={{ .Values.database.bundled.service.port }}"]
             periodSeconds: 10
             timeoutSeconds: 2
             failureThreshold: 3

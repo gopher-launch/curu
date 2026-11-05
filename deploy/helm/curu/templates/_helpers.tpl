@@ -59,6 +59,26 @@ runtime-url
 {{- fail (printf "database.bundled.names.%s must be a lowercase PostgreSQL identifier" $name) -}}
 {{- end -}}
 {{- end -}}
+{{- $roles := list .Values.database.bundled.names.migrationRole .Values.database.bundled.names.initializerRole .Values.database.bundled.names.runtimeRole .Values.database.bundled.names.keycloakRole -}}
+{{- if ne (len $roles) (len (uniq $roles)) -}}
+{{- fail "database.bundled service role names must be pairwise distinct" -}}
+{{- end -}}
+{{- range $role := $roles -}}
+{{- if or (eq $role "postgres") (eq $role "public") (hasPrefix "pg_" $role) -}}
+{{- fail (printf "database.bundled service role name %q is reserved by PostgreSQL" $role) -}}
+{{- end -}}
+{{- end -}}
+{{- if eq .Values.database.bundled.names.curuDatabase .Values.database.bundled.names.keycloakDatabase -}}
+{{- fail "database.bundled Curu and Keycloak database names must be distinct" -}}
+{{- end -}}
+{{- range $database := list .Values.database.bundled.names.curuDatabase .Values.database.bundled.names.keycloakDatabase -}}
+{{- if has $database (list "postgres" "template0" "template1") -}}
+{{- fail (printf "database.bundled database name %q is reserved by PostgreSQL" $database) -}}
+{{- end -}}
+{{- end -}}
+{{- if ne (.Values.database.bundled.service.port | int) 5432 -}}
+{{- fail "database.bundled.service.port is fixed at 5432" -}}
+{{- end -}}
 {{- end -}}
 {{- if .Values.database.external.enabled -}}
 {{- if or (eq .Values.database.external.host "") (eq .Values.database.external.curuDatabase "") (eq .Values.database.external.keycloakDatabase "") -}}

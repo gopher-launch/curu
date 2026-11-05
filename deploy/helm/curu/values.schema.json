@@ -178,19 +178,19 @@
           "additionalProperties": false,
           "required": ["curuDatabase", "keycloakDatabase", "migrationRole", "initializerRole", "runtimeRole", "keycloakRole"],
           "properties": {
-            "curuDatabase": {"$ref": "#/definitions/postgresIdentifier"},
-            "keycloakDatabase": {"$ref": "#/definitions/postgresIdentifier"},
-            "migrationRole": {"$ref": "#/definitions/postgresIdentifier"},
-            "initializerRole": {"$ref": "#/definitions/postgresIdentifier"},
-            "runtimeRole": {"$ref": "#/definitions/postgresIdentifier"},
-            "keycloakRole": {"$ref": "#/definitions/postgresIdentifier"}
+            "curuDatabase": {"$ref": "#/definitions/postgresDatabaseIdentifier"},
+            "keycloakDatabase": {"$ref": "#/definitions/postgresDatabaseIdentifier"},
+            "migrationRole": {"$ref": "#/definitions/postgresRoleIdentifier"},
+            "initializerRole": {"$ref": "#/definitions/postgresRoleIdentifier"},
+            "runtimeRole": {"$ref": "#/definitions/postgresRoleIdentifier"},
+            "keycloakRole": {"$ref": "#/definitions/postgresRoleIdentifier"}
           }
         },
         "service": {
           "type": "object",
           "additionalProperties": false,
           "required": ["port"],
-          "properties": {"port": {"type": "integer", "minimum": 1024, "maximum": 65535}}
+          "properties": {"port": {"type": "integer", "const": 5432}}
         },
         "storage": {
           "type": "object",
@@ -240,6 +240,19 @@
       }
     },
     "postgresIdentifier": {"type": "string", "pattern": "^[a-z_][a-z0-9_]{0,62}$"},
+    "postgresRoleIdentifier": {
+      "allOf": [
+        {"$ref": "#/definitions/postgresIdentifier"},
+        {"not": {"enum": ["postgres", "public"]}},
+        {"not": {"pattern": "^pg_"}}
+      ]
+    },
+    "postgresDatabaseIdentifier": {
+      "allOf": [
+        {"$ref": "#/definitions/postgresIdentifier"},
+        {"not": {"enum": ["postgres", "template0", "template1"]}}
+      ]
+    },
     "enabledMode": {
       "type": "object",
       "additionalProperties": false,

@@ -37,11 +37,17 @@ assert_contains "${bundled_render}" 'kind: PersistentVolumeClaim' 'bundled mode 
 assert_contains "${bundled_render}" 'helm.sh/hook: post-install,post-upgrade' 'role preparation is repeatable on install and upgrade'
 assert_contains "${bundled_render}" 'REVOKE ALL ON DATABASE %I FROM PUBLIC' 'role preparation removes PUBLIC database authority'
 assert_contains "${bundled_render}" 'NOINHERIT' 'service roles cannot inherit membership authority'
+assert_contains "${bundled_render}" 'pg_isready -U postgres -d postgres --port=5432' 'probes check the fixed PostgreSQL port'
 assert_contains "${external_render}" 'secretName: "external-postgres-ca-fixture"' 'external CA trust is mounted explicitly'
 assert_contains "${bundled_render}" 'curu.gopher-launch.dev/environment: fixture' 'non-reserved custom pod label is retained'
 
 if [[ "$(grep -Fc 'curu.gopher-launch.dev/environment: fixture' <<<"${bundled_render}")" -ne 1 ]]; then
   echo 'non-reserved custom pod label must render exactly once' >&2
+  exit 1
+fi
+
+if [[ "$(grep -Fc 'pg_isready -U postgres -d postgres --port=5432' <<<"${bundled_render}")" -ne 3 ]]; then
+  echo 'all three PostgreSQL probes must check the fixed server port' >&2
   exit 1
 fi
 
@@ -87,6 +93,13 @@ expect_rejected 'no database mode enabled' --set database.bundled.enabled=false
 expect_rejected 'both identity modes enabled' --set identity.external.enabled=true
 expect_rejected 'no identity mode enabled' --set identity.bundled.enabled=false
 expect_rejected 'invalid bundled role identifier' --set-string database.bundled.names.runtimeRole=curu-runtime
+expect_rejected 'duplicate bundled service roles' --set-string database.bundled.names.runtimeRole=curu_migration
+expect_rejected 'built-in administrator as service role' --set-string database.bundled.names.runtimeRole=postgres
+expect_rejected 'predefined PostgreSQL role as service role' --set-string database.bundled.names.runtimeRole=pg_read_all_data
+expect_rejected 'duplicate bundled databases' --set-string database.bundled.names.keycloakDatabase=curu
+expect_rejected 'maintenance database as service database' --set-string database.bundled.names.curuDatabase=postgres
+expect_rejected 'template database as service database' --set-string database.bundled.names.keycloakDatabase=template1
+expect_rejected 'non-default bundled PostgreSQL port' --set database.bundled.service.port=55432
 expect_rejected 'external mode without endpoint' --set database.bundled.enabled=false --set database.external.enabled=true
 expect_rejected 'external verified TLS without CA' -f "${fixture_dir}/external-values.yaml" --set-string database.external.tls.caSecret.name=
 expect_rejected 'owner issuer differing from trusted issuer' --set-string owner.issuer=https://other.test.invalid/realms/curu

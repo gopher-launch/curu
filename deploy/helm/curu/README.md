@@ -20,8 +20,9 @@ Bundled mode uses the chart-owned `ClusterIP` Service and `sslmode=disable` on
 the private pod network. This is limited to the documented trusted local kind
 boundary: it is not proof of pod isolation and must not be copied into a hosted
 environment without a reviewed private-hop/TLS policy. The PostgreSQL image is
-both tag- and digest-pinned. Configure its resources, port, claim size, storage
-class, and PV selector under `database.bundled`.
+both tag- and digest-pinned. Its private service/server port is fixed at `5432`;
+configure resources, claim size, storage class, and PV selector under
+`database.bundled`.
 
 By default, Helm creates `<release>-curu-postgres-credentials`. A `lookup`
 preserves its generated values on upgrade, and `helm.sh/resource-policy: keep`
@@ -48,7 +49,10 @@ authorized database-side password change coordinated with the Secret update;
 changing only `admin-password` makes preparation unable to connect. Never print
 or commit either the old or replacement Secret.
 
-The Job creates separate `curu` and `keycloak` databases. It removes
+The Job creates separate `curu` and `keycloak` databases. Configured service
+role names must be pairwise distinct, configured database names must be
+distinct, and PostgreSQL system/reserved names are rejected before rendering.
+The Job removes
 database-wide `PUBLIC` connect/create/temporary authority, removes `PUBLIC`
 schema creation, grants the migration owner database schema-creation authority,
 and grants the initializer/runtime roles only `CONNECT`. CDP-004 intentionally
@@ -101,7 +105,8 @@ deploy/helm/curu/tests/validate.sh
 
 It lints and renders bundled/external fixtures without credential material,
 checks the owned resource and role-preparation boundaries, and rejects invalid
-mode, identity, trust, role-name, endpoint, Secret, and TLS/CA inputs.
+mode, identity, trust, role-name, role/database collision, reserved PostgreSQL
+name, bundled-port, endpoint, Secret, and TLS/CA inputs.
 
 With Docker, kind `v0.30.0`, kubectl `v1.34.1`, and Helm `v4.2.4`, run the live
 disposable verification:

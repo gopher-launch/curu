@@ -178,8 +178,8 @@ TLS verification skip.
 The host directory is mounted at `/var/local-path-provisioner` in the kind
 node. Bootstrap creates the `curu-local-retained` no-provisioner StorageClass
 and the `curu-local-data` PV at stable node path
-`/var/local-path-provisioner/curu-data`, with reclaim policy `Retain`. CDP-003
-will bind the database claim to that PV.
+`/var/local-path-provisioner/curu-data`, with reclaim policy `Retain`. CDP-003's
+database claim binds to that PV.
 
 | Event | Retention and reattachment |
 | --- | --- |

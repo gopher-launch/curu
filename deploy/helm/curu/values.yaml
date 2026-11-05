@@ -55,6 +55,7 @@ database:
       runtimeRole: curu_runtime
       keycloakRole: keycloak
     service:
+      # Fixed to the pinned image's PostgreSQL server port.
       port: 5432
     storage:
       storageClassName: curu-local-retained
