@@ -69,8 +69,9 @@ no-op. Selecting `empty`, changing the seed owner, or encountering unrecorded
 content fails without replacing content. To invoke migration or initialization
 independently, select only that operation while runtime is disabled; an
 initialization-only invocation still runs the narrow grant Job first and
-requires an already compatible schema. External mode uses its explicit
-`initializerRole` and `runtimeRole`; it prepares no external database or role.
+requires an already compatible schema. External mode requires distinct,
+explicit `initializerRole` and `runtimeRole` values; it prepares no external
+database or role.
 
 ## Database modes
 
@@ -123,14 +124,15 @@ Curu roles cannot connect to Keycloak's database, and Keycloak cannot connect
 to Curu's database.
 
 External mode requires explicit `host`, `port`, `curuDatabase`,
-`keycloakDatabase`, initializer/runtime role names, TLS mode, and five existing Secret references:
+`keycloakDatabase`, distinct initializer/runtime role names, TLS mode, and five existing Secret references:
 administration, migration, initializer, runtime, and Keycloak. `verify-ca` and
 `verify-full` also require a CA Secret; its chosen key is mounted read-only at
 `/etc/curu/database/ca.crt` for Curu. Each URL remains authoritative and must
-agree with the declared endpoint, database, TLS mode, and CA path. The chart
-does not prepare, rotate, or acquire provider-administrator access to an
-external service. `disable` exists for a deliberately trusted disposable/local
-fixture; use a verified mode for a remote service.
+agree with the declared endpoint, database, TLS mode, and CA path; initializer
+and runtime URLs must authenticate as their corresponding distinct declared
+roles. The chart does not prepare, rotate, or acquire provider-administrator
+access to an external service. `disable` exists for a deliberately trusted
+disposable/local fixture; use a verified mode for a remote service.
 
 ## Storage lifecycle
 

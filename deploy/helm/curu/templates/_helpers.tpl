@@ -111,6 +111,9 @@ runtime-url
 {{- if or (eq .Values.database.external.host "") (eq .Values.database.external.curuDatabase "") (eq .Values.database.external.keycloakDatabase "") -}}
 {{- fail "external database mode requires explicit host, curuDatabase, and keycloakDatabase values" -}}
 {{- end -}}
+{{- if eq .Values.database.external.initializerRole .Values.database.external.runtimeRole -}}
+{{- fail "database.external initializerRole and runtimeRole must be distinct" -}}
+{{- end -}}
 {{- range $secret := list .Values.database.external.administrationSecret .Values.database.external.migrationSecret .Values.database.external.initializerSecret .Values.database.external.runtimeSecret .Values.database.external.keycloakSecret -}}
 {{- if eq $secret.name "" -}}
 {{- fail "external database mode requires all five scoped Secret references" -}}

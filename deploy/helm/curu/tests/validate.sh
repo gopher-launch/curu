@@ -18,7 +18,9 @@ external_render="$(helm template curu-external "${chart_dir}" -f "${fixture_dir}
 lifecycle_render="$(helm template curu-lifecycle "${chart_dir}" -f "${fixture_dir}/bundled-values.yaml" \
   --set runtime.enabled=false --set dataLifecycle.migrate=true --set-string dataLifecycle.initialize=seed)"
 external_lifecycle_render="$(helm template curu-external-lifecycle "${chart_dir}" -f "${fixture_dir}/external-values.yaml" \
-  --set runtime.enabled=false --set dataLifecycle.migrate=true --set-string dataLifecycle.initialize=seed)"
+  --set runtime.enabled=false --set dataLifecycle.migrate=true --set-string dataLifecycle.initialize=seed \
+  --set-string database.external.initializerRole=external_curu_initializer \
+  --set-string database.external.runtimeRole=external_curu_runtime)"
 
 assert_contains() {
   local rendered="$1"
@@ -55,7 +57,8 @@ assert_contains "${lifecycle_render}" 'key: "migration-url"' 'migration receives
 assert_contains "${lifecycle_render}" 'key: "initializer-url"' 'initialization receives its scoped credential'
 assert_contains "${external_lifecycle_render}" 'name: "external-curu-migration-fixture"' 'external lifecycle uses the migration Secret'
 assert_contains "${external_lifecycle_render}" 'name: "external-curu-initializer-fixture"' 'external lifecycle uses the initializer Secret'
-assert_contains "${external_lifecycle_render}" 'value: "curu_runtime"' 'external lifecycle declares the runtime role'
+assert_contains "${external_lifecycle_render}" 'value: "external_curu_initializer"' 'external lifecycle declares the distinct initializer role'
+assert_contains "${external_lifecycle_render}" 'value: "external_curu_runtime"' 'external lifecycle declares the distinct runtime role'
 assert_contains "${external_lifecycle_render}" 'secretName: "external-postgres-ca-fixture"' 'external lifecycle mounts database CA trust'
 
 if grep -Fq 'kind: Deployment' <<<"${lifecycle_render}"; then
@@ -128,6 +131,7 @@ expect_rejected 'template database as service database' --set-string database.bu
 expect_rejected 'non-default bundled PostgreSQL port' --set database.bundled.service.port=55432
 expect_rejected 'external mode without endpoint' --set database.bundled.enabled=false --set database.external.enabled=true
 expect_rejected 'external verified TLS without CA' -f "${fixture_dir}/external-values.yaml" --set-string database.external.tls.caSecret.name=
+expect_rejected 'duplicate external initializer and runtime roles' -f "${fixture_dir}/external-values.yaml" --set-string database.external.initializerRole=curu_runtime
 expect_rejected 'owner issuer differing from trusted issuer' --set-string owner.issuer=https://other.test.invalid/realms/curu
 expect_rejected 'missing required trust input' --set-string trust.jwksURL=
 expect_rejected 'unknown values key' --set-string runtime.authenticationBypass=true
