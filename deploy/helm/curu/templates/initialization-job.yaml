@@ -1,0 +1,74 @@
+{{- if ne .Values.dataLifecycle.initialize "none" }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "curu.fullname" . }}-initialize
+  labels:
+    {{- include "curu.labels" . | nindent 4 }}
+    app.kubernetes.io/component: initialization
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: {{ .Values.dataLifecycle.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.dataLifecycle.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        {{- include "curu.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: initialization
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . | quote }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: initialize
+          image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/curu-initialize", {{ printf "--mode=%s" .Values.dataLifecycle.initialize | quote }}]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          env:
+            - name: CURU_INITIALIZATION_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "curu.initializerSecret" . | quote }}
+                  key: {{ include "curu.initializerSecretKey" . | quote }}
+            {{- if eq .Values.dataLifecycle.initialize "seed" }}
+            - name: CURU_OWNER_ID
+              value: {{ .Values.owner.id | quote }}
+            {{- end }}
+            {{- if and .Values.database.external.enabled (ne .Values.database.external.tls.caSecret.name "") }}
+            - name: PGSSLROOTCERT
+              value: /etc/curu/database/ca.crt
+            {{- end }}
+          {{- if and .Values.database.external.enabled (ne .Values.database.external.tls.caSecret.name "") }}
+          volumeMounts:
+            - name: database-ca
+              mountPath: /etc/curu/database
+              readOnly: true
+          {{- end }}
+      {{- if and .Values.database.external.enabled (ne .Values.database.external.tls.caSecret.name "") }}
+      volumes:
+        - name: database-ca
+          secret:
+            secretName: {{ .Values.database.external.tls.caSecret.name | quote }}
+            items:
+              - key: {{ .Values.database.external.tls.caSecret.key | quote }}
+                path: ca.crt
+      {{- end }}
+{{- end }}

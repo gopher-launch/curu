@@ -1,7 +1,7 @@
 ---
 version: 1
 project: curu-deploy
-updated: 2026-11-04
+updated: 2026-11-07
 ---
 
 # Curu deployment roadmap
@@ -25,7 +25,7 @@ The deployment baseline is documented in [README.md](README.md). These documents
 ## Selection and reconciliation
 
 - Select one bounded `Kind: task` entry from this roadmap. Do not infer deployment task selection from the root roadmap or assume a runner selects this file automatically.
-- CDP-001 delivered the owned chart and configuration boundary, CDP-002 delivered the reproducible local kind/storage/image/name/trust inputs, and CDP-003 delivered persistent PostgreSQL plus separated database authority. CDP-004 is the next ready deployment Task; later core Tasks remain planned. After reviewing a delivered prerequisite, promote the next core Task only when its concrete inputs and acceptance are satisfied. Optional/follow-up Tasks require deliberate selection; they never become a gate on the core milestone merely because their prerequisites are delivered.
+- CDP-001 delivered the owned chart and configuration boundary, CDP-002 delivered the reproducible local kind/storage/image/name/trust inputs, CDP-003 delivered persistent PostgreSQL plus separated database authority, and CDP-004 delivered explicit migration/initialization sequencing. CDP-005 is the next ready deployment Task; later core Tasks remain planned. After reviewing a delivered prerequisite, promote the next core Task only when its concrete inputs and acceptance are satisfied. Optional/follow-up Tasks require deliberate selection; they never become a gate on the core milestone merely because their prerequisites are delivered.
 - `Depends on` references are confined to this roadmap. Existing application capabilities are source/contract prerequisites, not duplicated Tasks or unresolved cross-roadmap dependency IDs. Application changes need explicitly bounded scope in their owning workstream.
 - Preserve IDs. Reconcile affected templates, README interfaces, guidance, and roadmap readiness in the same candidate. Split oversized Tasks before widening execution scope. No task is delivered because it appears here or because manifests render.
 - Use disposable resources for destructive tests. Routine validation needs no paid provider or real retained-data reset. Keep operational progress, review verdicts, and pending integration notes in external records.
@@ -44,33 +44,13 @@ The selected application image supplies the HTTP server plus `/curu-migrate`, `/
 
 D1 includes actual target-browser acceptance, distinct from automated disposable-cluster verification. Phone acceptance is recorded only if performed. Neither optional row is a prerequisite for D1, and D1 does not claim a hosted or fully isolated production deployment.
 
-## CDP-004 — Sequence explicit migration and seeded initialization Jobs
+## CDP-005 — Bootstrap Keycloak and prove access-token compatibility
 
 - Kind: task
 - Status: ready
 - Priority: high
 - Parent: none
 - Depends on: none
-
-**Objective:** Make the application's existing data-lifecycle commands usable through deployment-owned Jobs without changing ordinary startup.
-
-**Acceptance criteria:**
-
-- Add separate migration and initialization Job templates using the selected Curu image and exact existing executable/environment interfaces. Grant the narrow initializer privileges only after migration establishes the objects.
-- Sequence database readiness/preparation, migration, initializer grants, explicit initialization, and runtime launch with bounded waits and clear stop-on-failure behavior. First installation must work when neither database nor application objects existed before the release.
-- Require an explicit initialization choice; select seeded mode for the D1 walkthrough with one stable owner UUID shared with runtime configuration. A seed retry is a no-op and conflicting choices fail without replacing content. Upgrades never choose seed/empty mode automatically.
-- Ensure runtime startup receives only runtime authority and remains compatible with the selected image/schema. Preserve independent invocation and diagnosis of migration/initialization, even if a wrapper sequences first installation.
-- Demonstrate retry behavior without abusing Helm rollback as database rollback or assuming a pre-install hook can reach a database not yet created.
-
-**Verification:** Fresh disposable preparation/migration/44-activity/110-progression initialization, exact retry and conflicting-choice refusal, credential scoping, missing/incompatible schema rejection, and bounded failure propagation. No browser authentication result is required yet.
-
-## CDP-005 — Bootstrap Keycloak and prove access-token compatibility
-
-- Kind: task
-- Status: planned
-- Priority: high
-- Parent: none
-- Depends on: CDP-004
 
 **Objective:** Supply repeatable local identity configuration that satisfies Curu's delivered token and owner contract.
 
@@ -184,4 +164,4 @@ D1 includes actual target-browser acceptance, distinct from automated disposable
 
 ## Next task boundary
 
-CDP-004 is the only ready deployment Task. CDP-001 delivered chart/configuration/render interfaces, CDP-002 delivered the local cluster boundary, and CDP-003 delivered the persistent data service and role boundary; these do not constitute a migrated, initialized, or authenticated installation. CDP-005 through CDP-008 remain the core planned implementation sequence; CDP-009 and CDP-010 are optional/follow-up work and stay planned even though CDP-010's dependency is satisfied. Application readiness continues to be managed independently in the root roadmap.
+CDP-005 is the only ready deployment Task. CDP-001 delivered chart/configuration/render interfaces, CDP-002 delivered the local cluster boundary, CDP-003 delivered the persistent data service and role boundary, and CDP-004 delivered explicit migration and initialization sequencing; these do not constitute an authenticated installation. CDP-006 through CDP-008 remain the core planned implementation sequence; CDP-009 and CDP-010 are optional/follow-up work and stay planned even though CDP-010's dependency is satisfied. Application readiness continues to be managed independently in the root roadmap.

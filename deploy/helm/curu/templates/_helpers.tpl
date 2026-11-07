@@ -34,6 +34,30 @@ runtime-url
 {{- end -}}
 {{- end -}}
 
+{{- define "curu.migrationSecret" -}}
+{{- if .Values.database.bundled.enabled -}}{{ include "curu.postgresSecretName" . }}{{- else -}}{{ .Values.database.external.migrationSecret.name }}{{- end -}}
+{{- end -}}
+
+{{- define "curu.migrationSecretKey" -}}
+{{- if .Values.database.bundled.enabled -}}migration-url{{- else -}}{{ .Values.database.external.migrationSecret.key }}{{- end -}}
+{{- end -}}
+
+{{- define "curu.initializerSecret" -}}
+{{- if .Values.database.bundled.enabled -}}{{ include "curu.postgresSecretName" . }}{{- else -}}{{ .Values.database.external.initializerSecret.name }}{{- end -}}
+{{- end -}}
+
+{{- define "curu.initializerSecretKey" -}}
+{{- if .Values.database.bundled.enabled -}}initializer-url{{- else -}}{{ .Values.database.external.initializerSecret.key }}{{- end -}}
+{{- end -}}
+
+{{- define "curu.runtimeRole" -}}
+{{- if .Values.database.bundled.enabled -}}{{ .Values.database.bundled.names.runtimeRole }}{{- else -}}{{ .Values.database.external.runtimeRole }}{{- end -}}
+{{- end -}}
+
+{{- define "curu.initializerRole" -}}
+{{- if .Values.database.bundled.enabled -}}{{ .Values.database.bundled.names.initializerRole }}{{- else -}}{{ .Values.database.external.initializerRole }}{{- end -}}
+{{- end -}}
+
 {{- define "curu.postgresName" -}}
 {{- printf "%s-postgres" (include "curu.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
@@ -49,6 +73,9 @@ runtime-url
 {{- define "curu.validate" -}}
 {{- if ne .Values.owner.issuer .Values.trust.issuer -}}
 {{- fail "owner.issuer must exactly match trust.issuer" -}}
+{{- end -}}
+{{- if and (or .Values.dataLifecycle.migrate (ne .Values.dataLifecycle.initialize "none")) .Values.runtime.enabled -}}
+{{- fail "runtime.enabled must be false while a data lifecycle operation is selected" -}}
 {{- end -}}
 {{- if and .Values.database.external.enabled (eq (include "curu.runtimeSecret" .) "") -}}
 {{- fail "the selected database mode requires a non-empty runtimeSecret.name" -}}
@@ -98,5 +125,8 @@ runtime-url
 {{- end -}}
 {{- if hasKey .Values.podLabels "app.kubernetes.io/instance" -}}
 {{- fail "podLabels must not override chart-owned label app.kubernetes.io/instance" -}}
+{{- end -}}
+{{- if hasKey .Values.podLabels "app.kubernetes.io/component" -}}
+{{- fail "podLabels must not override chart-owned label app.kubernetes.io/component" -}}
 {{- end -}}
 {{- end -}}

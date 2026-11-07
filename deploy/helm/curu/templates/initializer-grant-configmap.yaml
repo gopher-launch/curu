@@ -1,0 +1,22 @@
+{{- if ne .Values.dataLifecycle.initialize "none" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "curu.fullname" . }}-initializer-grant
+  labels:
+    {{- include "curu.labels" . | nindent 4 }}
+    app.kubernetes.io/component: initializer-grant
+data:
+  grant.sh: |
+    #!/usr/bin/env bash
+    set -euo pipefail
+    psql "${CURU_MIGRATION_DATABASE_URL}" --no-password --set=ON_ERROR_STOP=1 --set=initializer_role="${INITIALIZER_ROLE}" <<'SQL'
+    SELECT format('REVOKE ALL PRIVILEGES ON SCHEMA curu FROM %I', :'initializer_role') \gexec
+    SELECT format('REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA curu FROM %I', :'initializer_role') \gexec
+    SELECT format('GRANT USAGE ON SCHEMA curu TO %I', :'initializer_role') \gexec
+    SELECT format('GRANT SELECT ON curu.schema_migrations TO %I', :'initializer_role') \gexec
+    SELECT format('GRANT SELECT, INSERT ON curu.dataset_initializations TO %I', :'initializer_role') \gexec
+    SELECT format('GRANT SELECT, INSERT ON curu.activities TO %I', :'initializer_role') \gexec
+    SELECT format('GRANT INSERT ON curu.activity_progressions TO %I', :'initializer_role') \gexec
+    SQL
+{{- end }}

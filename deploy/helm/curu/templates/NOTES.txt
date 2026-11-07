@@ -1,7 +1,7 @@
-The chart includes Curu's internal Service and the CDP-003 PostgreSQL data
-service. In bundled mode, role preparation runs after install and upgrade while
-the retained PVC and credential Secret are kept across release removal.
+The chart includes Curu's internal Service, the persistent PostgreSQL data
+service, and explicit migration/initialization Jobs. Data operations are never
+selected by default. Follow deploy/helm/curu/README.md: hold runtime off, deliberately
+select migration and seed or empty initialization, then use an operation-free
+upgrade to launch runtime only after those Jobs succeed.
 
-Migration, initialization, bundled identity, local HTTPS, and browser routing
-are not implemented yet. A running PostgreSQL service is not a migrated or
-initialized Curu installation.
+Bundled identity, local HTTPS, and browser routing are not implemented yet.

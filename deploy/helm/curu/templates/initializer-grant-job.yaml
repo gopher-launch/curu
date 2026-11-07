@@ -1,0 +1,73 @@
+{{- if ne .Values.dataLifecycle.initialize "none" }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "curu.fullname" . }}-initializer-grant
+  labels:
+    {{- include "curu.labels" . | nindent 4 }}
+    app.kubernetes.io/component: initializer-grant
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: {{ .Values.dataLifecycle.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.dataLifecycle.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        {{- include "curu.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: initializer-grant
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: grant
+          image: {{ include "curu.postgresImage" . | quote }}
+          imagePullPolicy: {{ .Values.database.bundled.image.pullPolicy }}
+          command: ["/opt/curu/grant.sh"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          env:
+            - name: CURU_MIGRATION_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "curu.migrationSecret" . | quote }}
+                  key: {{ include "curu.migrationSecretKey" . | quote }}
+            - name: INITIALIZER_ROLE
+              value: {{ include "curu.initializerRole" . | quote }}
+            {{- if and .Values.database.external.enabled (ne .Values.database.external.tls.caSecret.name "") }}
+            - name: PGSSLROOTCERT
+              value: /etc/curu/database/ca.crt
+            {{- end }}
+          volumeMounts:
+            - name: grant
+              mountPath: /opt/curu
+              readOnly: true
+            {{- if and .Values.database.external.enabled (ne .Values.database.external.tls.caSecret.name "") }}
+            - name: database-ca
+              mountPath: /etc/curu/database
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: grant
+          configMap:
+            name: {{ include "curu.fullname" . }}-initializer-grant
+            defaultMode: 0555
+        {{- if and .Values.database.external.enabled (ne .Values.database.external.tls.caSecret.name "") }}
+        - name: database-ca
+          secret:
+            secretName: {{ .Values.database.external.tls.caSecret.name | quote }}
+            items:
+              - key: {{ .Values.database.external.tls.caSecret.key | quote }}
+                path: ca.crt
+        {{- end }}
+{{- end }}

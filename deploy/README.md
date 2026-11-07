@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-This directory records the accepted deployment MVP design and its [implementation roadmap](roadmap.md). The owned chart lives at [`helm/curu/`](helm/curu/), and the local cluster interface lives at [`kind/`](kind/) and [`scripts/`](scripts/). The chart contains the Curu Deployment/internal Service and CDP-003's persistent PostgreSQL service with separated database authority. The kind interface establishes the host/cluster, image, storage, name, and trust inputs used by later component Tasks. No migrated/initialized installation, identity provider, browser login, or network-isolation result is claimed. The next deployment Task is CDP-004.
+This directory records the accepted deployment MVP design and its [implementation roadmap](roadmap.md). The owned chart lives at [`helm/curu/`](helm/curu/), and the local cluster interface lives at [`kind/`](kind/) and [`scripts/`](scripts/). The chart contains the Curu Deployment/internal Service, persistent PostgreSQL with separated database authority, and explicit ordered migration and initialization Jobs. The kind interface establishes the host/cluster, image, storage, name, and trust inputs used by later component Tasks. No identity provider, browser login, or network-isolation result is claimed. The next core deployment Task is CDP-005.
 
 The first target is Chris's HP Ubuntu laptop running a single-node kind cluster. The objective is a reproducible, authenticated installation of the current activity library, with every runtime component deployed by an owned Helm chart. Paid services, hosted identity, public internet hosting, and cloud infrastructure are not prerequisites. Local HTTPS and the application's existing security checks remain part of ordinary development.
 
@@ -241,6 +241,22 @@ deploy/scripts/verify-postgres-disposable.sh
 ```
 
 This live check never targets `curu-local`. It verifies readiness, restart persistence, repeatable role preparation, effective runtime/`PUBLIC` restrictions, Curu/Keycloak separation, generated-Secret stability through upgrade, and an external-mode connection fixture. It deletes its disposable cluster and does not migrate or initialize the Curu schema.
+
+Exercise the complete explicit data lifecycle in a separate disposable cluster:
+
+```sh
+deploy/scripts/verify-data-lifecycle-disposable.sh
+```
+
+The check builds and loads the selected Curu image, holds runtime off while
+Helm sequences preparation, migration, narrow grants, and seeded initialization,
+then verifies schema version 2 and the 44-activity/110-progression dataset. It
+also exercises the exact no-op retry, conflicting-choice refusal, missing and
+incompatible schema rejection, initializer privilege scope, bounded hook
+failure, and operation-free runtime launch. It never targets `curu-local`,
+deletes its cluster, and does not claim identity or browser acceptance. Exact
+first-install, independent-operation, and runtime-launch Helm commands are in
+the [chart README](helm/curu/README.md).
 
 Validate scripts and static exposure/storage invariants without creating a
 cluster:

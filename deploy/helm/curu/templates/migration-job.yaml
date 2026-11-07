@@ -1,0 +1,73 @@
+{{- if .Values.dataLifecycle.migrate }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "curu.fullname" . }}-migrate
+  labels:
+    {{- include "curu.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migration
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "-20"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: {{ .Values.dataLifecycle.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.dataLifecycle.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        {{- include "curu.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migration
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . | quote }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: migrate
+          image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/curu-migrate"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          env:
+            - name: CURU_MIGRATION_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "curu.migrationSecret" . | quote }}
+                  key: {{ include "curu.migrationSecretKey" . | quote }}
+            - name: CURU_RUNTIME_DATABASE_ROLE
+              value: {{ include "curu.runtimeRole" . | quote }}
+            {{- if and .Values.database.external.enabled (ne .Values.database.external.tls.caSecret.name "") }}
+            - name: PGSSLROOTCERT
+              value: /etc/curu/database/ca.crt
+            {{- end }}
+          {{- if and .Values.database.external.enabled (ne .Values.database.external.tls.caSecret.name "") }}
+          volumeMounts:
+            - name: database-ca
+              mountPath: /etc/curu/database
+              readOnly: true
+          {{- end }}
+      {{- if and .Values.database.external.enabled (ne .Values.database.external.tls.caSecret.name "") }}
+      volumes:
+        - name: database-ca
+          secret:
+            secretName: {{ .Values.database.external.tls.caSecret.name | quote }}
+            items:
+              - key: {{ .Values.database.external.tls.caSecret.key | quote }}
+                path: ca.crt
+      {{- end }}
+{{- end }}

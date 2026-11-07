@@ -16,6 +16,14 @@
 - Restricted runtime: the pod uses the image's numeric non-root identity, a read-only root filesystem, dropped capabilities, the runtime-default seccomp profile, and no service-account token mount. Curu remains responsible for rejecting invalid runtime configuration and for schema/JWKS readiness; the chart does not introduce an authentication bypass or startup data operation.
 - Verification: the pinned Helm validation interface strictly lints and renders bundled/external fixtures, confirms the absence of chart dependencies and credentials in rendered examples, asserts the internal/restricted workload boundary, preserves safe custom pod labels, and rejects floating image, contradictory mode, missing Secret-reference, mismatched owner-issuer, and chart-owned selector-label override inputs. This is render/configuration evidence only; it does not establish a live database, issuer, cluster, browser login, laptop result, or network-policy enforcement.
 
+## Explicit deployment data lifecycle
+
+- Delivery: CDP-004
+- Ordered first installation: chart-owned, bounded post-install/upgrade Jobs sequence bundled database readiness/preparation, `/curu-migrate`, migration-owner grants for the narrow initializer surface, and explicit `/curu-initialize --mode=seed|empty`. Both application Jobs use the selected Curu image and exact delivered environment interfaces; hook failure stops later operations.
+- Deliberate operation boundary: migration defaults off and initialization defaults to `none`. Selecting either requires runtime to be disabled; an operation-free upgrade is the only phase that launches the server. Seed mode reuses the runtime's stable internal owner UUID. Migration and initialization can be invoked independently, completed Jobs remain diagnosable, and no workflow treats Helm rollback as database rollback.
+- Credential scope: migration receives only its owner URL and the declared restricted runtime role; the grant Job uses that same schema-owner connection; initialization receives only its narrow URL and the seed owner when applicable; ordinary runtime receives only the runtime URL. External mode accepts explicit initializer/runtime role names and existing scoped Secrets without provisioning external resources.
+- Verification: strict Helm checks cover ordering, deadlines, explicit-mode rejection, operation/runtime exclusion, credential references, and bundled/external rendering. The disposable kind exercise proves fresh schema-version-2 migration and 44-activity/110-progression initialization, exact retry as `already_initialized`, conflicting-choice refusal without replacement, missing/checksum-incompatible schema rejection, narrow initializer privileges, bounded failure propagation, and subsequent runtime launch. Identity, browser login, target-laptop acceptance, and network-policy enforcement remain unclaimed.
+
 ## Documentation baseline
 
 - Delivery: CURU-001

@@ -15,6 +15,10 @@ helm lint "${chart_dir}" --strict -f "${fixture_dir}/bundled-values.yaml"
 helm lint "${chart_dir}" --strict -f "${fixture_dir}/external-values.yaml"
 bundled_render="$(helm template curu-bundled "${chart_dir}" -f "${fixture_dir}/bundled-values.yaml")"
 external_render="$(helm template curu-external "${chart_dir}" -f "${fixture_dir}/external-values.yaml")"
+lifecycle_render="$(helm template curu-lifecycle "${chart_dir}" -f "${fixture_dir}/bundled-values.yaml" \
+  --set runtime.enabled=false --set dataLifecycle.migrate=true --set-string dataLifecycle.initialize=seed)"
+external_lifecycle_render="$(helm template curu-external-lifecycle "${chart_dir}" -f "${fixture_dir}/external-values.yaml" \
+  --set runtime.enabled=false --set dataLifecycle.migrate=true --set-string dataLifecycle.initialize=seed)"
 
 assert_contains() {
   local rendered="$1"
@@ -40,6 +44,28 @@ assert_contains "${bundled_render}" 'NOINHERIT' 'service roles cannot inherit me
 assert_contains "${bundled_render}" 'pg_isready -U postgres -d postgres --port=5432' 'probes check the fixed PostgreSQL port'
 assert_contains "${external_render}" 'secretName: "external-postgres-ca-fixture"' 'external CA trust is mounted explicitly'
 assert_contains "${bundled_render}" 'curu.gopher-launch.dev/environment: fixture' 'non-reserved custom pod label is retained'
+assert_contains "${lifecycle_render}" 'command: ["/curu-migrate"]' 'migration uses the application image command'
+assert_contains "${lifecycle_render}" 'command: ["/curu-initialize", "--mode=seed"]' 'initialization mode is explicit'
+assert_contains "${lifecycle_render}" 'helm.sh/hook-weight: "-20"' 'migration follows database preparation'
+assert_contains "${lifecycle_render}" 'helm.sh/hook-weight: "-10"' 'initializer grants follow migration'
+assert_contains "${lifecycle_render}" 'helm.sh/hook-weight: "0"' 'initialization follows grants'
+assert_contains "${lifecycle_render}" 'REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA curu' 'initializer grants are reconciled to the narrow surface'
+assert_contains "${lifecycle_render}" 'activeDeadlineSeconds: 300' 'lifecycle jobs have a bounded deadline'
+assert_contains "${lifecycle_render}" 'key: "migration-url"' 'migration receives its scoped credential'
+assert_contains "${lifecycle_render}" 'key: "initializer-url"' 'initialization receives its scoped credential'
+assert_contains "${external_lifecycle_render}" 'name: "external-curu-migration-fixture"' 'external lifecycle uses the migration Secret'
+assert_contains "${external_lifecycle_render}" 'name: "external-curu-initializer-fixture"' 'external lifecycle uses the initializer Secret'
+assert_contains "${external_lifecycle_render}" 'value: "curu_runtime"' 'external lifecycle declares the runtime role'
+assert_contains "${external_lifecycle_render}" 'secretName: "external-postgres-ca-fixture"' 'external lifecycle mounts database CA trust'
+
+if grep -Fq 'kind: Deployment' <<<"${lifecycle_render}"; then
+  echo 'runtime Deployment must be absent during data lifecycle operations' >&2
+  exit 1
+fi
+if grep -Fq 'CURU_DATABASE_URL' <<<"${lifecycle_render}"; then
+  echo 'lifecycle jobs must not receive the runtime database credential' >&2
+  exit 1
+fi
 
 if [[ "$(grep -Fc 'curu.gopher-launch.dev/environment: fixture' <<<"${bundled_render}")" -ne 1 ]]; then
   echo 'non-reserved custom pod label must render exactly once' >&2
@@ -107,5 +133,9 @@ expect_rejected 'missing required trust input' --set-string trust.jwksURL=
 expect_rejected 'unknown values key' --set-string runtime.authenticationBypass=true
 expect_rejected 'chart-owned pod name label override' --set-string 'podLabels.app\.kubernetes\.io/name=rogue'
 expect_rejected 'chart-owned pod instance label override' --set-string 'podLabels.app\.kubernetes\.io/instance=rogue'
+expect_rejected 'chart-owned pod component label override' --set-string 'podLabels.app\.kubernetes\.io/component=rogue'
+expect_rejected 'migration concurrent with runtime' --set dataLifecycle.migrate=true
+expect_rejected 'initialization concurrent with runtime' --set-string dataLifecycle.initialize=seed
+expect_rejected 'implicit initialization mode' --set runtime.enabled=false --set-string dataLifecycle.initialize=automatic
 
 echo 'chart validation passed'

@@ -11,6 +11,7 @@ service:
   port: 8080
 
 runtime:
+  enabled: true
   publicOrigin: ""
   trustedProxyCIDRs: ""
   loginURL: ""
@@ -36,6 +37,12 @@ owner:
   issuer: ""
   subject: ""
   id: ""
+
+dataLifecycle:
+  migrate: false
+  initialize: none
+  activeDeadlineSeconds: 300
+  backoffLimit: 0
 
 database:
   bundled:
@@ -75,6 +82,8 @@ database:
     port: 5432
     curuDatabase: ""
     keycloakDatabase: ""
+    initializerRole: curu_initializer
+    runtimeRole: curu_runtime
     tls:
       mode: verify-full
       caSecret:
