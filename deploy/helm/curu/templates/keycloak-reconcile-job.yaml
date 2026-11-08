@@ -1,0 +1,99 @@
+{{- if .Values.identity.bundled.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "curu.keycloakName" . }}-reconcile
+  labels:
+    {{- include "curu.labels" . | nindent 4 }}
+    app.kubernetes.io/component: identity-reconcile
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "-25"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: {{ .Values.dataLifecycle.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.dataLifecycle.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        {{- include "curu.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: identity-reconcile
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: reconcile
+          image: {{ include "curu.keycloakImage" . | quote }}
+          imagePullPolicy: {{ .Values.identity.bundled.image.pullPolicy }}
+          command: ["/opt/curu/reconcile.sh"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: REALM
+              value: {{ .Values.identity.bundled.realm | quote }}
+            - name: AUDIENCE
+              value: {{ .Values.identity.bundled.audience | quote }}
+            - name: CLIENT_ID
+              value: {{ .Values.identity.bundled.client.id | quote }}
+            - name: ACCESS_TOKEN_LIFESPAN
+              value: {{ .Values.identity.bundled.accessTokenLifespanSeconds | quote }}
+            - name: TOKEN_FIXTURE_ENABLED
+              value: {{ .Values.identity.bundled.tokenFixture.enabled | quote }}
+            - name: OWNER_SUBJECT
+              value: {{ .Values.identity.bundled.users.owner.subject | quote }}
+            - name: OWNER_USERNAME
+              value: {{ .Values.identity.bundled.users.owner.username | quote }}
+            - name: OTHER_SUBJECT
+              value: {{ .Values.identity.bundled.users.other.subject | quote }}
+            - name: OTHER_USERNAME
+              value: {{ .Values.identity.bundled.users.other.username | quote }}
+            - name: ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "curu.keycloakSecretName" . | quote }}
+                  key: admin-username
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "curu.keycloakSecretName" . | quote }}
+                  key: admin-password
+            - name: CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "curu.keycloakSecretName" . | quote }}
+                  key: client-secret
+            - name: OWNER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "curu.keycloakSecretName" . | quote }}
+                  key: owner-password
+            - name: OTHER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "curu.keycloakSecretName" . | quote }}
+                  key: other-password
+          volumeMounts:
+            - name: reconcile
+              mountPath: /opt/curu
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: reconcile
+          configMap:
+            name: {{ include "curu.keycloakName" . }}-reconcile
+            defaultMode: 0555
+        - name: tmp
+          emptyDir: {}
+{{- end }}

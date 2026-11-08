@@ -70,9 +70,50 @@ runtime-url
 {{- printf "%s:%s@%s" .Values.database.bundled.image.repository .Values.database.bundled.image.tag .Values.database.bundled.image.digest -}}
 {{- end -}}
 
+{{- define "curu.keycloakName" -}}
+{{- printf "%s-keycloak" (include "curu.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "curu.keycloakSecretName" -}}
+{{- default (printf "%s-credentials" (include "curu.keycloakName" .)) .Values.identity.bundled.credentialsSecret.existingName -}}
+{{- end -}}
+
+{{- define "curu.keycloakImage" -}}
+{{- printf "%s:%s@%s" .Values.identity.bundled.image.repository .Values.identity.bundled.image.tag .Values.identity.bundled.image.digest -}}
+{{- end -}}
+
+{{- define "curu.keycloakDatabaseSecret" -}}
+{{- if .Values.database.bundled.enabled -}}{{ include "curu.postgresSecretName" . }}{{- else -}}{{ .Values.database.external.keycloakSecret.name }}{{- end -}}
+{{- end -}}
+
+{{- define "curu.keycloakDatabaseSecretKey" -}}
+{{- if .Values.database.bundled.enabled -}}keycloak-jdbc-url{{- else -}}{{ .Values.database.external.keycloakSecret.key }}{{- end -}}
+{{- end -}}
+
 {{- define "curu.validate" -}}
 {{- if ne .Values.owner.issuer .Values.trust.issuer -}}
 {{- fail "owner.issuer must exactly match trust.issuer" -}}
+{{- end -}}
+{{- if and .Values.identity.bundled.enabled (ne .Values.trust.issuer (printf "%s/realms/%s" (trimSuffix "/" .Values.identity.bundled.hostname) .Values.identity.bundled.realm)) -}}
+{{- fail "bundled identity requires trust.issuer to equal identity.bundled.hostname plus /realms/<realm>" -}}
+{{- end -}}
+{{- if and .Values.identity.bundled.enabled (ne .Values.trust.jwksURL (printf "%s/realms/%s/protocol/openid-connect/certs" (trimSuffix "/" .Values.identity.bundled.hostname) .Values.identity.bundled.realm)) -}}
+{{- fail "bundled identity requires trust.jwksURL to equal the realm JWKS endpoint" -}}
+{{- end -}}
+{{- if and .Values.identity.bundled.enabled (ne .Values.trust.audience .Values.identity.bundled.audience) -}}
+{{- fail "bundled identity audience must exactly match trust.audience" -}}
+{{- end -}}
+{{- if and .Values.identity.bundled.enabled (ne .Values.owner.subject .Values.identity.bundled.users.owner.subject) -}}
+{{- fail "bundled identity owner subject must exactly match owner.subject" -}}
+{{- end -}}
+{{- if and .Values.identity.bundled.enabled (eq .Values.identity.bundled.users.owner.subject .Values.identity.bundled.users.other.subject) -}}
+{{- fail "bundled identity development-user subjects must be distinct" -}}
+{{- end -}}
+{{- if and .Values.identity.external.enabled (or (eq .Values.identity.external.client.id "") (eq .Values.identity.external.client.secret.name "")) -}}
+{{- fail "external identity mode requires an explicit browser client and client Secret reference" -}}
+{{- end -}}
+{{- if eq .Values.identity.caTrust.configMapName "" -}}
+{{- fail "identity.caTrust.configMapName is required for verified issuer/JWKS HTTPS" -}}
 {{- end -}}
 {{- if and (or .Values.dataLifecycle.migrate (ne .Values.dataLifecycle.initialize "none")) .Values.runtime.enabled -}}
 {{- fail "runtime.enabled must be false while a data lifecycle operation is selected" -}}

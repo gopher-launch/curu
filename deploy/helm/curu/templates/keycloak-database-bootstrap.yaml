@@ -1,0 +1,104 @@
+{{- if and .Values.identity.bundled.enabled .Values.database.bundled.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "curu.keycloakName" . }}-database-bootstrap
+  labels:
+    {{- include "curu.labels" . | nindent 4 }}
+    app.kubernetes.io/component: identity-database-bootstrap
+data:
+  bootstrap.sh: |
+    #!/usr/bin/env bash
+    set -euo pipefail
+    until pg_isready --host="${POSTGRES_HOST}" --port=5432 --username=postgres --dbname=postgres >/dev/null 2>&1; do
+      if (( SECONDS >= 180 )); then
+        echo 'PostgreSQL did not become ready within 180 seconds' >&2
+        exit 1
+      fi
+      sleep 2
+    done
+    psql --host="${POSTGRES_HOST}" --port=5432 --username=postgres --dbname=postgres \
+      --no-password --set=ON_ERROR_STOP=1 --set=VERBOSITY=terse \
+      --set=keycloak_role="${KEYCLOAK_ROLE}" --set=keycloak_password="${KEYCLOAK_PASSWORD}" \
+      --set=keycloak_database="${KEYCLOAK_DATABASE}" <<'SQL'
+    SELECT format('CREATE ROLE %I LOGIN', :'keycloak_role') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'keycloak_role') \gexec
+    SELECT format('ALTER ROLE %I WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT PASSWORD %L', :'keycloak_role', :'keycloak_password') \gexec
+    SELECT format('REVOKE %I FROM %I', parent.rolname, member.rolname)
+      FROM pg_auth_members membership
+      JOIN pg_roles parent ON parent.oid = membership.roleid
+      JOIN pg_roles member ON member.oid = membership.member
+      WHERE member.rolname = :'keycloak_role' \gexec
+    SELECT format('CREATE DATABASE %I OWNER postgres TEMPLATE template0', :'keycloak_database')
+      WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'keycloak_database') \gexec
+    SELECT format('REVOKE ALL ON DATABASE %I FROM PUBLIC', :'keycloak_database') \gexec
+    SELECT format('GRANT CONNECT, TEMPORARY ON DATABASE %I TO %I', :'keycloak_database', :'keycloak_role') \gexec
+    SQL
+    psql --host="${POSTGRES_HOST}" --port=5432 --username=postgres --dbname="${KEYCLOAK_DATABASE}" \
+      --no-password --set=ON_ERROR_STOP=1 --set=VERBOSITY=terse --set=keycloak_role="${KEYCLOAK_ROLE}" <<'SQL'
+    REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+    REVOKE ALL ON SCHEMA public FROM PUBLIC;
+    SELECT format('GRANT USAGE, CREATE ON SCHEMA public TO %I', :'keycloak_role') \gexec
+    SQL
+    echo 'Keycloak database authority bootstrapped'
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "curu.keycloakName" . }}-database-bootstrap
+  labels:
+    {{- include "curu.labels" . | nindent 4 }}
+    app.kubernetes.io/component: identity-database-bootstrap
+spec:
+  backoffLimit: {{ .Values.dataLifecycle.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.dataLifecycle.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "curu.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: identity-database-bootstrap
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: bootstrap
+          image: {{ include "curu.postgresImage" . | quote }}
+          imagePullPolicy: {{ .Values.database.bundled.image.pullPolicy }}
+          command: ["/opt/curu/bootstrap.sh"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          env:
+            - name: POSTGRES_HOST
+              value: {{ include "curu.postgresName" . | quote }}
+            - name: KEYCLOAK_DATABASE
+              value: {{ .Values.database.bundled.names.keycloakDatabase | quote }}
+            - name: KEYCLOAK_ROLE
+              value: {{ .Values.database.bundled.names.keycloakRole | quote }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "curu.postgresSecretName" . | quote }}
+                  key: admin-password
+            - name: KEYCLOAK_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "curu.postgresSecretName" . | quote }}
+                  key: keycloak-password
+          volumeMounts:
+            - name: bootstrap
+              mountPath: /opt/curu
+              readOnly: true
+      volumes:
+        - name: bootstrap
+          configMap:
+            name: {{ include "curu.keycloakName" . }}-database-bootstrap
+            defaultMode: 0555
+{{- end }}

@@ -10,6 +10,7 @@ spec:
   selector:
     matchLabels:
       {{- include "curu.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: runtime
   template:
     metadata:
       labels:
@@ -55,6 +56,8 @@ spec:
                 secretKeyRef:
                   name: {{ include "curu.runtimeSecret" . | quote }}
                   key: {{ include "curu.runtimeSecretKey" . | quote }}
+            - name: SSL_CERT_FILE
+              value: /etc/curu/identity/ca.crt
             {{- if and .Values.database.external.enabled (ne .Values.database.external.tls.caSecret.name "") }}
             - name: PGSSLROOTCERT
               value: /etc/curu/database/ca.crt
@@ -81,14 +84,23 @@ spec:
             failureThreshold: 3
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-          {{- if and .Values.database.external.enabled (ne .Values.database.external.tls.caSecret.name "") }}
           volumeMounts:
+            - name: identity-ca
+              mountPath: /etc/curu/identity
+              readOnly: true
+          {{- if and .Values.database.external.enabled (ne .Values.database.external.tls.caSecret.name "") }}
             - name: database-ca
               mountPath: /etc/curu/database
               readOnly: true
           {{- end }}
-      {{- if and .Values.database.external.enabled (ne .Values.database.external.tls.caSecret.name "") }}
       volumes:
+        - name: identity-ca
+          configMap:
+            name: {{ .Values.identity.caTrust.configMapName | quote }}
+            items:
+              - key: {{ .Values.identity.caTrust.key | quote }}
+                path: ca.crt
+      {{- if and .Values.database.external.enabled (ne .Values.database.external.tls.caSecret.name "") }}
         - name: database-ca
           secret:
             secretName: {{ .Values.database.external.tls.caSecret.name | quote }}

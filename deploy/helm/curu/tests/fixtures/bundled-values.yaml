@@ -4,12 +4,12 @@ image:
 runtime:
   publicOrigin: https://curu.test.invalid
 trust:
-  issuer: https://identity.test.invalid/realms/curu
+  issuer: https://identity.curu.test:8443/realms/curu
   audience: curu
-  jwksURL: https://identity.test.invalid/realms/curu/protocol/openid-connect/certs
+  jwksURL: https://identity.curu.test:8443/realms/curu/protocol/openid-connect/certs
 owner:
-  issuer: https://identity.test.invalid/realms/curu
-  subject: owner-fixture
+  issuer: https://identity.curu.test:8443/realms/curu
+  subject: 00000000-0000-4000-8000-000000000001
   id: 00000000-0000-4000-8000-000000000001
 database:
   bundled:
@@ -17,5 +17,11 @@ database:
       existingName: curu-postgres-credentials-fixture
     storage:
       size: 1Gi
+identity:
+  bundled:
+    credentialsSecret:
+      existingName: curu-keycloak-credentials-fixture
+  caTrust:
+    configMapName: curu-local-ca-fixture
 podLabels:
   curu.gopher-launch.dev/environment: fixture

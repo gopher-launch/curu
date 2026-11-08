@@ -1,0 +1,19 @@
+{{- if .Values.identity.bundled.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "curu.keycloakName" . }}
+  labels:
+    {{- include "curu.labels" . | nindent 4 }}
+    app.kubernetes.io/component: identity
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "curu.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: identity
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+{{- end }}

@@ -1,0 +1,218 @@
+{{- if .Values.identity.bundled.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "curu.keycloakName" . }}-reconcile
+  labels:
+    {{- include "curu.labels" . | nindent 4 }}
+    app.kubernetes.io/component: identity-reconcile
+data:
+  reconcile.sh: |
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    readonly kcadm=/opt/keycloak/bin/kcadm.sh
+    readonly config=/tmp/kcadm.config
+    readonly server=http://{{ include "curu.keycloakName" . }}:8080
+
+    until "${kcadm}" config credentials --config "${config}" --server "${server}" --realm master --user "${ADMIN_USERNAME}" --password "${ADMIN_PASSWORD}" >/dev/null 2>&1; do
+      if (( SECONDS >= 240 )); then
+        echo 'Keycloak administration endpoint did not become ready within 240 seconds' >&2
+        exit 1
+      fi
+      sleep 3
+    done
+
+    if ! "${kcadm}" get "realms/${REALM}" --config "${config}" >/dev/null 2>&1; then
+      "${kcadm}" create realms --config "${config}" \
+        -s "realm=${REALM}" -s enabled=true -s sslRequired=external \
+        -s "accessTokenLifespan=${ACCESS_TOKEN_LIFESPAN}" \
+        -s defaultSignatureAlgorithm=RS256 >/dev/null
+    else
+      "${kcadm}" update "realms/${REALM}" \
+        -s enabled=true -s sslRequired=external \
+        -s "accessTokenLifespan=${ACCESS_TOKEN_LIFESPAN}" \
+        -s defaultSignatureAlgorithm=RS256 --config "${config}" >/dev/null
+    fi
+
+    client_id="$("${kcadm}" get clients --config "${config}" -r "${REALM}" -q "clientId=${CLIENT_ID}" -F id --format csv --noquotes | tail -n 1)"
+    if [[ -z "${client_id}" || "${client_id}" == id ]]; then
+      client_id="$("${kcadm}" create clients --config "${config}" -r "${REALM}" -i -f - <<JSON
+    {
+      "clientId": "${CLIENT_ID}",
+      "name": "Curu browser gateway",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "clientAuthenticatorType": "client-secret",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "secret": "${CLIENT_SECRET}",
+      "redirectUris": {{ toJson .Values.identity.bundled.client.redirectURIs }},
+      "webOrigins": {{ toJson .Values.identity.bundled.client.webOrigins }},
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "access.token.header.type.rfc9068": "true"{{ if .Values.identity.bundled.tokenFixture.enabled }},
+        "curu.unmanaged.fixture": "preserve"{{ end }}
+      }
+    }
+    JSON
+    )"
+    else
+      "${kcadm}" update "clients/${client_id}" \
+        -s "clientId=${CLIENT_ID}" -s 'name=Curu browser gateway' -s enabled=true \
+        -s protocol=openid-connect -s clientAuthenticatorType=client-secret -s publicClient=false -s bearerOnly=false \
+        -s standardFlowEnabled=true -s directAccessGrantsEnabled=false \
+        -s serviceAccountsEnabled=false -s "secret=${CLIENT_SECRET}" \
+        -s 'redirectUris={{ toJson .Values.identity.bundled.client.redirectURIs }}' \
+        -s 'webOrigins={{ toJson .Values.identity.bundled.client.webOrigins }}' \
+        -s 'attributes."pkce.code.challenge.method"=S256' \
+        -s 'attributes."access.token.header.type.rfc9068"=true' \
+        -r "${REALM}" --config "${config}" >/dev/null
+    fi
+    actual_client_secret="$("${kcadm}" get "clients/${client_id}/client-secret" --config "${config}" -r "${REALM}" -F value --format csv --noquotes | tail -n 1)"
+    if [[ "${actual_client_secret}" != "${CLIENT_SECRET}" ]]; then
+      echo 'Keycloak did not retain the declared browser client secret' >&2
+      exit 1
+    fi
+
+    upsert_mapper() {
+      local mapper_name="$1"
+      local body="$2"
+      local mapper_id='' first second
+      while IFS=, read -r first second; do
+        first="${first//\"/}"
+        second="${second//\"/}"
+        first="${first// /}"; first="${first//$'\r'/}"
+        second="${second// /}"; second="${second//$'\r'/}"
+        if [[ "${first}" == "${mapper_name}" ]]; then mapper_id="${second}"; break; fi
+        if [[ "${second}" == "${mapper_name}" ]]; then mapper_id="${first}"; break; fi
+      done < <("${kcadm}" get "clients/${client_id}/protocol-mappers/models" --config "${config}" -r "${REALM}" -F id,name --format csv --noquotes)
+      if [[ -z "${mapper_id}" ]]; then
+        "${kcadm}" create "clients/${client_id}/protocol-mappers/models" --config "${config}" -r "${REALM}" -b "${body}" >/dev/null
+      else
+        "${kcadm}" update "clients/${client_id}/protocol-mappers/models/${mapper_id}" --config "${config}" -r "${REALM}" -b "${body}" >/dev/null
+      fi
+    }
+
+    upsert_mapper curu-audience "$(cat <<JSON
+    {
+      "name": "curu-audience",
+      "protocol": "openid-connect",
+      "protocolMapper": "oidc-audience-mapper",
+      "consentRequired": false,
+      "config": {
+        "included.custom.audience": "${AUDIENCE}",
+        "id.token.claim": "false",
+        "access.token.claim": "true",
+        "lightweight.claim": "true"
+      }
+    }
+    JSON
+    )"
+    upsert_mapper curu-client-id "$(cat <<JSON
+    {
+      "name": "curu-client-id",
+      "protocol": "openid-connect",
+      "protocolMapper": "oidc-hardcoded-claim-mapper",
+      "consentRequired": false,
+      "config": {
+        "claim.name": "client_id",
+        "claim.value": "${CLIENT_ID}",
+        "jsonType.label": "String",
+        "id.token.claim": "false",
+        "access.token.claim": "true",
+        "lightweight.claim": "true",
+        "userinfo.token.claim": "false",
+        "access.tokenResponse.claim": "false"
+      }
+    }
+    JSON
+    )"
+    upsert_mapper curu-subject "$(cat <<JSON
+    {
+      "name": "curu-subject",
+      "protocol": "openid-connect",
+      "protocolMapper": "oidc-usermodel-attribute-mapper",
+      "consentRequired": false,
+      "config": {
+        "user.attribute": "curu_subject",
+        "claim.name": "sub",
+        "jsonType.label": "String",
+        "id.token.claim": "false",
+        "access.token.claim": "true",
+        "lightweight.claim": "true",
+        "userinfo.token.claim": "false",
+        "access.tokenResponse.claim": "false",
+        "multivalued": "false"
+      }
+    }
+    JSON
+    )"
+
+    create_token_fixture() {
+      local fixture_client="$1" fixture_audience="$2" fixture_lifespan="$3" fixture_id
+      fixture_id="$("${kcadm}" get clients --config "${config}" -r "${REALM}" -q "clientId=${fixture_client}" -F id --format csv --noquotes | tail -n 1)"
+      if [[ -n "${fixture_id}" && "${fixture_id}" != id ]]; then return; fi
+      fixture_id="$("${kcadm}" create clients --config "${config}" -r "${REALM}" -i -f - <<JSON
+    {"clientId":"${fixture_client}","name":"Disposable Curu token fixture","enabled":true,"protocol":"openid-connect","publicClient":true,"standardFlowEnabled":false,"directAccessGrantsEnabled":true,"serviceAccountsEnabled":false,"attributes":{"access.token.header.type.rfc9068":"true","access.token.lifespan":"${fixture_lifespan}"}}
+    JSON
+    )"
+      "${kcadm}" create "clients/${fixture_id}/protocol-mappers/models" --config "${config}" -r "${REALM}" -b "{\"name\":\"fixture-audience\",\"protocol\":\"openid-connect\",\"protocolMapper\":\"oidc-audience-mapper\",\"config\":{\"included.custom.audience\":\"${fixture_audience}\",\"id.token.claim\":\"false\",\"access.token.claim\":\"true\",\"lightweight.claim\":\"true\"}}" >/dev/null
+      "${kcadm}" create "clients/${fixture_id}/protocol-mappers/models" --config "${config}" -r "${REALM}" -b "{\"name\":\"fixture-client-id\",\"protocol\":\"openid-connect\",\"protocolMapper\":\"oidc-hardcoded-claim-mapper\",\"config\":{\"claim.name\":\"client_id\",\"claim.value\":\"${fixture_client}\",\"jsonType.label\":\"String\",\"id.token.claim\":\"false\",\"access.token.claim\":\"true\",\"lightweight.claim\":\"true\"}}" >/dev/null
+      "${kcadm}" create "clients/${fixture_id}/protocol-mappers/models" --config "${config}" -r "${REALM}" -b '{"name":"fixture-subject","protocol":"openid-connect","protocolMapper":"oidc-usermodel-attribute-mapper","config":{"user.attribute":"curu_subject","claim.name":"sub","jsonType.label":"String","id.token.claim":"false","access.token.claim":"true","lightweight.claim":"true","multivalued":"false"}}' >/dev/null
+    }
+    if [[ "${TOKEN_FIXTURE_ENABLED}" == true ]]; then
+      create_token_fixture curu-token-fixture "${AUDIENCE}" 120
+      create_token_fixture curu-wrong-audience-fixture other-resource 120
+      create_token_fixture curu-expired-token-fixture "${AUDIENCE}" 2
+    fi
+
+    bootstrap_complete=false
+    if "${kcadm}" get "realms/${REALM}" --config "${config}" -F 'attributes(*)' | grep -F '"curu.identity.bootstrap" : "complete"' >/dev/null; then
+      bootstrap_complete=true
+    fi
+
+    reconcile_user() {
+      local subject="$1"
+      local username="$2"
+      local password="$3"
+      local existing_id created_id
+      existing_id="$("${kcadm}" get users --config "${config}" -r "${REALM}" -q "username=${username}" -q exact=true -F id --format csv --noquotes | tail -n 1)"
+      if [[ -n "${existing_id}" && "${existing_id}" != id ]]; then
+        if [[ "${existing_id}" != "${subject}" ]]; then
+          echo "declared username ${username} has a different Keycloak subject" >&2
+          exit 1
+        fi
+        "${kcadm}" update "users/${existing_id}" --config "${config}" -r "${REALM}" \
+          -s enabled=true -s "username=${username}" -s firstName=Curu \
+          -s 'lastName=Development User' -s "email=${username}@curu.test" \
+          -s emailVerified=true -s 'requiredActions=[]' >/dev/null
+        return
+      fi
+      if [[ "${bootstrap_complete}" == true ]]; then
+        echo "declared identity ${username} is missing after completed bootstrap; refusing silent rebinding" >&2
+        exit 1
+      fi
+
+      "${kcadm}" create partialImport --config "${config}" -r "${REALM}" -f - <<JSON >/dev/null
+    {"ifResourceExists":"FAIL","users":[{"id":"${subject}","username":"${username}","enabled":true,"firstName":"Curu","lastName":"Development User","email":"${username}@curu.test","emailVerified":true,"requiredActions":[],"attributes":{"curu_subject":["${subject}"]}}]}
+    JSON
+      created_id="$("${kcadm}" get users --config "${config}" -r "${REALM}" -q "username=${username}" -q exact=true -F id --format csv --noquotes | tail -n 1)"
+      if [[ "${created_id}" != "${subject}" ]]; then
+        echo "Keycloak did not preserve the declared stable subject for ${username}" >&2
+        exit 1
+      fi
+      "${kcadm}" set-password --config "${config}" -r "${REALM}" --userid "${created_id}" --new-password "${password}" >/dev/null
+    }
+
+    reconcile_user "${OWNER_SUBJECT}" "${OWNER_USERNAME}" "${OWNER_PASSWORD}"
+    reconcile_user "${OTHER_SUBJECT}" "${OTHER_USERNAME}" "${OTHER_PASSWORD}"
+
+    "${kcadm}" update "realms/${REALM}" \
+      -s 'attributes."curu.identity.bootstrap"=complete' --config "${config}" >/dev/null
+
+    echo 'Keycloak declared realm, client, mappers, and development users reconciled'
+{{- end }}

@@ -1,7 +1,8 @@
-The chart includes Curu's internal Service, the persistent PostgreSQL data
-service, and explicit migration/initialization Jobs. Data operations are never
-selected by default. Follow deploy/helm/curu/README.md: hold runtime off, deliberately
-select migration and seed or empty initialization, then use an operation-free
-upgrade to launch runtime only after those Jobs succeed.
+The chart includes Curu's internal Service, persistent PostgreSQL data service,
+explicit migration/initialization Jobs, and the bundled Keycloak identity
+service. Data operations are never selected by default. Follow
+deploy/helm/curu/README.md: hold runtime off, deliberately select migration and
+seed or empty initialization, then use an operation-free upgrade to launch
+runtime only after those Jobs and identity reconciliation succeed.
 
-Bundled identity, local HTTPS, and browser routing are not implemented yet.
+Local HTTPS browser routing and gateway sessions remain unimplemented.

@@ -108,8 +108,49 @@ database:
 identity:
   bundled:
     enabled: true
+    image:
+      repository: quay.io/keycloak/keycloak
+      tag: 26.8.2
+      digest: sha256:4340d05ee7d15be34293868d495ac772d61f1a4d0e43d53bae2e75e2f05de185
+      pullPolicy: IfNotPresent
+    hostname: https://identity.curu.test:8443
+    realm: curu
+    audience: curu
+    client:
+      id: curu-browser
+      redirectURIs:
+        - https://curu.test:8443/oauth2/callback
+      webOrigins:
+        - https://curu.test:8443
+    accessTokenLifespanSeconds: 600
+    tokenFixture:
+      enabled: false
+    credentialsSecret:
+      existingName: ""
+    users:
+      owner:
+        subject: 00000000-0000-4000-8000-000000000001
+        username: owner
+      other:
+        subject: 00000000-0000-4000-8000-000000000002
+        username: other-user
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "2"
+        memory: 2Gi
   external:
     enabled: false
+    client:
+      id: ""
+      secret:
+        name: ""
+        key: client-secret
+  caTrust:
+    configMapName: curu-local-ca
+    key: ca.crt
 
 resources:
   requests:

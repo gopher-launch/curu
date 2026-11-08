@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-This directory records the accepted deployment MVP design and its [implementation roadmap](roadmap.md). The owned chart lives at [`helm/curu/`](helm/curu/), and the local cluster interface lives at [`kind/`](kind/) and [`scripts/`](scripts/). The chart contains the Curu Deployment/internal Service, persistent PostgreSQL with separated database authority, and explicit ordered migration and initialization Jobs. The kind interface establishes the host/cluster, image, storage, name, and trust inputs used by later component Tasks. No identity provider, browser login, or network-isolation result is claimed. The next core deployment Task is CDP-005.
+This directory records the accepted deployment MVP design and its [implementation roadmap](roadmap.md). The owned chart lives at [`helm/curu/`](helm/curu/), and the local cluster interface lives at [`kind/`](kind/) and [`scripts/`](scripts/). The chart contains the Curu Deployment/internal Service, persistent PostgreSQL with separated database authority, explicit ordered migration and initialization Jobs, and a repeatably reconciled bundled Keycloak identity service. The kind interface establishes the host/cluster, image, storage, name, and trust inputs used by later component Tasks. Real browser login and network-isolation results are not claimed. The next core deployment Task is CDP-006.
 
 The first target is Chris's HP Ubuntu laptop running a single-node kind cluster. The objective is a reproducible, authenticated installation of the current activity library, with every runtime component deployed by an owned Helm chart. Paid services, hosted identity, public internet hosting, and cloud infrastructure are not prerequisites. Local HTTPS and the application's existing security checks remain part of ordinary development.
 
@@ -131,8 +131,8 @@ loading an image does not install Curu.
 
 The stable browser/application name is `curu.test`; the stable identity name is
 `identity.curu.test`. Bootstrap configures in-cluster DNS to resolve both names
-to the future `curu-edge.curu-system.svc.cluster.local` Service. CDP-005 and
-CDP-006 still own component-specific issuer and edge routing.
+to the future `curu-edge.curu-system.svc.cluster.local` Service. CDP-006 still
+owns the component-specific edge routing for the delivered issuer.
 
 Keep local PKI outside the repository and retained workload directory:
 
@@ -257,6 +257,20 @@ failure, and operation-free runtime launch. It never targets `curu-local`,
 deletes its cluster, and does not claim identity or browser acceptance. Exact
 first-install, independent-operation, and runtime-launch Helm commands are in
 the [chart README](helm/curu/README.md).
+
+Exercise the bundled identity and token boundary in a disposable cluster:
+
+```sh
+deploy/scripts/verify-identity-disposable.sh
+```
+
+The check creates a temporary HTTPS edge only for identity verification. It
+proves trusted discovery/JWKS, real RS256 `at+jwt` claims, owner acceptance,
+other-user denial, wrong-purpose/audience/expiry rejection, and preservation of
+Secrets, user IDs, signing keys, and unmanaged client fields through an
+upgrade. It refuses an existing `curu-identity-check` cluster and deletes its
+cluster on exit. Its password grant is a controlled token fixture, not the
+CDP-006 browser authorization-code flow.
 
 Validate scripts and static exposure/storage invariants without creating a
 cluster:

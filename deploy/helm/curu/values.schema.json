@@ -110,10 +110,19 @@
     "identity": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["bundled", "external"],
+      "required": ["bundled", "external", "caTrust"],
       "properties": {
-        "bundled": {"$ref": "#/definitions/enabledMode"},
-        "external": {"$ref": "#/definitions/enabledMode"}
+        "bundled": {"$ref": "#/definitions/bundledIdentity"},
+        "external": {"$ref": "#/definitions/externalIdentity"},
+        "caTrust": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["configMapName", "key"],
+          "properties": {
+            "configMapName": {"type": "string", "minLength": 1},
+            "key": {"type": "string", "minLength": 1}
+          }
+        }
       },
       "oneOf": [
         {
@@ -272,6 +281,96 @@
       "additionalProperties": false,
       "required": ["enabled"],
       "properties": {"enabled": {"type": "boolean"}}
+    },
+    "containerImage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "tag", "digest", "pullPolicy"],
+      "properties": {
+        "repository": {"type": "string", "minLength": 1},
+        "tag": {"type": "string", "minLength": 1, "not": {"enum": ["latest"]}},
+        "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "pullPolicy": {"type": "string", "enum": ["Always", "IfNotPresent", "Never"]}
+      }
+    },
+    "identityUser": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject", "username"],
+      "properties": {
+        "subject": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+        "username": {"type": "string", "pattern": "^[a-z][a-z0-9._-]{0,62}$"}
+      }
+    },
+    "bundledIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "image", "hostname", "realm", "audience", "client", "accessTokenLifespanSeconds", "tokenFixture", "credentialsSecret", "users", "resources"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "image": {"$ref": "#/definitions/containerImage"},
+        "hostname": {"type": "string", "pattern": "^https://[^/]+$"},
+        "realm": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,62}$"},
+        "audience": {"type": "string", "minLength": 1},
+        "client": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "redirectURIs", "webOrigins"],
+          "properties": {
+            "id": {"type": "string", "pattern": "^[a-z][a-z0-9._-]{0,62}$"},
+            "redirectURIs": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^https://.+"}},
+            "webOrigins": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^https://[^/]+$"}}
+          }
+        },
+        "accessTokenLifespanSeconds": {"type": "integer", "minimum": 60, "maximum": 900},
+        "tokenFixture": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": {"enabled": {"type": "boolean"}}
+        },
+        "credentialsSecret": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["existingName"],
+          "properties": {"existingName": {"type": "string"}}
+        },
+        "users": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["owner", "other"],
+          "properties": {
+            "owner": {"$ref": "#/definitions/identityUser"},
+            "other": {"$ref": "#/definitions/identityUser"}
+          }
+        },
+        "resources": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["requests", "limits"],
+          "properties": {
+            "requests": {"$ref": "#/definitions/resourceList"},
+            "limits": {"$ref": "#/definitions/resourceList"}
+          }
+        }
+      }
+    },
+    "externalIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "client"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "client": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "secret"],
+          "properties": {
+            "id": {"type": "string"},
+            "secret": {"$ref": "#/definitions/secretReference"}
+          }
+        }
+      }
     },
     "resourceList": {
       "type": "object",

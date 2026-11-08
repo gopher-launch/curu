@@ -1,16 +1,57 @@
 # Curu Helm chart
 
 This repository-owned chart supplies the Curu Deployment and internal Service,
-CDP-003's PostgreSQL data-service boundary, and CDP-004's explicit lifecycle
-Jobs. Bundled mode
+CDP-003's PostgreSQL data-service boundary, CDP-004's explicit lifecycle Jobs,
+and CDP-005's Keycloak identity boundary. Bundled database mode
 owns one pinned PostgreSQL 17.6 StatefulSet, internal Service, retained claim,
 stable credential Secret, and idempotent role-preparation Job. External mode
 provisions no database resource and accepts explicit endpoint, TLS/CA, and
 scoped Secret references.
 
-Keycloak, NGINX, OAuth2 Proxy, and a runnable authenticated end-to-end
-installation remain with later tasks. PostgreSQL readiness does not mean the
-Curu schema exists or the dataset is initialized.
+Bundled identity mode owns one pinned, production-mode Keycloak Deployment and
+internal Service plus repeatable realm/client/development-user reconciliation.
+External mode creates no identity resource and accepts explicit issuer, JWKS,
+CA, and browser-client inputs. NGINX, OAuth2 Proxy, and a runnable browser
+login path remain with later tasks. PostgreSQL and identity readiness do not
+mean the Curu schema exists or the dataset is initialized.
+
+## Identity modes
+
+Exactly one of `identity.bundled.enabled` and `identity.external.enabled` is
+true. Bundled mode requires the configured issuer and JWKS URL to be the
+declared Keycloak hostname and realm, and requires the audience and owner
+subject to match Curu's exact trust/owner settings. It starts Keycloak in
+explicit production mode behind the future HTTPS edge, trusts forwarded proxy
+headers from that private hop, and keeps the Service cluster-internal. The
+master administration endpoint is not an application route; use a deliberately
+scoped local operator port-forward only when diagnosis is required.
+
+The reconciliation Job creates or updates only the declared realm token
+settings, confidential browser client, named protocol mappers, and controlled
+development-user presentation fields. It configures authorization code with
+S256 PKCE, RS256 `at+jwt` access tokens, a dedicated audience, `client_id`, and
+a token lifetime of at most 15 minutes; Keycloak supplies the required `jti`.
+Passwords and the browser client secret come from the retained generated
+Secret or `identity.bundled.credentialsSecret.existingName`. Existing user IDs,
+passwords, signing keys, and undeclared client fields survive reconciliation.
+After initial completion, a missing declared user is refused instead of being
+silently recreated with a new identity.
+
+The default stable owner subject equals the default internal owner UUID only as
+an explicit deployment choice; Curu still binds them through separate exact
+`owner.subject` and `owner.id` values. The second development identity proves
+valid-token denial. Password-grant use is limited to the disposable token
+compatibility fixture; `identity.bundled.tokenFixture.enabled` defaults to
+`false` and is enabled only by the isolated verification script. CDP-006 owns
+the real authorization-code browser flow.
+
+Keycloak uses its separately scoped PostgreSQL role/database. Its durable users,
+credentials, realm state, and signing keys live there; pod-local Keycloak data
+is disposable. The future edge terminates HTTPS, while Curu mounts the public
+issuer CA ConfigMap named by `identity.caTrust` and never disables JWKS TLS
+verification. External identity mode provisions, reconciles, or deletes no
+provider resources. Its client Secret reference is an input for the gateway
+task and is not mounted into Curu by this chart.
 
 ## Explicit data lifecycle
 
@@ -61,9 +102,9 @@ helm upgrade curu deploy/helm/curu \
   --timeout 10m
 ```
 
-The server process starts against the compatible schema, but its readiness
-remains unavailable until CDP-005 supplies trusted JWKS. After identity is
-delivered, the integrated operator workflow can add a bounded readiness wait.
+The server process starts against the compatible schema and uses the configured
+trusted JWKS. The integrated operator workflow can add a bounded readiness
+wait once CDP-006 supplies the final edge route.
 Repeating the first command is an exact migration recheck and initialization
 no-op. Selecting `empty`, changing the seed owner, or encountering unrecorded
 content fails without replacing content. To invoke migration or initialization
@@ -98,7 +139,7 @@ Secret instead. That Secret must contain these keys:
 | `migration-password`, `migration-url` | Migration owner, migration Job, and narrow grant Job |
 | `initializer-password`, `initializer-url` | Narrow initialization Job only |
 | `runtime-password`, `runtime-url` | Curu server only |
-| `keycloak-password`, `keycloak-url` | Keycloak database access only |
+| `keycloak-password`, `keycloak-url`, `keycloak-jdbc-url` | Keycloak database access only |
 
 URLs for bundled mode select `sslmode=disable` and the chart Service. Passwords
 must be URL-safe when an existing Secret supplies complete URLs. Rotation is
@@ -152,10 +193,12 @@ is not a backup or host-failure recovery mechanism.
 
 ## Other required inputs
 
-The chart still has no deployable application defaults. Supply a source-bound,
+The chart still has no deployable Curu image default. Supply a source-bound,
 non-`latest` Curu image; exact runtime origin/timeouts; RFC 9068 issuer,
 audience, algorithms, and JWKS inputs; and the exact external owner binding.
-The Curu Deployment receives only the runtime database URL. It never receives
+Supply the issuer CA as the ConfigMap/key selected by `identity.caTrust`; Curu
+mounts it as its explicit HTTPS trust bundle. The Curu Deployment receives only
+the runtime database URL. It never receives
 the administration, migration-owner, initializer, or Keycloak credential.
 
 ## Validation
@@ -186,3 +229,18 @@ and runtime restrictions, Curu/Keycloak database separation, and an external
 mode connection using the same disposable PostgreSQL service. It does not run
 application migration/initialization or claim browser acceptance. Use
 `deploy/scripts/verify-data-lifecycle-disposable.sh` for CDP-004's live check.
+
+Run CDP-005's isolated identity compatibility check with the same pinned tools,
+Docker, OpenSSL, curl, and Python 3:
+
+```sh
+deploy/scripts/verify-identity-disposable.sh
+```
+
+It refuses a pre-existing `curu-identity-check` cluster and deletes the
+disposable cluster on exit. It provisions local HTTPS solely for the test,
+checks discovery/JWKS trust, real RFC 9068 access-token claims, owner acceptance,
+other-user denial, ID-token/wrong-audience/expired-token rejection, and retained
+Secret, user, signing-key, and unmanaged-client state across upgrade. It does
+not claim the CDP-006 browser authorization-code flow or expose identity on the
+target host.

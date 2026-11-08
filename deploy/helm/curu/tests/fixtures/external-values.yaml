@@ -38,3 +38,10 @@ identity:
     enabled: false
   external:
     enabled: true
+    client:
+      id: external-curu-browser
+      secret:
+        name: external-curu-browser-fixture
+        key: client-secret
+  caTrust:
+    configMapName: external-identity-ca-fixture
