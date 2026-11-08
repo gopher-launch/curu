@@ -44,10 +44,12 @@ data:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "curu.keycloakName" . }}-database-bootstrap
+  name: {{ include "curu.keycloakDatabaseBootstrapName" . }}
   labels:
     {{- include "curu.labels" . | nindent 4 }}
     app.kubernetes.io/component: identity-database-bootstrap
+  annotations:
+    curu.gopher-launch.dev/release-revision: {{ .Release.Revision | quote }}
 spec:
   backoffLimit: {{ .Values.dataLifecycle.backoffLimit }}
   activeDeadlineSeconds: {{ .Values.dataLifecycle.activeDeadlineSeconds }}

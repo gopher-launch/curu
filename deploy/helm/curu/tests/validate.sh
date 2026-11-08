@@ -53,6 +53,7 @@ assert_contains "${bundled_render}" 'name: SSL_CERT_FILE' 'Curu receives explici
 assert_contains "${bundled_render}" 'create partialImport' 'development users retain their declared stable subjects'
 assert_contains "${bundled_render}" 'helm.sh/hook-weight: "-25"' 'identity reconciliation follows database preparation'
 assert_contains "${bundled_render}" 'app.kubernetes.io/component: identity-database-bootstrap' 'Keycloak database authority is available before Helm waits for identity readiness'
+assert_contains "${bundled_render}" 'curu.gopher-launch.dev/release-revision: "1"' 'identity database bootstrap Job is versioned for immutable recreation'
 if grep -Fq -- '- start-dev' <<<"${bundled_render}"; then
   echo 'bundled Keycloak must not use the insecure development start mode' >&2
   exit 1

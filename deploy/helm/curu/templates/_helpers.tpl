@@ -82,6 +82,12 @@ runtime-url
 {{- printf "%s:%s@%s" .Values.identity.bundled.image.repository .Values.identity.bundled.image.tag .Values.identity.bundled.image.digest -}}
 {{- end -}}
 
+{{- define "curu.keycloakDatabaseBootstrapName" -}}
+{{- $base := printf "%s-database-bootstrap" (include "curu.keycloakName" .) | trunc 54 | trimSuffix "-" -}}
+{{- $revision := printf "%v" .Release.Revision | sha256sum | trunc 8 -}}
+{{- printf "%s-%s" $base $revision -}}
+{{- end -}}
+
 {{- define "curu.keycloakDatabaseSecret" -}}
 {{- if .Values.database.bundled.enabled -}}{{ include "curu.postgresSecretName" . }}{{- else -}}{{ .Values.database.external.keycloakSecret.name }}{{- end -}}
 {{- end -}}

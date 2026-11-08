@@ -238,13 +238,22 @@ SCRIPT
 
 keycloak_user_id() {
   local username="$1"
-  kubectl --context "${context_name}" --namespace "${namespace}" exec "${keycloak_pod}" -- \
-    env CHECK_USERNAME="${username}" /bin/bash -ec '
-      kcadm=/opt/keycloak/bin/kcadm.sh
-      config=/tmp/inspect-kcadm.config
-      "${kcadm}" config credentials --config "${config}" --server http://localhost:8080 --realm master --user "${KC_BOOTSTRAP_ADMIN_USERNAME}" --password "${KC_BOOTSTRAP_ADMIN_PASSWORD}" >/dev/null
-      "${kcadm}" get users --config "${config}" -r curu -q "username=${CHECK_USERNAME}" -q exact=true -F id --format csv --noquotes
-    ' | tail -n 1
+  local user_id
+  for _ in {1..10}; do
+    if user_id="$(kubectl --context "${context_name}" --namespace "${namespace}" exec "${keycloak_pod}" -- \
+      env CHECK_USERNAME="${username}" /bin/bash -ec '
+        kcadm=/opt/keycloak/bin/kcadm.sh
+        config=/tmp/inspect-kcadm.config
+        "${kcadm}" config credentials --config "${config}" --server http://localhost:8080 --realm master --user "${KC_BOOTSTRAP_ADMIN_USERNAME}" --password "${KC_BOOTSTRAP_ADMIN_PASSWORD}" >/dev/null
+        "${kcadm}" get users --config "${config}" -r curu -q "username=${CHECK_USERNAME}" -q exact=true -F id --format csv --noquotes
+      ' | tail -n 1)" && [[ -n "${user_id}" ]]; then
+      printf '%s\n' "${user_id}"
+      return 0
+    fi
+    sleep 2
+  done
+  echo "unable to inspect Keycloak user ${username}" >&2
+  return 1
 }
 owner_keycloak_id_before="$(keycloak_user_id owner)"
 other_keycloak_id_before="$(keycloak_user_id other-user)"
@@ -307,10 +316,52 @@ PY
 jwks_before="$(curl --silent --fail --cacert "${work_dir}/ca.crt" --resolve "${identity_host}:18443:127.0.0.1" "https://${identity_host}:18443/realms/curu/protocol/openid-connect/certs")"
 kid_before="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["keys"][0]["kid"])' <<<"${jwks_before}")"
 
+postgres_secret="${release}-curu-postgres-credentials"
+replacement_postgres_secret="${postgres_secret}-rotated"
+rotated_keycloak_password="$(openssl rand -hex 24)"
+kubectl --context "${context_name}" --namespace "${namespace}" get secret "${postgres_secret}" -o json |
+  REPLACEMENT_SECRET="${replacement_postgres_secret}" ROTATED_PASSWORD="${rotated_keycloak_password}" python3 -c '
+import base64, json, os, sys
+
+document = json.load(sys.stdin)
+data = document["data"]
+old_password = base64.b64decode(data["keycloak-password"]).decode()
+new_password = os.environ["ROTATED_PASSWORD"]
+
+def replace(field, old, new):
+    original = base64.b64decode(data[field]).decode()
+    value = original.replace(old, new)
+    assert value != original
+    data[field] = base64.b64encode(value.encode()).decode()
+
+replace("keycloak-url", ":" + old_password + "@", ":" + new_password + "@")
+replace("keycloak-jdbc-url", "password=" + old_password, "password=" + new_password)
+data["keycloak-password"] = base64.b64encode(new_password.encode()).decode()
+json.dump({
+    "apiVersion": "v1",
+    "kind": "Secret",
+    "metadata": {"name": os.environ["REPLACEMENT_SECRET"]},
+    "type": document["type"],
+    "data": data,
+}, sys.stdout)
+' | kubectl --context "${context_name}" --namespace "${namespace}" apply -f - >/dev/null
+
+keycloak_pod_before="${keycloak_pod}"
 helm upgrade "${release}" "${chart_dir}" \
   --kube-context "${context_name}" --namespace "${namespace}" \
-  "${base_values[@]}" --set runtime.enabled=true --set dataLifecycle.migrate=false \
+  "${base_values[@]}" \
+  --set-string database.bundled.credentialsSecret.existingName="${replacement_postgres_secret}" \
+  --set runtime.enabled=true --set dataLifecycle.migrate=false \
   --set-string dataLifecycle.initialize=none --wait --wait-for-jobs --timeout 8m
+[[ "$(kubectl --context "${context_name}" --namespace "${namespace}" get jobs \
+  -l app.kubernetes.io/component=identity-database-bootstrap \
+  -o jsonpath='{.items[*].metadata.name}' | wc -w)" == 1 ]]
+[[ "$(kubectl --context "${context_name}" --namespace "${namespace}" get jobs \
+  -l app.kubernetes.io/component=identity-database-bootstrap \
+  -o jsonpath='{.items[0].metadata.annotations.curu\.gopher-launch\.dev/release-revision}')" == 2 ]]
+keycloak_pod="$(kubectl --context "${context_name}" --namespace "${namespace}" \
+  get pod -l app.kubernetes.io/component=identity -o jsonpath='{.items[0].metadata.name}')"
+[[ "${keycloak_pod}" != "${keycloak_pod_before}" ]]
 identity_hash_after="$(kubectl --context "${context_name}" --namespace "${namespace}" get secret "${identity_secret}" -o jsonpath='{.data}' | sha256sum | cut -d' ' -f1)"
 [[ "${identity_hash_before}" == "${identity_hash_after}" ]]
 jwks_after="$(curl --silent --fail --cacert "${work_dir}/ca.crt" --resolve "${identity_host}:18443:127.0.0.1" "https://${identity_host}:18443/realms/curu/protocol/openid-connect/certs")"
@@ -325,8 +376,25 @@ config=/tmp/verify-kcadm.config
 browser_id="$("${kcadm}" get clients --config "${config}" -r curu -q clientId=curu-browser -F id --format csv --noquotes | tail -n 1)"
 "${kcadm}" get "clients/${browser_id}" --config "${config}" -r curu -F 'attributes(*)' | grep -F 'curu.unmanaged.fixture' >/dev/null
 SCRIPT
-[[ "$(keycloak_user_id owner)" == "${owner_keycloak_id_before}" ]]
-[[ "$(keycloak_user_id other-user)" == "${other_keycloak_id_before}" ]]
+owner_keycloak_id_after="$(keycloak_user_id owner)"
+other_keycloak_id_after="$(keycloak_user_id other-user)"
+if [[ "${owner_keycloak_id_after}" != "${owner_keycloak_id_before}" ]] ||
+   [[ "${other_keycloak_id_after}" != "${other_keycloak_id_before}" ]]; then
+  echo 'declared Keycloak user IDs changed during credential rotation' >&2
+  exit 1
+fi
+
+# Reissue the bounded token fixtures after the intentionally slow Keycloak
+# restart so the application checks do not depend on pre-upgrade token age.
+owner_response="$(token_request curu-token-fixture owner "${owner_password}")"
+other_response="$(token_request curu-token-fixture other-user "${other_password}")"
+wrong_response="$(token_request curu-wrong-audience-fixture owner "${owner_password}")"
+expired_response="$(token_request curu-expired-token-fixture owner "${owner_password}")"
+owner_token="$(json_field access_token <<<"${owner_response}")"
+owner_id_token="$(json_field id_token <<<"${owner_response}")"
+other_token="$(json_field access_token <<<"${other_response}")"
+wrong_token="$(json_field access_token <<<"${wrong_response}")"
+expired_token="$(json_field access_token <<<"${expired_response}")"
 
 # Password credentials are verification-only token fixtures; CDP-006 still owns the real browser authorization-code flow.
 kubectl --context "${context_name}" --namespace "${namespace}" \

@@ -47,11 +47,15 @@ the real authorization-code browser flow.
 
 Keycloak uses its separately scoped PostgreSQL role/database. Its durable users,
 credentials, realm state, and signing keys live there; pod-local Keycloak data
-is disposable. The future edge terminates HTTPS, while Curu mounts the public
-issuer CA ConfigMap named by `identity.caTrust` and never disables JWKS TLS
-verification. External identity mode provisions, reconciles, or deletes no
-provider resources. Its client Secret reference is an input for the gateway
-task and is not mounted into Curu by this chart.
+is disposable. Before Helm waits for Keycloak readiness, an ordinary bounded
+Job creates that database authority. Its name includes the Helm release
+revision, so each upgrade creates a new immutable Job and supported changes to
+the selected Secret, database names, image, deadline, or retry limit do not
+attempt to patch an earlier Job pod template. The future edge terminates HTTPS,
+while Curu mounts the public issuer CA ConfigMap named by `identity.caTrust` and
+never disables JWKS TLS verification. External identity mode provisions,
+reconciles, or deletes no provider resources. Its client Secret reference is an
+input for the gateway task and is not mounted into Curu by this chart.
 
 ## Explicit data lifecycle
 
@@ -241,6 +245,6 @@ It refuses a pre-existing `curu-identity-check` cluster and deletes the
 disposable cluster on exit. It provisions local HTTPS solely for the test,
 checks discovery/JWKS trust, real RFC 9068 access-token claims, owner acceptance,
 other-user denial, ID-token/wrong-audience/expired-token rejection, and retained
-Secret, user, signing-key, and unmanaged-client state across upgrade. It does
-not claim the CDP-006 browser authorization-code flow or expose identity on the
-target host.
+identity Secret, user, signing-key, and unmanaged-client state while an upgrade
+switches to a replacement database credential Secret. It does not claim the
+CDP-006 browser authorization-code flow or expose identity on the target host.

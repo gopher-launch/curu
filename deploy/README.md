@@ -267,10 +267,11 @@ deploy/scripts/verify-identity-disposable.sh
 The check creates a temporary HTTPS edge only for identity verification. It
 proves trusted discovery/JWKS, real RS256 `at+jwt` claims, owner acceptance,
 other-user denial, wrong-purpose/audience/expiry rejection, and preservation of
-Secrets, user IDs, signing keys, and unmanaged client fields through an
-upgrade. It refuses an existing `curu-identity-check` cluster and deletes its
-cluster on exit. Its password grant is a controlled token fixture, not the
-CDP-006 browser authorization-code flow.
+identity credentials, user IDs, signing keys, and unmanaged client fields while
+an upgrade switches to a replacement database credential Secret. It refuses an
+existing `curu-identity-check` cluster and deletes its cluster on exit. Its
+password grant is a controlled token fixture, not the CDP-006 browser
+authorization-code flow.
 
 Validate scripts and static exposure/storage invariants without creating a
 cluster:
