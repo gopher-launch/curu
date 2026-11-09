@@ -38,10 +38,14 @@ spec:
             - --client-secret-file=/etc/curu/client/client-secret
             - --cookie-secret-file=/etc/curu/session/cookie-secret
             - --redirect-url={{ .Values.edge.publicOrigin }}/oauth2/callback
+            {{- if .Values.identity.bundled.enabled }}
+            - --redeem-url=http://{{ include "curu.keycloakName" . }}:8080/realms/{{ .Values.identity.bundled.realm }}/protocol/openid-connect/token
+            {{- end }}
             - --code-challenge-method=S256
             - --scope=openid
             - --email-domain=*
             - --oidc-email-claim=sub
+            - --skip-claims-from-profile-url=true
             - --cookie-name={{ .Values.browserAuth.cookie.name }}
             - --cookie-path=/
             - --cookie-secure=true

@@ -224,6 +224,180 @@ if grep -Eiq '^(X-Auth-Request-Access-Token|X-Forwarded-Access-Token|Authorizati
   exit 1
 fi
 
+# Observe effective requests at a temporary internal upstream. Each product,
+# browser-authentication, and bundled-identity Service is repointed only inside
+# this disposable cluster and immediately restored. Arbitrary forwarding and
+# identity headers must be absent; only the product hop receives NGINX's Bearer
+# token, and each configured hop supplies no browser-controlled client address.
+kubectl --context "${context_name}" --namespace "${namespace}" apply -f - <<'YAML' >/dev/null
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: cdp006-header-probe}
+data:
+  nginx.conf: |
+    worker_processes 1;
+    pid /tmp/nginx.pid;
+    events { worker_connections 64; }
+    http {
+      map $http_authorization $probe_authorization {
+        default unexpected;
+        "" absent;
+        ~^Bearer\ .+$ trusted-bearer;
+      }
+      map $http_x_forwarded_for $probe_forwarded_for {
+        default trusted-client;
+        "" absent;
+        "203.0.113.7" spoofed;
+      }
+      map $http_x_forwarded_user $probe_forwarded_user { "" absent; default present; }
+      map $http_x_forwarded_arbitrary $probe_forwarded_arbitrary { "" absent; default present; }
+      map $http_x_auth_request_access_token $probe_auth_request_token { "" absent; default present; }
+      map $http_forwarded $probe_forwarded { "" absent; default present; }
+      server {
+        listen 8080;
+        location / {
+          add_header X-Probe-Authorization $probe_authorization always;
+          add_header X-Probe-X-Forwarded-For $probe_forwarded_for always;
+          add_header X-Probe-X-Forwarded-User $probe_forwarded_user always;
+          add_header X-Probe-X-Forwarded-Arbitrary $probe_forwarded_arbitrary always;
+          add_header X-Probe-X-Auth-Request-Access-Token $probe_auth_request_token always;
+          add_header X-Probe-Forwarded $probe_forwarded always;
+          return 204;
+        }
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: cdp006-header-probe}
+spec:
+  replicas: 1
+  selector: {matchLabels: {curu.gopher-launch.dev/header-probe: "true"}}
+  template:
+    metadata: {labels: {curu.gopher-launch.dev/header-probe: "true"}}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: probe
+          image: nginx:1.29.2-alpine@sha256:b03ccb7431a2e3172f5cbae96d82bd792935f33ecb88fbf2940559e475745c4e
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          ports: [{name: http, containerPort: 8080}]
+          volumeMounts:
+            - {name: config, mountPath: /etc/nginx/nginx.conf, subPath: nginx.conf, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+            - {name: cache, mountPath: /var/cache/nginx}
+      volumes:
+        - {name: config, configMap: {name: cdp006-header-probe}}
+        - {name: tmp, emptyDir: {}}
+        - {name: cache, emptyDir: {}}
+YAML
+kubectl --context "${context_name}" --namespace "${namespace}" wait --for=condition=available \
+  deployment/cdp006-header-probe --timeout=120s >/dev/null
+runtime_service="${release}-curu"
+original_runtime_selector="$(kubectl --context "${context_name}" --namespace "${namespace}" \
+  get service "${runtime_service}" -o json | python3 -c \
+  'import json,sys; print(json.dumps(json.load(sys.stdin)["spec"]["selector"], separators=(",", ":")))')"
+kubectl --context "${context_name}" --namespace "${namespace}" patch service "${runtime_service}" \
+  --type=json -p='[{"op":"replace","path":"/spec/selector","value":{"curu.gopher-launch.dev/header-probe":"true"}}]' >/dev/null
+for _ in {1..30}; do
+  curl "${curl_common[@]}" --cookie "${owner_jar}" \
+    --header 'Authorization: Bearer browser-spoof' \
+    --header 'Forwarded: for=203.0.113.7;proto=http' \
+    --header 'X-Forwarded-For: 203.0.113.7' \
+    --header 'X-Forwarded-User: attacker' \
+    --header 'X-Forwarded-Arbitrary: attacker' \
+    --header 'X-Auth-Request-Access-Token: attacker-token' \
+    --dump-header "${work_dir}/probe.headers" --output /dev/null "${public_origin}/activities"
+  if grep -Eiq '^X-Probe-Authorization: trusted-bearer' "${work_dir}/probe.headers"; then break; fi
+  sleep 1
+done
+grep -F 'HTTP/1.1 204' "${work_dir}/probe.headers" >/dev/null
+grep -Eiq '^X-Probe-Authorization: trusted-bearer' "${work_dir}/probe.headers"
+grep -Eiq '^X-Probe-X-Forwarded-For: trusted-client' "${work_dir}/probe.headers"
+grep -Eiq '^X-Probe-X-Forwarded-User: absent' "${work_dir}/probe.headers"
+grep -Eiq '^X-Probe-X-Forwarded-Arbitrary: absent' "${work_dir}/probe.headers"
+grep -Eiq '^X-Probe-X-Auth-Request-Access-Token: absent' "${work_dir}/probe.headers"
+grep -Eiq '^X-Probe-Forwarded: absent' "${work_dir}/probe.headers"
+kubectl --context "${context_name}" --namespace "${namespace}" patch service "${runtime_service}" \
+  --type=json -p="[{\"op\":\"replace\",\"path\":\"/spec/selector\",\"value\":${original_runtime_selector}}]" >/dev/null
+for _ in {1..30}; do
+  if [[ "$(curl "${curl_common[@]}" --cookie "${owner_jar}" --output /dev/null \
+    --write-out '%{http_code}' "${public_origin}/activities")" == 200 ]]; then break; fi
+  sleep 1
+done
+[[ "$(curl "${curl_common[@]}" --cookie "${owner_jar}" --output /dev/null \
+  --write-out '%{http_code}' "${public_origin}/activities")" == 200 ]]
+
+oauth_service="${release}-curu-oauth2-proxy"
+original_oauth_selector="$(kubectl --context "${context_name}" --namespace "${namespace}" \
+  get service "${oauth_service}" -o json | python3 -c \
+  'import json,sys; print(json.dumps(json.load(sys.stdin)["spec"]["selector"], separators=(",", ":")))')"
+kubectl --context "${context_name}" --namespace "${namespace}" patch service "${oauth_service}" \
+  --type=json -p='[{"op":"replace","path":"/spec/selector","value":{"curu.gopher-launch.dev/header-probe":"true"}}]' >/dev/null
+for _ in {1..30}; do
+  curl "${curl_common[@]}" --header 'Authorization: Bearer browser-spoof' \
+    --header 'Forwarded: for=203.0.113.7;proto=http' \
+    --header 'X-Forwarded-For: 203.0.113.7' --header 'X-Forwarded-User: attacker' \
+    --header 'X-Forwarded-Arbitrary: attacker' --header 'X-Auth-Request-Access-Token: attacker-token' \
+    --dump-header "${work_dir}/oauth-probe.headers" --output /dev/null \
+    "${public_origin}/oauth2/start?rd=https%3A%2F%2F${app_host}%3A${public_port}%2Factivities"
+  if grep -Eiq '^X-Probe-Authorization: absent' "${work_dir}/oauth-probe.headers"; then break; fi
+  sleep 1
+done
+grep -F 'HTTP/1.1 204' "${work_dir}/oauth-probe.headers" >/dev/null
+grep -Eiq '^X-Probe-Authorization: absent' "${work_dir}/oauth-probe.headers"
+grep -Eiq '^X-Probe-X-Forwarded-For: absent' "${work_dir}/oauth-probe.headers"
+grep -Eiq '^X-Probe-X-Forwarded-User: absent' "${work_dir}/oauth-probe.headers"
+grep -Eiq '^X-Probe-X-Forwarded-Arbitrary: absent' "${work_dir}/oauth-probe.headers"
+grep -Eiq '^X-Probe-X-Auth-Request-Access-Token: absent' "${work_dir}/oauth-probe.headers"
+grep -Eiq '^X-Probe-Forwarded: absent' "${work_dir}/oauth-probe.headers"
+kubectl --context "${context_name}" --namespace "${namespace}" patch service "${oauth_service}" \
+  --type=json -p="[{\"op\":\"replace\",\"path\":\"/spec/selector\",\"value\":${original_oauth_selector}}]" >/dev/null
+for _ in {1..30}; do
+  if [[ "$(curl "${curl_common[@]}" --output /dev/null --write-out '%{http_code}' \
+    "${public_origin}/oauth2/start?rd=https%3A%2F%2F${app_host}%3A${public_port}%2Factivities")" == 302 ]]; then break; fi
+  sleep 1
+done
+
+identity_service="${release}-curu-keycloak"
+original_identity_selector="$(kubectl --context "${context_name}" --namespace "${namespace}" \
+  get service "${identity_service}" -o json | python3 -c \
+  'import json,sys; print(json.dumps(json.load(sys.stdin)["spec"]["selector"], separators=(",", ":")))')"
+kubectl --context "${context_name}" --namespace "${namespace}" patch service "${identity_service}" \
+  --type=json -p='[{"op":"replace","path":"/spec/selector","value":{"curu.gopher-launch.dev/header-probe":"true"}}]' >/dev/null
+for _ in {1..30}; do
+  curl "${curl_common[@]}" --header 'Authorization: Bearer browser-spoof' \
+    --header 'Forwarded: for=203.0.113.7;proto=http' \
+    --header 'X-Forwarded-For: 203.0.113.7' --header 'X-Forwarded-User: attacker' \
+    --header 'X-Forwarded-Arbitrary: attacker' --header 'X-Auth-Request-Access-Token: attacker-token' \
+    --dump-header "${work_dir}/identity-probe.headers" --output /dev/null "${identity_origin}/realms/curu"
+  if grep -Eiq '^X-Probe-Authorization: absent' "${work_dir}/identity-probe.headers"; then break; fi
+  sleep 1
+done
+grep -F 'HTTP/1.1 204' "${work_dir}/identity-probe.headers" >/dev/null
+grep -Eiq '^X-Probe-Authorization: absent' "${work_dir}/identity-probe.headers"
+grep -Eiq '^X-Probe-X-Forwarded-For: trusted-client' "${work_dir}/identity-probe.headers"
+grep -Eiq '^X-Probe-X-Forwarded-User: absent' "${work_dir}/identity-probe.headers"
+grep -Eiq '^X-Probe-X-Forwarded-Arbitrary: absent' "${work_dir}/identity-probe.headers"
+grep -Eiq '^X-Probe-X-Auth-Request-Access-Token: absent' "${work_dir}/identity-probe.headers"
+grep -Eiq '^X-Probe-Forwarded: absent' "${work_dir}/identity-probe.headers"
+kubectl --context "${context_name}" --namespace "${namespace}" patch service "${identity_service}" \
+  --type=json -p="[{\"op\":\"replace\",\"path\":\"/spec/selector\",\"value\":${original_identity_selector}}]" >/dev/null
+for _ in {1..30}; do
+  if [[ "$(curl "${curl_common[@]}" --output /dev/null --write-out '%{http_code}' \
+    "${identity_origin}/realms/curu/.well-known/openid-configuration")" == 200 ]]; then break; fi
+  sleep 1
+done
+
 browser_login other-user "${other_password}" "${other_jar}" "${work_dir}/other-result.html"
 [[ "$(curl "${curl_common[@]}" --cookie "${other_jar}" --output /dev/null --write-out '%{http_code}' "${public_origin}/activities")" == 403 ]]
 

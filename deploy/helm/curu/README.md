@@ -137,8 +137,18 @@ proactive refresh by default. Its cookie key is retained in a generated Secret
 or supplied by `browserAuth.sessionSecret.existingName`. NGINX receives the
 access token through its private auth subrequest, propagates refreshed and
 split cookies, and alone injects `Authorization: Bearer` into Curu. Browser
-Authorization, identity, and forwarding headers are overwritten; access-token
-response headers are hidden. All backend Services remain internal.
+requests are deny-by-default at every proxied hop: an explicit browser-protocol
+allowlist carries cookies, content metadata, origin/CSRF, HTMX, fetch, and cache
+headers, while NGINX alone injects the trusted client address and Curu Bearer
+token. Browser Authorization, arbitrary forwarding/identity metadata, and
+access-token response headers cannot cross that boundary. All backend Services
+remain internal.
+
+In bundled mode, OAuth2 Proxy redeems the authorization code directly at the
+internal Keycloak Service over the qualified trusted local-cluster hop. This
+keeps client authentication off the public identity route, which never
+allowlists browser Authorization. External mode contacts its declared HTTPS
+issuer endpoints directly with the supplied CA trust and client credential.
 
 An unavailable or expired gateway session returns `401`; HTMX requests also
 receive `HX-Reswap: none` and `curu:authentication-required`, retaining the

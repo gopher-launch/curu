@@ -44,6 +44,7 @@ spec:
             {{- toYaml .Values.edge.resources | nindent 12 }}
           volumeMounts:
             - {name: config, mountPath: /etc/nginx/nginx.conf, subPath: nginx.conf, readOnly: true}
+            - {name: config, mountPath: /etc/nginx/browser-request-headers.conf, subPath: browser-request-headers.conf, readOnly: true}
             - {name: tls, mountPath: /etc/curu/tls, readOnly: true}
             - {name: tmp, mountPath: /tmp}
             - {name: cache, mountPath: /var/cache/nginx}

@@ -7,6 +7,36 @@ metadata:
     {{- include "curu.labels" . | nindent 4 }}
     app.kubernetes.io/component: edge
 data:
+  browser-request-headers.conf: |
+    proxy_pass_request_headers off;
+    proxy_set_header Accept $http_accept;
+    proxy_set_header Accept-Encoding $http_accept_encoding;
+    proxy_set_header Accept-Language $http_accept_language;
+    proxy_set_header Cache-Control $http_cache_control;
+    proxy_set_header Content-Length $content_length;
+    proxy_set_header Content-Type $content_type;
+    proxy_set_header Cookie $http_cookie;
+    proxy_set_header If-Modified-Since $http_if_modified_since;
+    proxy_set_header If-None-Match $http_if_none_match;
+    proxy_set_header If-Range $http_if_range;
+    proxy_set_header Origin $http_origin;
+    proxy_set_header Pragma $http_pragma;
+    proxy_set_header Range $http_range;
+    proxy_set_header Referer $http_referer;
+    proxy_set_header Sec-Fetch-Dest $http_sec_fetch_dest;
+    proxy_set_header Sec-Fetch-Mode $http_sec_fetch_mode;
+    proxy_set_header Sec-Fetch-Site $http_sec_fetch_site;
+    proxy_set_header Sec-Fetch-User $http_sec_fetch_user;
+    proxy_set_header User-Agent $http_user_agent;
+    proxy_set_header X-CSRF-Token $http_x_csrf_token;
+    proxy_set_header HX-Boosted $http_hx_boosted;
+    proxy_set_header HX-Current-URL $http_hx_current_url;
+    proxy_set_header HX-History-Restore-Request $http_hx_history_restore_request;
+    proxy_set_header HX-Prompt $http_hx_prompt;
+    proxy_set_header HX-Request $http_hx_request;
+    proxy_set_header HX-Target $http_hx_target;
+    proxy_set_header HX-Trigger $http_hx_trigger;
+    proxy_set_header HX-Trigger-Name $http_hx_trigger_name;
   nginx.conf: |
     worker_processes auto;
     pid /tmp/nginx.pid;
@@ -46,6 +76,7 @@ data:
         location = /oauth2/ready { return 404; }
         location /oauth2/ {
           proxy_pass http://{{ include "curu.oauth2ProxyName" . }}:4180;
+          include /etc/nginx/browser-request-headers.conf;
           proxy_set_header Host $http_host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-Proto https;
@@ -62,6 +93,7 @@ data:
           proxy_buffer_size 32k;
           proxy_buffers 4 32k;
           proxy_busy_buffers_size 64k;
+          include /etc/nginx/browser-request-headers.conf;
           proxy_set_header Host $http_host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-Proto https;
@@ -91,24 +123,10 @@ data:
           }
 
           proxy_pass http://{{ include "curu.fullname" . }}:{{ .Values.service.port }};
+          include /etc/nginx/browser-request-headers.conf;
           proxy_set_header Host $http_host;
           proxy_set_header Authorization "Bearer $curu_access_token";
           proxy_set_header X-Forwarded-For $remote_addr;
-          proxy_set_header X-Forwarded-Host "";
-          proxy_set_header X-Forwarded-Proto "";
-          proxy_set_header X-Forwarded-Port "";
-          proxy_set_header X-Forwarded-Server "";
-          proxy_set_header X-Forwarded-Ssl "";
-          proxy_set_header X-Forwarded-Prefix "";
-          proxy_set_header X-Forwarded-Uri "";
-          proxy_set_header X-Real-IP "";
-          proxy_set_header Forwarded "";
-          proxy_set_header X-Auth-Request-User "";
-          proxy_set_header X-Auth-Request-Email "";
-          proxy_set_header X-Auth-Request-Groups "";
-          proxy_set_header X-Auth-Request-Preferred-Username "";
-          proxy_set_header X-Auth-Request-Redirect "";
-          proxy_set_header X-Forwarded-Access-Token "";
           proxy_hide_header X-Auth-Request-Access-Token;
           proxy_hide_header X-Forwarded-Access-Token;
           proxy_hide_header Authorization;
@@ -136,6 +154,7 @@ data:
         location ^~ /realms/master { return 404; }
         location = /realms/{{ .Values.identity.bundled.realm }}/protocol/openid-connect/certs {
           proxy_pass http://{{ include "curu.keycloakName" . }}:8080;
+          include /etc/nginx/browser-request-headers.conf;
           proxy_set_header Host $http_host;
           proxy_set_header X-Forwarded-Proto https;
           proxy_set_header X-Forwarded-Host $http_host;
@@ -146,6 +165,7 @@ data:
         }
         location ~ ^/realms/{{ .Values.identity.bundled.realm }}(?:/|$) {
           proxy_pass http://{{ include "curu.keycloakName" . }}:8080;
+          include /etc/nginx/browser-request-headers.conf;
           proxy_set_header Host $http_host;
           proxy_set_header X-Forwarded-Proto https;
           proxy_set_header X-Forwarded-Host $http_host;
@@ -154,6 +174,7 @@ data:
         }
         location ^~ /resources/ {
           proxy_pass http://{{ include "curu.keycloakName" . }}:8080;
+          include /etc/nginx/browser-request-headers.conf;
           proxy_set_header Host $http_host;
           proxy_set_header X-Forwarded-Proto https;
           proxy_set_header X-Forwarded-Host $http_host;

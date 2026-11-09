@@ -45,10 +45,13 @@ assert_contains "${bundled_render}" '--cookie-name=__Host-curu_session' 'browser
 assert_contains "${bundled_render}" '--cookie-refresh=5m' 'browser session refresh policy is explicit'
 assert_contains "${bundled_render}" '--pass-access-token=true' 'OAuth2 Proxy returns the access token only to NGINX auth_request'
 assert_contains "${bundled_render}" '--pass-authorization-header=false' 'OAuth2 Proxy does not substitute an ID token'
+assert_contains "${bundled_render}" '--redeem-url=http://' 'bundled token redemption uses the trusted cluster-local identity hop'
+assert_contains "${bundled_render}" '--skip-claims-from-profile-url=true' 'browser authentication does not send a Bearer token through the public identity hop'
+assert_contains "${bundled_render}" 'proxy_pass_request_headers off' 'NGINX denies browser headers by default'
 assert_contains "${bundled_render}" 'proxy_set_header Authorization "Bearer $curu_access_token"' 'NGINX injects exactly the access token for Curu'
 assert_contains "${bundled_render}" 'proxy_set_header X-Forwarded-For $remote_addr' 'NGINX overwrites the trusted client address'
-assert_contains "${bundled_render}" 'proxy_set_header X-Forwarded-Port ""' 'NGINX strips browser-supplied forwarding metadata'
-assert_contains "${bundled_render}" 'proxy_set_header X-Auth-Request-User ""' 'NGINX strips browser identity headers'
+assert_contains "${bundled_render}" 'proxy_set_header X-CSRF-Token $http_x_csrf_token' 'NGINX allowlists the application CSRF header'
+assert_contains "${bundled_render}" 'proxy_set_header HX-Request $http_hx_request' 'NGINX allowlists the HTMX request marker'
 assert_contains "${bundled_render}" 'proxy_hide_header X-Auth-Request-Access-Token' 'access token response headers cannot reach the browser'
 assert_contains "${bundled_render}" 'auth_request_set $curu_auth_cookie_upstream_1 $upstream_cookie___Host_curu_session_1' 'split refreshed session cookies are propagated'
 assert_contains "${bundled_render}" 'proxy_buffer_size 32k' 'auth subrequest accepts bounded refreshed cookie headers'
@@ -56,6 +59,11 @@ assert_contains "${bundled_render}" 'add_header HX-Reswap $curu_hx_reswap always
 assert_contains "${bundled_render}" 'location ^~ /health/ { return 404; }' 'application readiness is absent from the host route'
 assert_contains "${bundled_render}" 'location ^~ /admin/ { return 404; }' 'identity administration is absent from the public identity route'
 assert_contains "${bundled_render}" 'add_header Cache-Control "public, max-age=300" always' 'JWKS receives bounded explicit freshness for Curu readiness'
+if [[ "$(grep -Fc 'include /etc/nginx/browser-request-headers.conf;' <<<"${bundled_render}")" -ne 6 ]] ||
+   [[ "$(grep -Fc 'include /etc/nginx/browser-request-headers.conf;' <<<"${external_render}")" -ne 3 ]]; then
+  echo 'every bundled and external proxy location must use the deny-by-default browser header allowlist' >&2
+  exit 1
+fi
 assert_contains "${bundled_render}" 'name: "curu-postgres-credentials-fixture"' 'bundled mode selects its existing scoped Secret'
 assert_contains "${external_render}" 'name: "external-curu-runtime-database-fixture"' 'external mode selects its existing Secret'
 assert_contains "${bundled_render}" 'kind: StatefulSet' 'bundled mode owns PostgreSQL'
@@ -192,6 +200,7 @@ expect_rejected 'migration concurrent with runtime' --set dataLifecycle.migrate=
 expect_rejected 'initialization concurrent with runtime' --set-string dataLifecycle.initialize=seed
 expect_rejected 'edge exposed during migration' --set runtime.enabled=false --set dataLifecycle.migrate=true
 expect_rejected 'public origin differing from edge' --set-string runtime.publicOrigin=https://different.test:8443
+expect_rejected 'identical bundled application and identity hosts' --set-string edge.identityHost=curu.test
 expect_rejected 'open-ended login URL' --set-string runtime.loginURL=https://curu.test:8443/oauth2/start
 expect_rejected 'missing immediate proxy trust' --set-string runtime.trustedProxyCIDRs=
 expect_rejected 'implicit initialization mode' --set runtime.enabled=false --set-string dataLifecycle.initialize=automatic

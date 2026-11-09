@@ -138,6 +138,9 @@ runtime-url
 {{- if ne .Values.runtime.publicOrigin .Values.edge.publicOrigin -}}
 {{- fail "runtime.publicOrigin must exactly match edge.publicOrigin" -}}
 {{- end -}}
+{{- if and .Values.identity.bundled.enabled (eq .Values.edge.applicationHost .Values.edge.identityHost) -}}
+{{- fail "edge.applicationHost and edge.identityHost must differ in bundled identity mode" -}}
+{{- end -}}
 {{- if eq .Values.runtime.trustedProxyCIDRs "" -}}
 {{- fail "edge mode requires explicit runtime.trustedProxyCIDRs for the immediate NGINX peer" -}}
 {{- end -}}
