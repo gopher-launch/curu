@@ -10,7 +10,7 @@ updated: 2026-11-09
 
 This roadmap records the deployment design accepted by Chris on November 1, 2026. It is separate from the root [application roadmap](../roadmap.md). `CDP-` IDs identify deployment Tasks; existing `CURU-` IDs retain their application meanings. The initial source inspection used application commit `cc5b6941404129b69776ff785084f50ba449656b`; inspect the selected application revision and contracts again when implementing a Task.
 
-The deployment baseline is documented in [README.md](README.md). These documents establish direction and planning, not a delivered chart, running cluster, completed browser trial, or isolation result. Root [AGENTS.md](../AGENTS.md) governs both workstreams.
+The deployment baseline and implemented operator interfaces are documented in [README.md](README.md). Milestone status below is evidence-gated; detailed target-host results and Chris's verdict are kept in the external operator record. Root [AGENTS.md](../AGENTS.md) governs both workstreams.
 
 ## Accepted baseline
 
@@ -25,7 +25,7 @@ The deployment baseline is documented in [README.md](README.md). These documents
 ## Selection and reconciliation
 
 - Select one bounded `Kind: task` entry from this roadmap. Do not infer deployment task selection from the root roadmap or assume a runner selects this file automatically.
-- CDP-001 through CDP-007 delivered the owned chart, reproducible kind/trust inputs, persistent separated data authority, explicit data sequencing, repeatable identity, the HTTPS browser-authentication path, and the repeatable operator lifecycle/integration validation. CDP-008 is the next ready deployment Task. After reviewing a delivered prerequisite, promote the next core Task only when its concrete inputs and acceptance are satisfied. Optional/follow-up Tasks require deliberate selection; they never become a gate on the core milestone merely because their prerequisites are delivered.
+- CDP-001 through CDP-008 delivered the owned chart, reproducible kind/trust inputs, persistent separated data authority, explicit data sequencing, repeatable identity, the HTTPS browser-authentication path, the repeatable operator lifecycle/integration validation, and target-laptop browser acceptance. No core deployment Task remains ready in D1. Optional/follow-up Tasks require deliberate selection; they never become a gate on the core milestone merely because their prerequisites are delivered.
 - `Depends on` references are confined to this roadmap. Existing application capabilities are source/contract prerequisites, not duplicated Tasks or unresolved cross-roadmap dependency IDs. Application changes need explicitly bounded scope in their owning workstream.
 - Preserve IDs. Reconcile affected templates, README interfaces, guidance, and roadmap readiness in the same candidate. Split oversized Tasks before widening execution scope. No task is delivered because it appears here or because manifests render.
 - Use disposable resources for destructive tests. Routine validation needs no paid provider or real retained-data reset. Keep operational progress, review verdicts, and pending integration notes in external records.
@@ -38,31 +38,11 @@ The selected application image supplies the HTTP server plus `/curu-migrate`, `/
 
 | Milestone | Tasks | Acceptance |
 | --- | --- | --- |
-| D1: authenticated local library | CDP-001 through CDP-008 | Reproduce the laptop installation, explicitly migrate/seed, sign in as owner, browse/search/details, deny another identity, exercise expiry, and preserve content across restart/upgrade |
+| D1: authenticated local library — accepted | CDP-001 through CDP-008 | Reproduce the laptop installation, explicitly migrate/seed, sign in as owner, browse/search/details, deny another identity, exercise expiry, and preserve content across restart/upgrade |
 | Optional manual recovery | CDP-009 | Export and verify an isolated application restore |
 | Deferred network isolation | CDP-010 | Exercise actual enforcement and document its boundary |
 
 D1 includes actual target-browser acceptance, distinct from automated disposable-cluster verification. Phone acceptance is recorded only if performed. Neither optional row is a prerequisite for D1, and D1 does not claim a hosted or fully isolated production deployment.
-
-## CDP-008 — Record the HP laptop browser acceptance
-
-- Kind: task
-- Status: ready
-- Priority: high
-- Parent: none
-- Depends on: none
-
-**Objective:** Demonstrate D1 on the intended host without confusing automated evidence with operator acceptance.
-
-**Acceptance criteria:**
-
-- Prepare a concise walkthrough of exact commands, prerequisites, resource/storage inputs, selected versions, and observed deployment behavior. Keep detailed run evidence outside the product dataset and keep README instructions current.
-- Chris signs in on the HP laptop through local HTTPS, sees the freshly seeded 44 activities, searches, and opens complete activity details/progressions. Record the actual observed result and any acceptance gaps; do not fabricate access to that host or device.
-- Record demonstrated denial, expiry, restart/persistence, and documented upgrade outcomes, linking automated evidence where appropriate. A failure is an explicit gap rather than an assumed pass.
-- State whether NetworkPolicy enforcement was exercised; an unverified result does not block D1. State whether manual recovery and any phone/LAN trial were performed; neither is a prerequisite.
-- Reconcile milestone status only from evidence and Chris's actual acceptance. Preparing the checklist alone does not establish target-browser acceptance; missing operator evidence remains visibly pending.
-
-**Verification:** Source-bound checklist plus genuine target-host/operator evidence. No public internet, cloud provisioning, subscription, scheduled backup, or manufactured phone trial is required.
 
 ## CDP-009 — Add optional manual export and isolated restore
 
@@ -104,4 +84,4 @@ D1 includes actual target-browser acceptance, distinct from automated disposable
 
 ## Next task boundary
 
-CDP-008 is the only ready core deployment Task. CDP-001 delivered chart/configuration/render interfaces, CDP-002 delivered the local cluster boundary, CDP-003 delivered the persistent data service and role boundary, CDP-004 delivered explicit migration and initialization sequencing, CDP-005 delivered repeatable identity plus accepted/rejected real-token evidence, CDP-006 delivered the browser-authenticated HTTPS path, and CDP-007 delivered the scoped operator lifecycle plus aggregate disposable validation. CDP-009 and CDP-010 are optional/follow-up work and stay planned even though their dependencies are satisfied. Application readiness continues to be managed independently in the root roadmap.
+D1 has no remaining core deployment Task. CDP-001 delivered chart/configuration/render interfaces, CDP-002 delivered the local cluster boundary, CDP-003 delivered the persistent data service and role boundary, CDP-004 delivered explicit migration and initialization sequencing, CDP-005 delivered repeatable identity plus accepted/rejected real-token evidence, CDP-006 delivered the browser-authenticated HTTPS path, CDP-007 delivered the scoped operator lifecycle plus aggregate disposable validation, and CDP-008 delivered the target-laptop acceptance procedure and evidence-gated milestone reconciliation. CDP-009 and CDP-010 are optional/follow-up work and stay planned. Application readiness continues to be managed independently in the root roadmap.

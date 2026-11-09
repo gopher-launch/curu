@@ -55,9 +55,13 @@ case "${action}" in
     }
     openssl verify -CAfile "${ca_cert}" "${ca_cert}" >/dev/null
     curu_validate_https_port "${https_port}"
-    curl --fail --silent --show-error \
-      --resolve "${CURU_APP_HOST}:${https_port}:127.0.0.1" "https://${CURU_APP_HOST}:${https_port}/" >/dev/null
-    printf 'host names and HTTPS trust are working\n'
+    http_status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+      --resolve "${CURU_APP_HOST}:${https_port}:127.0.0.1" "https://${CURU_APP_HOST}:${https_port}/")
+    case "${http_status}" in
+      200|401) ;;
+      *) printf 'unexpected HTTPS edge status: %s\n' "${http_status}" >&2; exit 1 ;;
+    esac
+    printf 'host names and HTTPS trust are working (edge status %s)\n' "${http_status}"
     ;;
   install)
     curu_require_command cmp

@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-This directory records the accepted deployment MVP design and its [implementation roadmap](roadmap.md). The owned chart lives at [`helm/curu/`](helm/curu/), and the local cluster interface lives at [`kind/`](kind/) and [`scripts/`](scripts/). The chart contains Curu, persistent PostgreSQL with separated authority, explicit migration/initialization Jobs, repeatable Keycloak identity, and the NGINX/OAuth2 Proxy HTTPS browser path. The repeatable operator lifecycle and disposable integration evidence are delivered; target-laptop acceptance and network-policy enforcement are not claimed. The next core deployment Task is CDP-008.
+This directory records the accepted deployment MVP design and its [implementation roadmap](roadmap.md). The owned chart lives at [`helm/curu/`](helm/curu/), and the local cluster interface lives at [`kind/`](kind/) and [`scripts/`](scripts/). The chart contains Curu, persistent PostgreSQL with separated authority, explicit migration/initialization Jobs, repeatable Keycloak identity, and the NGINX/OAuth2 Proxy HTTPS browser path. The repeatable operator lifecycle, disposable integration checks, and target-laptop acceptance procedure are delivered. D1 milestone status is in the roadmap; detailed operator evidence stays outside this repository. NetworkPolicy enforcement remains unverified.
 
 The first target is Chris's HP Ubuntu laptop running a single-node kind cluster. The objective is a reproducible, authenticated installation of the current activity library, with every runtime component deployed by an owned Helm chart. Paid services, hosted identity, public internet hosting, and cloud infrastructure are not prerequisites. Local HTTPS and the application's existing security checks remain part of ordinary development.
 
@@ -169,7 +169,9 @@ deploy/scripts/configure-host-trust.sh check \
 
 Use `configure-host-trust.sh remove` to remove only the managed hosts line and
 Ubuntu CA file; remove any browser-private import separately. No command uses a
-TLS verification skip.
+TLS verification skip. The `check` command accepts HTTP 200 from the temporary
+bootstrap edge or the live gateway's unauthenticated HTTP 401; either result
+must pass certificate verification.
 
 ### Storage and teardown lifecycle
 
@@ -322,6 +324,40 @@ Failed Helm operations report their exit status, scoped resources, warning
 events, and bounded release-label logs. Normal diagnostics require neither a
 live debugger nor per-pod shell access.
 
+### Target-laptop acceptance (CDP-008)
+
+Run this walkthrough on the intended laptop after the source-bound install and
+host trust steps above. Keep observed results beside `deployment.md` in the
+external record directory, without copying credentials or tokens into it.
+
+1. Run `configure-host-trust.sh check` with the selected CA and port. Open
+   `https://curu.test:8443/activities` in the laptop browser and confirm there
+   is no certificate warning. If the browser has its own trust store, import
+   the selected public CA there first.
+2. Retrieve the generated owner password privately with
+   `kubectl --context kind-curu-local --namespace curu-system get secret curu-curu-keycloak-credentials -o jsonpath='{.data.owner-password}' | base64 -d`.
+   Sign in as `owner` through the browser. Inspect the library, search by title
+   or instruction, and open a complete detail page with progressions. Compare
+   the expected 44 activities and 110 progressions with a source-bound data
+   check; the page does not display aggregate counts.
+3. In a separate private browser window, retrieve `other-password` from the
+   same Secret and sign in as `other-user`. Confirm that product access is
+   denied. Keep the owner session separate from this check because gateway
+   logout does not end the Keycloak provider session.
+4. Record demonstrated expiry behavior and its source. CDP-007's disposable
+   browser check exercises gateway expiry and refreshed sessions; cite that
+   evidence as automated evidence unless expiry is also observed on this
+   laptop. Do not describe a logout as an expiry test.
+5. Use the scoped `curu-local.sh stop`, `start`, and operation-free `upgrade`
+   commands above. Check the same library content and browser path after each
+   action. Record the selected image/chart/values identities, observed results,
+   failures, and Chris's acceptance. A missing target-browser result leaves
+   D1 pending.
+
+NetworkPolicy enforcement, manual restore, and phone/LAN access are recorded
+only when actually exercised. The local kind qualification and optional
+follow-up Tasks remain as described above.
+
 Run the complete deployment validation, combining owned chart/static checks
 with focused disposable Postgres, data-lifecycle, identity, and browser
 clusters:
@@ -398,7 +434,8 @@ refresh beyond the original access-token lifetime, safe gateway expiry,
 gateway-session logout, and absent backend, readiness, and identity-admin host
 routes. It deletes only its fixed disposable `curu-browser-check` cluster.
 Logout does not terminate the Keycloak provider session; a later sign-in may
-reuse provider SSO. The target HP browser result remains CDP-008 work.
+reuse provider SSO. Target HP browser observations are recorded through the
+CDP-008 walkthrough above, separately from this disposable check.
 
 Validate scripts and static exposure/storage invariants without creating a
 cluster:
@@ -437,7 +474,7 @@ gateway check and makes no login or library claim.
 | Configure identity | CDP-005 | Repeatable realm/client/owner setup and compatible tokens |
 | Authenticate browser traffic | CDP-006 | HTTPS, owner access, refresh/expiry/logout, safe header handling |
 | Install, inspect, restart, upgrade, remove | CDP-007 | Implemented scoped lifecycle, deployment record, diagnostics, retained-state upgrade/restart, and external-mode evidence |
-| Verify target acceptance | CDP-008 | Actual laptop-browser evidence, distinct from automated checks and optional phone results |
+| Verify target acceptance | CDP-008 | Source-bound laptop walkthrough and external operator evidence, distinct from disposable checks and optional phone results |
 | Export and verify an isolated restore | CDP-009, optional | Application manifest comparison without overwriting a retained target |
 
 Application build/test and data-operation commands already exist in the root [README](../README.md) and [database operations guide](../doc/database-operations.md). Their existence does not mean a Kubernetes deployment has been tested.
