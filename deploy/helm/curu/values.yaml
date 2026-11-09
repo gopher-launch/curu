@@ -167,6 +167,7 @@ identity:
       webOrigins:
         - https://curu.test:8443
     accessTokenLifespanSeconds: 600
+    jwksCacheMaxAgeSeconds: 300
     tokenFixture:
       enabled: false
     credentialsSecret:

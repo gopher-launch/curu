@@ -64,6 +64,7 @@ YAML
 
 readonly -a helm_values=(
   --set edge.enabled=false
+  --set runtime.enabled=false
   --set-string image.repository=postgres
   --set-string image.tag=17.6-bookworm
   --set-string image.pullPolicy=IfNotPresent
@@ -74,6 +75,10 @@ readonly -a helm_values=(
   --set-string owner.issuer=https://identity.curu.test/realms/curu
   --set-string owner.subject=owner-check
   --set-string owner.id=00000000-0000-4000-8000-000000000001
+  --set identity.bundled.enabled=false
+  --set identity.external.enabled=true
+  --set-string identity.external.client.id=database-only-check
+  --set-string identity.external.client.secret.name=unused-database-only-client
   --set-string database.bundled.storage.storageClassName=cdp003-retained
   --set-string database.bundled.storage.size=1Gi
   --set-string 'database.bundled.storage.selectorLabels.curu\.local/storage=cdp003'
@@ -120,7 +125,8 @@ secret_hash_after="$(kubectl --context "${context_name}" --namespace "${namespac
 [[ "${secret_hash_before}" == "${secret_hash_after}" ]]
 
 for scoped_key in admin-url migration-url initializer-url runtime-url keycloak-url; do
-  scoped_url="$(kubectl --context "${context_name}" --namespace "${namespace}" get secret "${secret_name}" -o "jsonpath={.data.${scoped_key}}" | base64 -d)"
+  scoped_url="$(kubectl --context "${context_name}" --namespace "${namespace}" get secret "${secret_name}" \
+    -o "go-template={{index .data \"${scoped_key}\"}}" | base64 -d)"
   scoped_url="${scoped_url/@${release}-curu-postgres:/@${release}-curu-postgres.${namespace}.svc:}"
   scoped_name="${scoped_key%-url}"
   [[ "${scoped_name}" == admin ]] && scoped_name=administration

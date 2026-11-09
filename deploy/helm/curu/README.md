@@ -54,8 +54,14 @@ the selected Secret, database names, image, deadline, or retry limit do not
 attempt to patch an earlier Job pod template. The edge terminates HTTPS,
 while Curu mounts the public issuer CA ConfigMap named by `identity.caTrust` and
 never disables JWKS TLS verification. External identity mode provisions,
-reconciles, or deletes no provider resources. Its client Secret reference is an
+reconciles, or deletes no provider resources. Its client Secret reference is
 mounted only into OAuth2 Proxy, never Curu.
+
+Bundled identity publishes the realm JWKS with the bounded
+`identity.bundled.jwksCacheMaxAgeSeconds` freshness (300 seconds by default,
+and never more than 15 minutes). The short disposable value exists to exercise
+fresh-cache continuity and expired-cache failure during a controlled provider
+outage; it does not extend Curu's independent cache cap or allow stale keys.
 
 ## Explicit data lifecycle
 
@@ -111,7 +117,8 @@ helm upgrade curu deploy/helm/curu \
 ```
 
 The server process starts against the compatible schema and uses the configured
-trusted JWKS. CDP-007 owns the integrated bounded operator workflow.
+trusted JWKS. The integrated bounded workflow is implemented by
+`deploy/scripts/curu-local.sh` and documented in the deployment README.
 Repeating the first command is an exact migration recheck and initialization
 no-op. Selecting `empty`, changing the seed owner, or encountering unrecorded
 content fails without replacing content. To invoke migration or initialization
@@ -299,6 +306,9 @@ It refuses a pre-existing `curu-browser-check` cluster and deletes its cluster
 on exit. Through CA-verified public names it performs real PKCE login/callback
 for the owner and other user, checks list/search/detail, denial, header
 spoofing, refresh beyond the original access-token lifetime, gateway expiry
-signaling, logout, and absent backend/readiness/administration routes.
+signaling, logout, absent backend/readiness/administration routes, retained
+upgrade/restart state, JWKS outage behavior, and a compatible runtime with both
+bundled services disabled. It also exercises the scoped lifecycle wrapper and
+its controlled-failure diagnostics.
 Application-side editor preservation remains covered by focused Go fixtures;
 this deployment task adds no authoring feature.

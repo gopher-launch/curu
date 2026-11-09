@@ -1,0 +1,19 @@
+# Copy this file outside the repository, replace the source-bound image tag,
+# and keep the resulting site values with the operator's deployment records.
+image:
+  repository: curu
+  tag: REPLACE_WITH_FULL_GIT_COMMIT
+  pullPolicy: IfNotPresent
+
+runtime:
+  publicOrigin: https://curu.test:8443
+
+trust:
+  issuer: https://identity.curu.test:8443/realms/curu
+  audience: curu
+  jwksURL: https://identity.curu.test:8443/realms/curu/protocol/openid-connect/certs
+
+owner:
+  issuer: https://identity.curu.test:8443/realms/curu
+  subject: 00000000-0000-4000-8000-000000000001
+  id: 00000000-0000-4000-8000-000000000001

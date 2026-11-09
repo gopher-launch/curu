@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-This directory records the accepted deployment MVP design and its [implementation roadmap](roadmap.md). The owned chart lives at [`helm/curu/`](helm/curu/), and the local cluster interface lives at [`kind/`](kind/) and [`scripts/`](scripts/). The chart contains Curu, persistent PostgreSQL with separated authority, explicit migration/initialization Jobs, repeatable Keycloak identity, and the NGINX/OAuth2 Proxy HTTPS browser path. Disposable browser-protocol evidence is delivered; target-laptop acceptance and network-policy enforcement are not claimed. The next core deployment Task is CDP-007.
+This directory records the accepted deployment MVP design and its [implementation roadmap](roadmap.md). The owned chart lives at [`helm/curu/`](helm/curu/), and the local cluster interface lives at [`kind/`](kind/) and [`scripts/`](scripts/). The chart contains Curu, persistent PostgreSQL with separated authority, explicit migration/initialization Jobs, repeatable Keycloak identity, and the NGINX/OAuth2 Proxy HTTPS browser path. The repeatable operator lifecycle and disposable integration evidence are delivered; target-laptop acceptance and network-policy enforcement are not claimed. The next core deployment Task is CDP-008.
 
 The first target is Chris's HP Ubuntu laptop running a single-node kind cluster. The objective is a reproducible, authenticated installation of the current activity library, with every runtime component deployed by an owned Helm chart. Paid services, hosted identity, public internet hosting, and cloud infrastructure are not prerequisites. Local HTTPS and the application's existing security checks remain part of ordinary development.
 
@@ -222,7 +222,121 @@ evidence.
 
 ## Operator interfaces and verification
 
-The chart, PostgreSQL, and kind validation commands below are implemented. Each later owning Task must add exact working commands to this README as it delivers an interface; planned workflow names remain non-executable until then.
+The chart, PostgreSQL, kind, and integrated lifecycle commands below are
+implemented. Every lifecycle command requires the intended context, namespace,
+release, and external record directory; none selects the current kubectl
+context implicitly.
+
+Copy the local example outside the repository, bind it to the loaded source
+image, and choose a record directory that contains no secrets:
+
+```sh
+site_values=/home/chris/.config/curu/curu-local-values.yaml
+record_dir=/home/chris/.local/state/curu/deployment
+install -d -m 0750 "$(dirname "$site_values")" "$record_dir"
+cp deploy/helm/curu/examples/curu-local-values.yaml "$site_values"
+source_revision=$(git rev-parse HEAD)
+sed -i "s/REPLACE_WITH_FULL_GIT_COMMIT/$source_revision/" "$site_values"
+deploy/scripts/load-curu-image.sh --image "curu:$source_revision"
+```
+
+After cluster and TLS/trust preparation, explicitly migrate/seed and launch the
+operation-free runtime:
+
+```sh
+deploy/scripts/curu-local.sh install \
+  --context kind-curu-local --namespace curu-system --release curu \
+  --record-dir "$record_dir" --values "$site_values" \
+  --initialize seed --timeout 10m
+```
+
+The wrapper atomically writes `deployment.md` under the record directory. It
+binds the action to context/API endpoint, release revision, source revision,
+Curu image, chart version/content hash, site-values path/hash, and tool
+versions. It never copies values or reads Secret data into the record.
+
+Run deliberate data operations separately. Each leaves runtime and edge off;
+resume with the operation-free upgrade only after success:
+
+```sh
+deploy/scripts/curu-local.sh migrate \
+  --context kind-curu-local --namespace curu-system --release curu \
+  --record-dir "$record_dir" --values "$site_values" --timeout 10m
+deploy/scripts/curu-local.sh initialize \
+  --context kind-curu-local --namespace curu-system --release curu \
+  --record-dir "$record_dir" --values "$site_values" \
+  --initialize seed --timeout 10m
+deploy/scripts/curu-local.sh upgrade \
+  --context kind-curu-local --namespace curu-system --release curu \
+  --record-dir "$record_dir" --values "$site_values" --timeout 10m
+```
+
+Inspect, stop, and restart the exact release without pod-name rituals:
+
+```sh
+deploy/scripts/curu-local.sh status \
+  --context kind-curu-local --namespace curu-system --release curu \
+  --record-dir "$record_dir"
+deploy/scripts/curu-local.sh logs \
+  --context kind-curu-local --namespace curu-system --release curu \
+  --record-dir "$record_dir"
+deploy/scripts/curu-local.sh stop \
+  --context kind-curu-local --namespace curu-system --release curu \
+  --record-dir "$record_dir" --timeout 5m
+deploy/scripts/curu-local.sh start \
+  --context kind-curu-local --namespace curu-system --release curu \
+  --record-dir "$record_dir" --timeout 10m
+```
+
+For an upgrade, review the external site-values image tag, load that exact
+image, and run `upgrade` above. It forcibly leaves migration and initialization
+off. A backout is another reviewed operation-free upgrade, not `helm rollback`;
+use it only after checking the prior image against the database schema left by
+the attempted upgrade:
+
+```sh
+deploy/scripts/curu-local.sh backout \
+  --context kind-curu-local --namespace curu-system --release curu \
+  --record-dir "$record_dir" --values /absolute/path/to/prior-values.yaml \
+  --confirm-schema-compatible --timeout 10m
+```
+
+Routine release removal retains chart-marked PVCs and generated Secrets:
+
+```sh
+deploy/scripts/curu-local.sh remove \
+  --context kind-curu-local --namespace curu-system --release curu \
+  --record-dir "$record_dir" --timeout 10m
+```
+
+This is not data deletion. The separate destructive sequence names the fixed
+cluster and exact marked host storage target:
+
+```sh
+deploy/scripts/delete-kind-cluster.sh
+deploy/scripts/reset-kind-storage.sh \
+  --storage-dir /srv/curu-kind --confirm-curu-local-data-loss
+```
+
+Failed Helm operations report their exit status, scoped resources, warning
+events, and bounded release-label logs. Normal diagnostics require neither a
+live debugger nor per-pod shell access.
+
+Run the complete deployment validation, combining owned chart/static checks
+with focused disposable Postgres, data-lifecycle, identity, and browser
+clusters:
+
+```sh
+deploy/scripts/validate-deployment.sh
+```
+
+The browser check drives a clean install and upgrade through the wrapper,
+retains the 44/110 dataset, owner binding, credentials, session key, and signing
+key, exercises stop/start, retained-state removal, and a controlled failed upgrade, and verifies
+fresh-cache continuity then expired-cache readiness/product failure during a
+JWKS outage. It also starts a second runtime with bundled database and identity
+both disabled using explicit compatible external endpoint, trust, and Secret
+references. `--static-only` is a quick preflight, not live acceptance.
 
 From the repository root, with Helm `v4.2.4`, run:
 
@@ -314,7 +428,7 @@ the disposable host directories for inspection/removal by the operator. Its
 temporary TLS edge proves bootstrap inputs only; it is not the integrated
 gateway check and makes no login or library claim.
 
-| Planned interface | Owning Tasks | Required result |
+| Interface | Owning Tasks | Delivered result |
 | --- | --- | --- |
 | Validate/render chart | CDP-001, extended by later chart Tasks | Lint, render, reject inconsistent inputs, and check bundled/external configurations |
 | Prepare local cluster and trust | CDP-002 | Implemented versioned kind, port/storage configuration, certificates, trust steps, and disposable checks |
@@ -322,7 +436,7 @@ gateway check and makes no login or library claim.
 | Migrate and initialize | CDP-004 | Explicit, bounded Jobs with safe retry/refusal behavior |
 | Configure identity | CDP-005 | Repeatable realm/client/owner setup and compatible tokens |
 | Authenticate browser traffic | CDP-006 | HTTPS, owner access, refresh/expiry/logout, safe header handling |
-| Install, inspect, restart, upgrade, remove | CDP-007 | Repeatable sequencing, bounded waits, useful diagnostics, and explicit data-retention behavior |
+| Install, inspect, restart, upgrade, remove | CDP-007 | Implemented scoped lifecycle, deployment record, diagnostics, retained-state upgrade/restart, and external-mode evidence |
 | Verify target acceptance | CDP-008 | Actual laptop-browser evidence, distinct from automated checks and optional phone results |
 | Export and verify an isolated restore | CDP-009, optional | Application manifest comparison without overwriting a retained target |
 

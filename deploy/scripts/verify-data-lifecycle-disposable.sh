@@ -37,6 +37,8 @@ docker build --tag "${image}" "${repo_root}"
 kind create cluster --name "${cluster_name}" --image "${CURU_NODE_IMAGE}" --wait 120s
 kind load docker-image --name "${cluster_name}" "${image}"
 kubectl --context "${context_name}" create namespace "${namespace}"
+kubectl --context "${context_name}" --namespace "${namespace}" create configmap curu-local-ca \
+  --from-file=ca.crt=/etc/ssl/certs/ca-certificates.crt >/dev/null
 kubectl --context "${context_name}" apply -f - <<'YAML'
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
@@ -75,6 +77,10 @@ readonly -a base_values=(
   --set-string owner.issuer=https://identity.curu.test/realms/curu
   --set-string owner.subject=owner-check
   --set-string owner.id="${owner_id}"
+  --set identity.bundled.enabled=false
+  --set identity.external.enabled=true
+  --set-string identity.external.client.id=data-lifecycle-only-check
+  --set-string identity.external.client.secret.name=unused-data-lifecycle-client
   --set-string database.bundled.storage.storageClassName=cdp004-retained
   --set-string database.bundled.storage.size=1Gi
   --set-string 'database.bundled.storage.selectorLabels.curu\.local/storage=cdp004'

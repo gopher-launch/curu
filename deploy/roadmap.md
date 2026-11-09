@@ -1,7 +1,7 @@
 ---
 version: 1
 project: curu-deploy
-updated: 2026-11-08
+updated: 2026-11-09
 ---
 
 # Curu deployment roadmap
@@ -25,7 +25,7 @@ The deployment baseline is documented in [README.md](README.md). These documents
 ## Selection and reconciliation
 
 - Select one bounded `Kind: task` entry from this roadmap. Do not infer deployment task selection from the root roadmap or assume a runner selects this file automatically.
-- CDP-001 through CDP-006 delivered the owned chart, reproducible kind/trust inputs, persistent separated data authority, explicit data sequencing, repeatable identity, and the HTTPS browser-authentication path. CDP-007 is the next ready deployment Task; later core Tasks remain planned. After reviewing a delivered prerequisite, promote the next core Task only when its concrete inputs and acceptance are satisfied. Optional/follow-up Tasks require deliberate selection; they never become a gate on the core milestone merely because their prerequisites are delivered.
+- CDP-001 through CDP-007 delivered the owned chart, reproducible kind/trust inputs, persistent separated data authority, explicit data sequencing, repeatable identity, the HTTPS browser-authentication path, and the repeatable operator lifecycle/integration validation. CDP-008 is the next ready deployment Task. After reviewing a delivered prerequisite, promote the next core Task only when its concrete inputs and acceptance are satisfied. Optional/follow-up Tasks require deliberate selection; they never become a gate on the core milestone merely because their prerequisites are delivered.
 - `Depends on` references are confined to this roadmap. Existing application capabilities are source/contract prerequisites, not duplicated Tasks or unresolved cross-roadmap dependency IDs. Application changes need explicitly bounded scope in their owning workstream.
 - Preserve IDs. Reconcile affected templates, README interfaces, guidance, and roadmap readiness in the same candidate. Split oversized Tasks before widening execution scope. No task is delivered because it appears here or because manifests render.
 - Use disposable resources for destructive tests. Routine validation needs no paid provider or real retained-data reset. Keep operational progress, review verdicts, and pending integration notes in external records.
@@ -44,33 +44,13 @@ The selected application image supplies the HTTP server plus `/curu-migrate`, `/
 
 D1 includes actual target-browser acceptance, distinct from automated disposable-cluster verification. Phone acceptance is recorded only if performed. Neither optional row is a prerequisite for D1, and D1 does not claim a hosted or fully isolated production deployment.
 
-## CDP-007 — Deliver repeatable operator lifecycle and integration checks
+## CDP-008 — Record the HP laptop browser acceptance
 
 - Kind: task
 - Status: ready
 - Priority: high
 - Parent: none
 - Depends on: none
-
-**Objective:** Assemble component interfaces into a small, repeatable operator workflow with useful diagnostics.
-
-**Acceptance criteria:**
-
-- Publish exact implemented commands for local setup/install, explicit data operations, status/logs, stop/start, upgrade, and removal. Scope every operation to an explicit intended cluster/context/release; destructive data removal names its target and remains separate from routine teardown.
-- Bind image/source/version/configuration inputs to a deployment record without storing credentials. Establish bounded waits, failure/exit reporting, and actionable diagnostics; do not require per-pod shell rituals or live debuggers for normal troubleshooting.
-- Exercise clean installation and an upgrade with retained content, owner identity, credentials, and signing state. Back out only when the prior application image remains compatible with the resulting database schema; never imply Helm rollback reverses migrations.
-- Supply a repeatable deployment validation command combining owned chart checks and focused disposable kind/browser checks. Cover bundled modes and exercise disabled bundled services against compatible disposable external endpoints with explicitly supplied trust/credentials.
-- Verify JWKS outage behavior with fresh versus expired cache, coarse readiness, and failure-safe exposure. Keep NetworkPolicy enforcement, optional recovery, cloud credentials, and phone testing out of the mandatory local workflow.
-
-**Verification:** Run the documented lifecycle from clean disposable inputs, exercise a controlled failed operation and bounded diagnostics, validate retained-data upgrade/restart and external configurations, and record actual checks separately from assumptions. Go checks apply only if application/build changes are also made.
-
-## CDP-008 — Record the HP laptop browser acceptance
-
-- Kind: task
-- Status: planned
-- Priority: high
-- Parent: none
-- Depends on: CDP-007
 
 **Objective:** Demonstrate D1 on the intended host without confusing automated evidence with operator acceptance.
 
@@ -90,7 +70,7 @@ D1 includes actual target-browser acceptance, distinct from automated disposable
 - Status: planned
 - Priority: low
 - Parent: none
-- Depends on: CDP-007
+- Depends on: none
 
 **Objective:** Offer a small manual recovery path when local content becomes worth retaining, without creating a backup service.
 
@@ -124,4 +104,4 @@ D1 includes actual target-browser acceptance, distinct from automated disposable
 
 ## Next task boundary
 
-CDP-007 is the only ready deployment Task. CDP-001 delivered chart/configuration/render interfaces, CDP-002 delivered the local cluster boundary, CDP-003 delivered the persistent data service and role boundary, CDP-004 delivered explicit migration and initialization sequencing, CDP-005 delivered repeatable identity plus accepted/rejected real-token evidence, and CDP-006 delivered the browser-authenticated HTTPS path with disposable evidence. CDP-008 remains the subsequent core planned Task; CDP-009 and CDP-010 are optional/follow-up work and stay planned even though CDP-010's dependency is satisfied. Application readiness continues to be managed independently in the root roadmap.
+CDP-008 is the only ready core deployment Task. CDP-001 delivered chart/configuration/render interfaces, CDP-002 delivered the local cluster boundary, CDP-003 delivered the persistent data service and role boundary, CDP-004 delivered explicit migration and initialization sequencing, CDP-005 delivered repeatable identity plus accepted/rejected real-token evidence, CDP-006 delivered the browser-authenticated HTTPS path, and CDP-007 delivered the scoped operator lifecycle plus aggregate disposable validation. CDP-009 and CDP-010 are optional/follow-up work and stay planned even though their dependencies are satisfied. Application readiness continues to be managed independently in the root roadmap.

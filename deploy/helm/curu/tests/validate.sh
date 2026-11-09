@@ -177,6 +177,7 @@ expect_rejected 'bundled identity JWKS mismatch' --set-string trust.jwksURL=http
 expect_rejected 'bundled identity audience mismatch' --set-string identity.bundled.audience=other
 expect_rejected 'bundled identity owner subject mismatch' --set-string identity.bundled.users.owner.subject=00000000-0000-4000-8000-000000000099
 expect_rejected 'excessive identity token lifetime' --set identity.bundled.accessTokenLifespanSeconds=901
+expect_rejected 'invalid JWKS publication freshness' --set identity.bundled.jwksCacheMaxAgeSeconds=0
 expect_rejected 'duplicate development-user subjects' --set-string identity.bundled.users.other.subject=00000000-0000-4000-8000-000000000001
 expect_rejected 'external identity without browser client inputs' --set identity.bundled.enabled=false --set identity.external.enabled=true
 expect_rejected 'invalid bundled role identifier' --set-string database.bundled.names.runtimeRole=curu-runtime

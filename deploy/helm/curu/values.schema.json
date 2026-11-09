@@ -373,7 +373,7 @@
     "bundledIdentity": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["enabled", "image", "hostname", "realm", "audience", "client", "accessTokenLifespanSeconds", "tokenFixture", "credentialsSecret", "users", "resources"],
+      "required": ["enabled", "image", "hostname", "realm", "audience", "client", "accessTokenLifespanSeconds", "jwksCacheMaxAgeSeconds", "tokenFixture", "credentialsSecret", "users", "resources"],
       "properties": {
         "enabled": {"type": "boolean"},
         "image": {"$ref": "#/definitions/containerImage"},
@@ -391,6 +391,7 @@
           }
         },
         "accessTokenLifespanSeconds": {"type": "integer", "minimum": 60, "maximum": 900},
+        "jwksCacheMaxAgeSeconds": {"type": "integer", "minimum": 1, "maximum": 900},
         "tokenFixture": {
           "type": "object",
           "additionalProperties": false,

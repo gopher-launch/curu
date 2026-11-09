@@ -14,7 +14,6 @@ readonly identity_origin="https://${identity_host}:${public_port}"
 readonly image='curu:cdp006-check'
 readonly script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly repo_root="$(cd "${script_dir}/../.." && pwd)"
-readonly chart_dir="${repo_root}/deploy/helm/curu"
 readonly work_dir="$(mktemp -d)"
 
 # shellcheck source=lib-kind.sh
@@ -109,51 +108,85 @@ spec:
   hostPath: {path: /var/local-path-provisioner/cdp006-postgres-data, type: DirectoryOrCreate}
 YAML
 
-readonly -a base_values=(
-  --set-string image.repository=curu
-  --set-string image.tag=cdp006-check
-  --set-string image.pullPolicy=IfNotPresent
-  --set-string edge.publicOrigin="${public_origin}"
-  --set edge.publicPort="${public_port}"
-  --set edge.service.port="${public_port}"
-  --set-string runtime.publicOrigin="${public_origin}"
-  --set-string "runtime.loginURL=${public_origin}/oauth2/start?rd=https%3A%2F%2F${app_host}%3A${public_port}%2Factivities"
-  --set-string "runtime.logoutURL=${public_origin}/oauth2/sign_out?rd=https%3A%2F%2F${app_host}%3A${public_port}%2F"
-  --set-string trust.issuer="${identity_origin}/realms/curu"
-  --set-string trust.audience=curu
-  --set-string trust.jwksURL="${identity_origin}/realms/curu/protocol/openid-connect/certs"
-  --set-string owner.issuer="${identity_origin}/realms/curu"
-  --set-string owner.subject=00000000-0000-4000-8000-000000000001
-  --set-string owner.id=00000000-0000-4000-8000-000000000001
-  --set-string identity.bundled.hostname="${identity_origin}"
-  --set-string 'identity.bundled.client.redirectURIs[0]'="${public_origin}/oauth2/callback"
-  --set-string 'identity.bundled.client.webOrigins[0]'="${public_origin}"
-  --set identity.bundled.accessTokenLifespanSeconds=60
-  --set-string browserAuth.cookie.refresh=20s
-  --set-string database.bundled.storage.storageClassName=cdp006-retained
-  --set-string database.bundled.storage.size=1Gi
-  --set-string 'database.bundled.storage.selectorLabels.curu\.local/storage=cdp006'
-  --set dataLifecycle.activeDeadlineSeconds=600
-)
+cat >"${work_dir}/values.yaml" <<YAML
+image:
+  repository: curu
+  tag: cdp006-check
+  pullPolicy: IfNotPresent
+edge:
+  publicOrigin: ${public_origin}
+  publicPort: ${public_port}
+  service:
+    port: ${public_port}
+runtime:
+  publicOrigin: ${public_origin}
+  loginURL: ${public_origin}/oauth2/start?rd=https%3A%2F%2F${app_host}%3A${public_port}%2Factivities
+  logoutURL: ${public_origin}/oauth2/sign_out?rd=https%3A%2F%2F${app_host}%3A${public_port}%2F
+trust:
+  issuer: ${identity_origin}/realms/curu
+  audience: curu
+  jwksURL: ${identity_origin}/realms/curu/protocol/openid-connect/certs
+owner:
+  issuer: ${identity_origin}/realms/curu
+  subject: 00000000-0000-4000-8000-000000000001
+  id: 00000000-0000-4000-8000-000000000001
+browserAuth:
+  cookie:
+    refresh: 20s
+database:
+  bundled:
+    storage:
+      storageClassName: cdp006-retained
+      size: 1Gi
+      selectorLabels:
+        curu.local/storage: cdp006
+identity:
+  bundled:
+    hostname: ${identity_origin}
+    accessTokenLifespanSeconds: 60
+    jwksCacheMaxAgeSeconds: 10
+    tokenFixture:
+      enabled: true
+    client:
+      redirectURIs: [${public_origin}/oauth2/callback]
+      webOrigins: [${public_origin}]
+dataLifecycle:
+  activeDeadlineSeconds: 600
+YAML
 
-helm upgrade --install "${release}" "${chart_dir}" \
-  --kube-context "${context_name}" --namespace "${namespace}" "${base_values[@]}" \
-  --set edge.enabled=false --set runtime.enabled=false --set dataLifecycle.migrate=true \
-  --set-string dataLifecycle.initialize=seed --wait --wait-for-jobs --timeout 12m
-helm upgrade "${release}" "${chart_dir}" \
-  --kube-context "${context_name}" --namespace "${namespace}" "${base_values[@]}" \
-  --set edge.enabled=true --set runtime.enabled=true --set dataLifecycle.migrate=false \
-  --set-string dataLifecycle.initialize=none --wait --wait-for-jobs --timeout 12m
+operator_scope=(--context "${context_name}" --namespace "${namespace}" \
+  --release "${release}" --record-dir "${work_dir}/record")
+"${script_dir}/curu-local.sh" install "${operator_scope[@]}" --values "${work_dir}/values.yaml" --initialize seed --timeout 12m
 
 session_secret_before="$(kubectl --context "${context_name}" --namespace "${namespace}" get secret \
   "${release}-curu-oauth2-proxy-session" -o jsonpath='{.data.cookie-secret}')"
-helm upgrade "${release}" "${chart_dir}" \
-  --kube-context "${context_name}" --namespace "${namespace}" "${base_values[@]}" \
-  --set edge.enabled=true --set runtime.enabled=true --set dataLifecycle.migrate=false \
-  --set-string dataLifecycle.initialize=none --wait --wait-for-jobs --timeout 12m
+postgres_secret_before="$(kubectl --context "${context_name}" --namespace "${namespace}" get secret \
+  "${release}-curu-postgres-credentials" -o jsonpath='{.data}' | sha256sum | cut -d' ' -f1)"
+identity_secret_before="$(kubectl --context "${context_name}" --namespace "${namespace}" get secret \
+  "${release}-curu-keycloak-credentials" -o jsonpath='{.data}' | sha256sum | cut -d' ' -f1)"
+signing_kid_before="$(curl --silent --fail --cacert "${work_dir}/ca.crt" \
+  --resolve "${identity_host}:${public_port}:127.0.0.1" \
+  "${identity_origin}/realms/curu/protocol/openid-connect/certs" | \
+  python3 -c 'import json,sys; print(json.load(sys.stdin)["keys"][0]["kid"])')"
+"${script_dir}/curu-local.sh" upgrade "${operator_scope[@]}" --values "${work_dir}/values.yaml" --timeout 12m
 session_secret_after="$(kubectl --context "${context_name}" --namespace "${namespace}" get secret \
   "${release}-curu-oauth2-proxy-session" -o jsonpath='{.data.cookie-secret}')"
 [[ -n "${session_secret_before}" && "${session_secret_before}" == "${session_secret_after}" ]]
+[[ "${postgres_secret_before}" == "$(kubectl --context "${context_name}" --namespace "${namespace}" get secret "${release}-curu-postgres-credentials" -o jsonpath='{.data}' | sha256sum | cut -d' ' -f1)" ]]
+[[ "${identity_secret_before}" == "$(kubectl --context "${context_name}" --namespace "${namespace}" get secret "${release}-curu-keycloak-credentials" -o jsonpath='{.data}' | sha256sum | cut -d' ' -f1)" ]]
+[[ "${signing_kid_before}" == "$(curl --silent --fail --cacert "${work_dir}/ca.crt" --resolve "${identity_host}:${public_port}:127.0.0.1" "${identity_origin}/realms/curu/protocol/openid-connect/certs" | python3 -c 'import json,sys; print(json.load(sys.stdin)["keys"][0]["kid"])')" ]]
+grep -F 'This record contains input identities and hashes only.' "${work_dir}/record/deployment.md" >/dev/null
+
+# A controlled invalid upgrade must fail before changing the release and emit
+# bounded workload diagnostics rather than requiring interactive pod access.
+cp "${work_dir}/values.yaml" "${work_dir}/invalid-values.yaml"
+sed -i 's/tag: cdp006-check/tag: latest/' "${work_dir}/invalid-values.yaml"
+if "${script_dir}/curu-local.sh" upgrade "${operator_scope[@]}" --values "${work_dir}/invalid-values.yaml" --timeout 1m \
+  >"${work_dir}/failed-upgrade.log" 2>&1; then
+  echo 'controlled invalid upgrade unexpectedly succeeded' >&2
+  exit 1
+fi
+grep -F 'bounded diagnostics follow' "${work_dir}/failed-upgrade.log" >/dev/null
 
 for deployment in "${release}-curu" "${release}-curu-keycloak" curu-edge "${release}-curu-oauth2-proxy"; do
   kubectl --context "${context_name}" --namespace "${namespace}" wait --for=condition=available \
@@ -210,6 +243,132 @@ curl "${curl_common[@]}" --cookie "${owner_jar}" "${public_origin}${detail_path}
 grep -F 'id="progressions-heading"' "${work_dir}/detail.html" >/dev/null
 curl "${curl_common[@]}" --cookie "${owner_jar}" --get --data-urlencode q=balance "${public_origin}/activities" >"${work_dir}/search.html"
 grep -F 'Results for <strong>balance</strong>' "${work_dir}/search.html" >/dev/null
+
+# With a known key still fresh, a JWKS outage does not interrupt validation.
+# Once the ten-second published freshness expires, readiness and product
+# exposure fail closed. Restoring the provider recovers coarse readiness.
+kubectl --context "${context_name}" --namespace "${namespace}" port-forward \
+  service/${release}-curu 18080:8080 >"${work_dir}/curu-forward.log" 2>&1 &
+curu_forward_pid=$!
+for _ in {1..30}; do
+  if curl --silent --fail http://127.0.0.1:18080/health/ready >/dev/null; then break; fi
+  sleep 1
+done
+curl --silent --fail http://127.0.0.1:18080/health/ready >/dev/null
+kubectl --context "${context_name}" --namespace "${namespace}" scale \
+  deployment/${release}-curu-keycloak --replicas=0 >/dev/null
+kubectl --context "${context_name}" --namespace "${namespace}" rollout status \
+  deployment/${release}-curu-keycloak --timeout=90s >/dev/null
+[[ "$(curl "${curl_common[@]}" --cookie "${owner_jar}" --output /dev/null --write-out '%{http_code}' "${public_origin}/activities")" == 200 ]]
+sleep 12
+[[ "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:18080/health/ready)" == 503 ]]
+[[ "$(curl "${curl_common[@]}" --cookie "${owner_jar}" --output /dev/null --write-out '%{http_code}' "${public_origin}/activities")" == 503 ]]
+kubectl --context "${context_name}" --namespace "${namespace}" scale \
+  deployment/${release}-curu-keycloak --replicas=1 >/dev/null
+kubectl --context "${context_name}" --namespace "${namespace}" rollout status \
+  deployment/${release}-curu-keycloak --timeout=240s >/dev/null
+for _ in {1..60}; do
+  if curl --silent --fail http://127.0.0.1:18080/health/ready >/dev/null; then break; fi
+  sleep 1
+done
+curl --silent --fail http://127.0.0.1:18080/health/ready >/dev/null
+kill "${curu_forward_pid}"
+wait "${curu_forward_pid}" 2>/dev/null || true
+
+# The documented stop/start path retains data and identity state. The existing
+# browser session remains usable because its generated signing/session secrets
+# and the backing database are unchanged.
+"${script_dir}/curu-local.sh" stop "${operator_scope[@]}" --timeout 5m
+"${script_dir}/curu-local.sh" start "${operator_scope[@]}" --timeout 8m
+[[ "$(curl "${curl_common[@]}" --cookie "${owner_jar}" --output /dev/null --write-out '%{http_code}' "${public_origin}/activities")" == 200 ]]
+[[ "$(curl "${curl_common[@]}" --cookie "${owner_jar}" "${public_origin}/activities" | grep -o 'href="/activities/[^" ]*"' | sort -u | wc -l)" == 44 ]]
+
+# A second runtime consumes the already compatible database and issuer strictly
+# through external-mode Secret/trust interfaces. It must create no bundled
+# PostgreSQL or Keycloak workload.
+bundle_database_secret="${release}-curu-postgres-credentials"
+for mapping in \
+  external-administration:migration-url \
+  external-migration:migration-url \
+  external-initializer:initializer-url \
+  external-runtime:runtime-url \
+  external-keycloak:keycloak-url; do
+  external_name=${mapping%%:*}
+  source_key=${mapping#*:}
+  source_url="$(kubectl --context "${context_name}" --namespace "${namespace}" get secret \
+    "${bundle_database_secret}" -o "go-template={{index .data \"${source_key}\"}}" | base64 -d)"
+  kubectl --context "${context_name}" --namespace "${namespace}" create secret generic \
+    "${external_name}" --from-literal="database-url=${source_url}" >/dev/null
+done
+kubectl --context "${context_name}" --namespace "${namespace}" create secret generic external-browser-client \
+  --from-literal="client-secret=$(kubectl --context "${context_name}" --namespace "${namespace}" get secret \
+    "${release}-curu-keycloak-credentials" -o jsonpath='{.data.client-secret}' | base64 -d)" >/dev/null
+cat >"${work_dir}/external-values.yaml" <<YAML
+image:
+  repository: curu
+  tag: cdp006-check
+  pullPolicy: IfNotPresent
+edge:
+  enabled: false
+runtime:
+  enabled: true
+  publicOrigin: ${public_origin}
+trust:
+  issuer: ${identity_origin}/realms/curu
+  audience: curu
+  jwksURL: ${identity_origin}/realms/curu/protocol/openid-connect/certs
+owner:
+  issuer: ${identity_origin}/realms/curu
+  subject: 00000000-0000-4000-8000-000000000001
+  id: 00000000-0000-4000-8000-000000000001
+database:
+  bundled:
+    enabled: false
+  external:
+    enabled: true
+    host: ${release}-curu-postgres
+    curuDatabase: curu
+    keycloakDatabase: keycloak
+    tls:
+      mode: disable
+    administrationSecret: {name: external-administration, key: database-url}
+    migrationSecret: {name: external-migration, key: database-url}
+    initializerSecret: {name: external-initializer, key: database-url}
+    runtimeSecret: {name: external-runtime, key: database-url}
+    keycloakSecret: {name: external-keycloak, key: database-url}
+identity:
+  bundled:
+    enabled: false
+  external:
+    enabled: true
+    client:
+      id: curu-browser
+      secret: {name: external-browser-client, key: client-secret}
+  caTrust:
+    configMapName: curu-local-ca
+YAML
+helm upgrade --install external-check "${repo_root}/deploy/helm/curu" \
+  --kube-context "${context_name}" --namespace "${namespace}" \
+  --values "${work_dir}/external-values.yaml" --wait --timeout 5m
+[[ -z "$(kubectl --context "${context_name}" --namespace "${namespace}" get deployment,statefulset,service \
+  -l 'app.kubernetes.io/instance=external-check,app.kubernetes.io/component in (postgres,identity)' -o name)" ]]
+external_token="$(curl "${curl_common[@]}" --request POST \
+  --data-urlencode grant_type=password --data-urlencode client_id=curu-token-fixture \
+  --data-urlencode username=owner --data-urlencode "password=${owner_password}" \
+  "${identity_origin}/realms/curu/protocol/openid-connect/token" | \
+  python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')"
+kubectl --context "${context_name}" --namespace "${namespace}" port-forward \
+  service/external-check-curu 18081:8080 >"${work_dir}/external-forward.log" 2>&1 &
+external_forward_pid=$!
+for _ in {1..30}; do
+  if [[ "$(curl --silent --output /dev/null --write-out '%{http_code}' \
+    -H "Authorization: Bearer ${external_token}" http://127.0.0.1:18081/activities)" == 200 ]]; then break; fi
+  sleep 1
+done
+[[ "$(curl --silent --output /dev/null --write-out '%{http_code}' \
+  -H "Authorization: Bearer ${external_token}" http://127.0.0.1:18081/activities)" == 200 ]]
+kill "${external_forward_pid}"
+wait "${external_forward_pid}" 2>/dev/null || true
 
 # Browser credentials and forwarding claims are overwritten; no access-token
 # authentication response header is exposed back to the browser.
@@ -419,5 +578,21 @@ curl "${curl_common[@]}" --cookie "${owner_jar}" --header 'HX-Request: true' \
 grep -F 'HTTP/1.1 401' "${work_dir}/expired.headers" >/dev/null
 grep -Eiq '^HX-Reswap: none' "${work_dir}/expired.headers"
 grep -Eiq '^HX-Trigger: curu:authentication-required' "${work_dir}/expired.headers"
+
+# Routine removal deletes the release workloads but retains the explicitly
+# kept data claim and generated credentials. It never invokes storage reset.
+"${script_dir}/curu-local.sh" remove "${operator_scope[@]}" --timeout 5m
+if helm status "${release}" --kube-context "${context_name}" --namespace "${namespace}" >/dev/null 2>&1; then
+  echo 'removed release is still present' >&2
+  exit 1
+fi
+kubectl --context "${context_name}" --namespace "${namespace}" get \
+  persistentvolumeclaim/${release}-curu-postgres >/dev/null
+for retained_secret in \
+  "${release}-curu-postgres-credentials" \
+  "${release}-curu-keycloak-credentials" \
+  "${release}-curu-oauth2-proxy-session"; do
+  kubectl --context "${context_name}" --namespace "${namespace}" get secret "${retained_secret}" >/dev/null
+done
 
 echo 'disposable browser authentication verification passed'
