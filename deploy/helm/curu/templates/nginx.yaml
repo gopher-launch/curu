@@ -1,0 +1,78 @@
+{{- if .Values.edge.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "curu.edgeName" . }}
+  labels:
+    {{- include "curu.labels" . | nindent 4 }}
+    app.kubernetes.io/component: edge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "curu.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: edge
+  template:
+    metadata:
+      annotations:
+        checksum/edge-config: {{ include (print $.Template.BasePath "/nginx-configmap.yaml") . | sha256sum }}
+      labels:
+        {{- include "curu.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: edge
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: nginx
+          image: {{ include "curu.edgeImage" . | quote }}
+          imagePullPolicy: {{ .Values.edge.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          ports:
+            - {name: https, containerPort: 8443, protocol: TCP}
+          livenessProbe:
+            tcpSocket: {port: https}
+          readinessProbe:
+            tcpSocket: {port: https}
+          resources:
+            {{- toYaml .Values.edge.resources | nindent 12 }}
+          volumeMounts:
+            - {name: config, mountPath: /etc/nginx/nginx.conf, subPath: nginx.conf, readOnly: true}
+            - {name: tls, mountPath: /etc/curu/tls, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+            - {name: cache, mountPath: /var/cache/nginx}
+      volumes:
+        - name: config
+          configMap: {name: {{ include "curu.edgeName" . }}}
+        - name: tls
+          secret: {secretName: {{ .Values.edge.tlsSecretName | quote }}}
+        - name: tmp
+          emptyDir: {}
+        - name: cache
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "curu.edgeName" . }}
+  labels:
+    {{- include "curu.labels" . | nindent 4 }}
+    app.kubernetes.io/component: edge
+spec:
+  type: NodePort
+  selector:
+    {{- include "curu.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: edge
+  ports:
+    - name: https
+      port: {{ .Values.edge.service.port }}
+      targetPort: https
+      nodePort: {{ .Values.edge.service.nodePort }}
+      protocol: TCP
+{{- end }}

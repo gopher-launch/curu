@@ -10,12 +10,56 @@ replicaCount: 1
 service:
   port: 8080
 
+edge:
+  enabled: true
+  applicationHost: curu.test
+  identityHost: identity.curu.test
+  publicOrigin: https://curu.test:8443
+  publicPort: 8443
+  tlsSecretName: curu-local-edge-tls
+  image:
+    repository: nginx
+    tag: 1.29.2-alpine
+    digest: sha256:b03ccb7431a2e3172f5cbae96d82bd792935f33ecb88fbf2940559e475745c4e
+    pullPolicy: IfNotPresent
+  service:
+    port: 8443
+    nodePort: 30443
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 250m
+      memory: 128Mi
+
+browserAuth:
+  image:
+    repository: quay.io/oauth2-proxy/oauth2-proxy
+    tag: v7.15.5
+    digest: sha256:8498b0d0ef0a7b29686414000a08aee467f02d0299c9ed1e006a8f33fc017916
+    pullPolicy: IfNotPresent
+  sessionSecret:
+    existingName: ""
+    key: cookie-secret
+  cookie:
+    name: __Host-curu_session
+    expire: 8h
+    refresh: 5m
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 250m
+      memory: 128Mi
+
 runtime:
   enabled: true
   publicOrigin: ""
-  trustedProxyCIDRs: ""
-  loginURL: ""
-  logoutURL: ""
+  trustedProxyCIDRs: 10.244.0.0/16
+  loginURL: https://curu.test:8443/oauth2/start?rd=https%3A%2F%2Fcuru.test%3A8443%2Factivities
+  logoutURL: https://curu.test:8443/oauth2/sign_out?rd=https%3A%2F%2Fcuru.test%3A8443%2F
   shutdownTimeout: 10s
   readHeaderTimeout: 5s
   idleTimeout: 60s

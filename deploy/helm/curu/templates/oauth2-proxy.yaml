@@ -1,0 +1,134 @@
+{{- if .Values.edge.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "curu.oauth2ProxyName" . }}
+  labels:
+    {{- include "curu.labels" . | nindent 4 }}
+    app.kubernetes.io/component: browser-authentication
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "curu.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: browser-authentication
+  template:
+    metadata:
+      labels:
+        {{- include "curu.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: browser-authentication
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: oauth2-proxy
+          image: {{ include "curu.oauth2ProxyImage" . | quote }}
+          imagePullPolicy: {{ .Values.browserAuth.image.pullPolicy }}
+          args:
+            - --http-address=0.0.0.0:4180
+            - --provider=oidc
+            - --provider-display-name=Curu identity
+            - --oidc-issuer-url={{ .Values.trust.issuer }}
+            - --client-id={{ include "curu.browserClientID" . }}
+            - --client-secret-file=/etc/curu/client/client-secret
+            - --cookie-secret-file=/etc/curu/session/cookie-secret
+            - --redirect-url={{ .Values.edge.publicOrigin }}/oauth2/callback
+            - --code-challenge-method=S256
+            - --scope=openid
+            - --email-domain=*
+            - --oidc-email-claim=sub
+            - --cookie-name={{ .Values.browserAuth.cookie.name }}
+            - --cookie-path=/
+            - --cookie-secure=true
+            - --cookie-httponly=true
+            - --cookie-samesite=lax
+            - --cookie-expire={{ .Values.browserAuth.cookie.expire }}
+            - --cookie-refresh={{ .Values.browserAuth.cookie.refresh }}
+            - --session-store-type=cookie
+            - --pass-access-token=true
+            - --set-xauthrequest=true
+            - --pass-authorization-header=false
+            - --set-authorization-header=false
+            - --pass-basic-auth=false
+            - --pass-user-headers=false
+            - --skip-provider-button=true
+            - --reverse-proxy=true
+            - --real-client-ip-header=X-Real-IP
+            {{- range (splitList "," .Values.runtime.trustedProxyCIDRs) }}
+            - --trusted-proxy-ip={{ trim . }}
+            {{- end }}
+            - --relative-redirect-url=false
+            - --whitelist-domain={{ .Values.edge.applicationHost }}:{{ .Values.edge.publicPort }}
+            - --upstream=static://202
+            - --provider-ca-file=/etc/curu/identity/ca.crt
+            - --use-system-trust-store=true
+            - --request-logging=false
+            - --auth-logging=false
+            - --standard-logging=true
+            - --silence-ping-logging=true
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: 4180
+              protocol: TCP
+          startupProbe:
+            httpGet: {path: /ping, port: http}
+            periodSeconds: 5
+            failureThreshold: 60
+          livenessProbe:
+            httpGet: {path: /ping, port: http}
+          readinessProbe:
+            httpGet: {path: /ready, port: http}
+          resources:
+            {{- toYaml .Values.browserAuth.resources | nindent 12 }}
+          volumeMounts:
+            - {name: client, mountPath: /etc/curu/client, readOnly: true}
+            - {name: session, mountPath: /etc/curu/session, readOnly: true}
+            - {name: identity-ca, mountPath: /etc/curu/identity, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: client
+          secret:
+            secretName: {{ include "curu.browserClientSecretName" . | quote }}
+            items:
+              - key: {{ include "curu.browserClientSecretKey" . | quote }}
+                path: client-secret
+        - name: session
+          secret:
+            secretName: {{ include "curu.browserAuthSecretName" . | quote }}
+            items:
+              - key: {{ .Values.browserAuth.sessionSecret.key | quote }}
+                path: cookie-secret
+        - name: identity-ca
+          configMap:
+            name: {{ .Values.identity.caTrust.configMapName | quote }}
+            items:
+              - key: {{ .Values.identity.caTrust.key | quote }}
+                path: ca.crt
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "curu.oauth2ProxyName" . }}
+  labels:
+    {{- include "curu.labels" . | nindent 4 }}
+    app.kubernetes.io/component: browser-authentication
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "curu.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: browser-authentication
+  ports:
+    - {name: http, port: 4180, targetPort: http, protocol: TCP}
+{{- end }}

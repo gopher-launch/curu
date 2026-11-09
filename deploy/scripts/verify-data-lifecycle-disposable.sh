@@ -64,6 +64,7 @@ spec:
 YAML
 
 readonly -a base_values=(
+  --set edge.enabled=false
   --set-string image.repository=curu
   --set-string image.tag=cdp004-check
   --set-string image.pullPolicy=IfNotPresent

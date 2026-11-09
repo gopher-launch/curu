@@ -82,6 +82,36 @@ runtime-url
 {{- printf "%s:%s@%s" .Values.identity.bundled.image.repository .Values.identity.bundled.image.tag .Values.identity.bundled.image.digest -}}
 {{- end -}}
 
+{{- define "curu.edgeName" -}}curu-edge{{- end -}}
+
+{{- define "curu.edgeImage" -}}
+{{- printf "%s:%s@%s" .Values.edge.image.repository .Values.edge.image.tag .Values.edge.image.digest -}}
+{{- end -}}
+
+{{- define "curu.oauth2ProxyName" -}}
+{{- printf "%s-oauth2-proxy" (include "curu.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "curu.oauth2ProxyImage" -}}
+{{- printf "%s:%s@%s" .Values.browserAuth.image.repository .Values.browserAuth.image.tag .Values.browserAuth.image.digest -}}
+{{- end -}}
+
+{{- define "curu.browserAuthSecretName" -}}
+{{- default (printf "%s-session" (include "curu.oauth2ProxyName" .)) .Values.browserAuth.sessionSecret.existingName -}}
+{{- end -}}
+
+{{- define "curu.browserClientID" -}}
+{{- if .Values.identity.bundled.enabled -}}{{ .Values.identity.bundled.client.id }}{{- else -}}{{ .Values.identity.external.client.id }}{{- end -}}
+{{- end -}}
+
+{{- define "curu.browserClientSecretName" -}}
+{{- if .Values.identity.bundled.enabled -}}{{ include "curu.keycloakSecretName" . }}{{- else -}}{{ .Values.identity.external.client.secret.name }}{{- end -}}
+{{- end -}}
+
+{{- define "curu.browserClientSecretKey" -}}
+{{- if .Values.identity.bundled.enabled -}}client-secret{{- else -}}{{ .Values.identity.external.client.secret.key }}{{- end -}}
+{{- end -}}
+
 {{- define "curu.keycloakDatabaseBootstrapName" -}}
 {{- $base := printf "%s-database-bootstrap" (include "curu.keycloakName" .) | trunc 54 | trimSuffix "-" -}}
 {{- $revision := printf "%v" .Release.Revision | sha256sum | trunc 8 -}}
@@ -97,6 +127,33 @@ runtime-url
 {{- end -}}
 
 {{- define "curu.validate" -}}
+{{- if .Values.edge.enabled -}}
+{{- $expectedOrigin := printf "https://%s:%d" .Values.edge.applicationHost (.Values.edge.publicPort | int) -}}
+{{- if ne .Values.edge.publicOrigin $expectedOrigin -}}
+{{- fail "edge.publicOrigin must be the exact HTTPS application host and public port" -}}
+{{- end -}}
+{{- if ne (.Values.edge.service.port | int) (.Values.edge.publicPort | int) -}}
+{{- fail "edge.service.port must equal edge.publicPort so public issuer names resolve in cluster" -}}
+{{- end -}}
+{{- if ne .Values.runtime.publicOrigin .Values.edge.publicOrigin -}}
+{{- fail "runtime.publicOrigin must exactly match edge.publicOrigin" -}}
+{{- end -}}
+{{- if eq .Values.runtime.trustedProxyCIDRs "" -}}
+{{- fail "edge mode requires explicit runtime.trustedProxyCIDRs for the immediate NGINX peer" -}}
+{{- end -}}
+{{- if ne .Values.runtime.loginURL (printf "%s/oauth2/start?rd=%s%%2Factivities" .Values.edge.publicOrigin (urlquery .Values.edge.publicOrigin)) -}}
+{{- fail "runtime.loginURL must be the fixed edge sign-in URL for /activities" -}}
+{{- end -}}
+{{- if ne .Values.runtime.logoutURL (printf "%s/oauth2/sign_out?rd=%s%%2F" .Values.edge.publicOrigin (urlquery .Values.edge.publicOrigin)) -}}
+{{- fail "runtime.logoutURL must be the fixed edge session-termination URL" -}}
+{{- end -}}
+{{- if and .Values.identity.bundled.enabled (ne .Values.edge.identityHost (trimPrefix "https://" (regexReplaceAll ":[0-9]+$" .Values.identity.bundled.hostname ""))) -}}
+{{- fail "edge.identityHost must match the bundled identity hostname" -}}
+{{- end -}}
+{{- end -}}
+{{- if and .Values.edge.enabled (or .Values.dataLifecycle.migrate (ne .Values.dataLifecycle.initialize "none")) -}}
+{{- fail "edge.enabled must be false while a data lifecycle operation is selected" -}}
+{{- end -}}
 {{- if ne .Values.owner.issuer .Values.trust.issuer -}}
 {{- fail "owner.issuer must exactly match trust.issuer" -}}
 {{- end -}}

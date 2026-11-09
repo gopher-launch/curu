@@ -63,6 +63,7 @@ spec:
 YAML
 
 readonly -a helm_values=(
+  --set edge.enabled=false
   --set-string image.repository=postgres
   --set-string image.tag=17.6-bookworm
   --set-string image.pullPolicy=IfNotPresent

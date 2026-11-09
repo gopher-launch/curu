@@ -2,7 +2,10 @@ image:
   repository: registry.example.invalid/curu
   tag: "1959b2d24efa30455ebc60b9bef4b15930c9fab2"
 runtime:
-  publicOrigin: https://curu.test.invalid
+  publicOrigin: https://curu.test:8443
+browserAuth:
+  sessionSecret:
+    existingName: curu-browser-session-fixture
 trust:
   issuer: https://identity.curu.test:8443/realms/curu
   audience: curu

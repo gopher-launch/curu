@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-This directory records the accepted deployment MVP design and its [implementation roadmap](roadmap.md). The owned chart lives at [`helm/curu/`](helm/curu/), and the local cluster interface lives at [`kind/`](kind/) and [`scripts/`](scripts/). The chart contains the Curu Deployment/internal Service, persistent PostgreSQL with separated database authority, explicit ordered migration and initialization Jobs, and a repeatably reconciled bundled Keycloak identity service. The kind interface establishes the host/cluster, image, storage, name, and trust inputs used by later component Tasks. Real browser login and network-isolation results are not claimed. The next core deployment Task is CDP-006.
+This directory records the accepted deployment MVP design and its [implementation roadmap](roadmap.md). The owned chart lives at [`helm/curu/`](helm/curu/), and the local cluster interface lives at [`kind/`](kind/) and [`scripts/`](scripts/). The chart contains Curu, persistent PostgreSQL with separated authority, explicit migration/initialization Jobs, repeatable Keycloak identity, and the NGINX/OAuth2 Proxy HTTPS browser path. Disposable browser-protocol evidence is delivered; target-laptop acceptance and network-policy enforcement are not claimed. The next core deployment Task is CDP-007.
 
 The first target is Chris's HP Ubuntu laptop running a single-node kind cluster. The objective is a reproducible, authenticated installation of the current activity library, with every runtime component deployed by an owned Helm chart. Paid services, hosted identity, public internet hosting, and cloud infrastructure are not prerequisites. Local HTTPS and the application's existing security checks remain part of ordinary development.
 
@@ -105,7 +105,7 @@ The fixed cluster is `curu-local`, its explicit context is `kind-curu-local`,
 and its default namespace is `curu-system`. Bootstrap makes that namespace the
 context default, but every repository command still supplies the context and
 namespace. The Kubernetes API uses kind's random loopback port. The only fixed
-workload mapping is `127.0.0.1:8443` to the future edge NodePort `30443`; no
+workload mapping is `127.0.0.1:8443` to edge NodePort `30443`; no
 backend or administration port is mapped to the LAN.
 
 Bootstrap refuses to claim a symbolic link, a non-directory path, or a
@@ -131,8 +131,7 @@ loading an image does not install Curu.
 
 The stable browser/application name is `curu.test`; the stable identity name is
 `identity.curu.test`. Bootstrap configures in-cluster DNS to resolve both names
-to the future `curu-edge.curu-system.svc.cluster.local` Service. CDP-006 still
-owns the component-specific edge routing for the delivered issuer.
+to the delivered `curu-edge.curu-system.svc.cluster.local` Service.
 
 Keep local PKI outside the repository and retained workload directory:
 
@@ -160,8 +159,7 @@ deploy/scripts/configure-host-trust.sh install \
 This is the only bootstrap operation that invokes `sudo`; it reports that it
 changes `/etc/hosts` and `/usr/local/share/ca-certificates` before the operator
 runs it. Browsers with a private trust store require a separate explicit CA
-import. After CDP-006 supplies the edge on the default port, verify host
-resolution and trust with:
+import. With the edge on the default port, verify host resolution and trust with:
 
 ```sh
 deploy/scripts/configure-host-trust.sh check \
@@ -270,8 +268,23 @@ other-user denial, wrong-purpose/audience/expiry rejection, and preservation of
 identity credentials, user IDs, signing keys, and unmanaged client fields while
 an upgrade switches to a replacement database credential Secret. It refuses an
 existing `curu-identity-check` cluster and deletes its cluster on exit. Its
-password grant is a controlled token fixture, not the CDP-006 browser
-authorization-code flow.
+password grant is a controlled token fixture, distinct from the delivered
+browser authorization-code verification.
+
+Exercise the complete HTTPS edge and browser protocol in a disposable cluster:
+
+```sh
+deploy/scripts/verify-browser-disposable.sh
+```
+
+The check performs real authorization-code/PKCE login and callback for the
+owner and other user through CA-verified public names. It verifies the seeded
+list/search/detail path, `403` denial, spoofed-header resistance, split-cookie
+refresh beyond the original access-token lifetime, safe gateway expiry,
+gateway-session logout, and absent backend, readiness, and identity-admin host
+routes. It deletes only its fixed disposable `curu-browser-check` cluster.
+Logout does not terminate the Keycloak provider session; a later sign-in may
+reuse provider SSO. The target HP browser result remains CDP-008 work.
 
 Validate scripts and static exposure/storage invariants without creating a
 cluster:
@@ -298,8 +311,8 @@ deploy/scripts/verify-kind-disposable.sh \
 The live check refuses an existing `curu-local` cluster or non-empty supplied
 directories, uses pinned verification images, deletes its cluster, and retains
 the disposable host directories for inspection/removal by the operator. Its
-temporary TLS edge proves bootstrap inputs only; it is not the CDP-006 gateway
-and makes no login or library claim.
+temporary TLS edge proves bootstrap inputs only; it is not the integrated
+gateway check and makes no login or library claim.
 
 | Planned interface | Owning Tasks | Required result |
 | --- | --- | --- |

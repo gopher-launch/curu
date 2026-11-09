@@ -101,6 +101,7 @@ spec:
 YAML
 
 readonly -a base_values=(
+  --set edge.enabled=false
   --set-string image.repository=curu
   --set-string image.tag=cdp005-check
   --set-string image.pullPolicy=IfNotPresent
@@ -396,7 +397,7 @@ other_token="$(json_field access_token <<<"${other_response}")"
 wrong_token="$(json_field access_token <<<"${wrong_response}")"
 expired_token="$(json_field access_token <<<"${expired_response}")"
 
-# Password credentials are verification-only token fixtures; CDP-006 still owns the real browser authorization-code flow.
+# Password credentials are verification-only token fixtures; the integrated browser check uses the real authorization-code flow.
 kubectl --context "${context_name}" --namespace "${namespace}" \
   port-forward service/${release}-curu 18080:8080 >"${work_dir}/curu-forward.log" 2>&1 &
 curu_forward_pid=$!

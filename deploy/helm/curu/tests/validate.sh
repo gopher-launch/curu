@@ -16,9 +16,9 @@ helm lint "${chart_dir}" --strict -f "${fixture_dir}/external-values.yaml"
 bundled_render="$(helm template curu-bundled "${chart_dir}" -f "${fixture_dir}/bundled-values.yaml")"
 external_render="$(helm template curu-external "${chart_dir}" -f "${fixture_dir}/external-values.yaml")"
 lifecycle_render="$(helm template curu-lifecycle "${chart_dir}" -f "${fixture_dir}/bundled-values.yaml" \
-  --set runtime.enabled=false --set dataLifecycle.migrate=true --set-string dataLifecycle.initialize=seed)"
+  --set edge.enabled=false --set runtime.enabled=false --set dataLifecycle.migrate=true --set-string dataLifecycle.initialize=seed)"
 external_lifecycle_render="$(helm template curu-external-lifecycle "${chart_dir}" -f "${fixture_dir}/external-values.yaml" \
-  --set runtime.enabled=false --set dataLifecycle.migrate=true --set-string dataLifecycle.initialize=seed \
+  --set edge.enabled=false --set runtime.enabled=false --set dataLifecycle.migrate=true --set-string dataLifecycle.initialize=seed \
   --set-string database.external.initializerRole=external_curu_initializer \
   --set-string database.external.runtimeRole=external_curu_runtime)"
 
@@ -36,6 +36,26 @@ assert_contains "${bundled_render}" 'automountServiceAccountToken: false' 'servi
 assert_contains "${bundled_render}" 'runAsNonRoot: true' 'pod runs as non-root'
 assert_contains "${bundled_render}" 'readOnlyRootFilesystem: true' 'container root filesystem is read-only'
 assert_contains "${bundled_render}" 'type: ClusterIP' 'Curu Service remains internal'
+assert_contains "${bundled_render}" 'type: NodePort' 'only the NGINX edge receives the kind host mapping'
+assert_contains "${bundled_render}" 'nodePort: 30443' 'edge uses the bootstrap-declared NodePort'
+assert_contains "${bundled_render}" 'nginx:1.29.2-alpine@sha256:b03ccb7431a2e3172f5cbae96d82bd792935f33ecb88fbf2940559e475745c4e' 'edge image is version and digest pinned'
+assert_contains "${bundled_render}" 'oauth2-proxy:v7.15.5@sha256:8498b0d0ef0a7b29686414000a08aee467f02d0299c9ed1e006a8f33fc017916' 'browser authentication image is version and digest pinned'
+assert_contains "${bundled_render}" '--code-challenge-method=S256' 'browser authorization code flow requires PKCE S256'
+assert_contains "${bundled_render}" '--cookie-name=__Host-curu_session' 'browser session uses a secure host-prefix cookie'
+assert_contains "${bundled_render}" '--cookie-refresh=5m' 'browser session refresh policy is explicit'
+assert_contains "${bundled_render}" '--pass-access-token=true' 'OAuth2 Proxy returns the access token only to NGINX auth_request'
+assert_contains "${bundled_render}" '--pass-authorization-header=false' 'OAuth2 Proxy does not substitute an ID token'
+assert_contains "${bundled_render}" 'proxy_set_header Authorization "Bearer $curu_access_token"' 'NGINX injects exactly the access token for Curu'
+assert_contains "${bundled_render}" 'proxy_set_header X-Forwarded-For $remote_addr' 'NGINX overwrites the trusted client address'
+assert_contains "${bundled_render}" 'proxy_set_header X-Forwarded-Port ""' 'NGINX strips browser-supplied forwarding metadata'
+assert_contains "${bundled_render}" 'proxy_set_header X-Auth-Request-User ""' 'NGINX strips browser identity headers'
+assert_contains "${bundled_render}" 'proxy_hide_header X-Auth-Request-Access-Token' 'access token response headers cannot reach the browser'
+assert_contains "${bundled_render}" 'auth_request_set $curu_auth_cookie_upstream_1 $upstream_cookie___Host_curu_session_1' 'split refreshed session cookies are propagated'
+assert_contains "${bundled_render}" 'proxy_buffer_size 32k' 'auth subrequest accepts bounded refreshed cookie headers'
+assert_contains "${bundled_render}" 'add_header HX-Reswap $curu_hx_reswap always' 'gateway expiry preserves HTMX content'
+assert_contains "${bundled_render}" 'location ^~ /health/ { return 404; }' 'application readiness is absent from the host route'
+assert_contains "${bundled_render}" 'location ^~ /admin/ { return 404; }' 'identity administration is absent from the public identity route'
+assert_contains "${bundled_render}" 'add_header Cache-Control "public, max-age=300" always' 'JWKS receives bounded explicit freshness for Curu readiness'
 assert_contains "${bundled_render}" 'name: "curu-postgres-credentials-fixture"' 'bundled mode selects its existing scoped Secret'
 assert_contains "${external_render}" 'name: "external-curu-runtime-database-fixture"' 'external mode selects its existing Secret'
 assert_contains "${bundled_render}" 'kind: StatefulSet' 'bundled mode owns PostgreSQL'
@@ -104,10 +124,10 @@ if grep -Fq 'postgres://' <<<"${bundled_render}${external_render}"; then
   exit 1
 fi
 
-if [[ "$(grep -c '^kind: Deployment$' <<<"${bundled_render}")" -ne 2 ]] ||
+if [[ "$(grep -c '^kind: Deployment$' <<<"${bundled_render}")" -ne 4 ]] ||
    [[ "$(grep -c '^kind: StatefulSet$' <<<"${bundled_render}")" -ne 1 ]] ||
-   [[ "$(grep -c '^kind: Service$' <<<"${bundled_render}")" -ne 3 ]]; then
-  echo 'bundled mode must render Curu and Keycloak Deployments, one Postgres StatefulSet, and three Services' >&2
+   [[ "$(grep -c '^kind: Service$' <<<"${bundled_render}")" -ne 5 ]]; then
+  echo 'bundled mode must render Curu, Keycloak, NGINX, and OAuth2 Proxy Deployments, one Postgres StatefulSet, and five Services' >&2
   exit 1
 fi
 if [[ "$(grep -c 'app.kubernetes.io/component: runtime' <<<"${bundled_render}")" -ne 3 ]]; then
@@ -170,6 +190,10 @@ expect_rejected 'chart-owned pod instance label override' --set-string 'podLabel
 expect_rejected 'chart-owned pod component label override' --set-string 'podLabels.app\.kubernetes\.io/component=rogue'
 expect_rejected 'migration concurrent with runtime' --set dataLifecycle.migrate=true
 expect_rejected 'initialization concurrent with runtime' --set-string dataLifecycle.initialize=seed
+expect_rejected 'edge exposed during migration' --set runtime.enabled=false --set dataLifecycle.migrate=true
+expect_rejected 'public origin differing from edge' --set-string runtime.publicOrigin=https://different.test:8443
+expect_rejected 'open-ended login URL' --set-string runtime.loginURL=https://curu.test:8443/oauth2/start
+expect_rejected 'missing immediate proxy trust' --set-string runtime.trustedProxyCIDRs=
 expect_rejected 'implicit initialization mode' --set runtime.enabled=false --set-string dataLifecycle.initialize=automatic
 
 echo 'chart validation passed'

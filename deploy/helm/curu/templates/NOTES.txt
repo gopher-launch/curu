@@ -1,8 +1,15 @@
 The chart includes Curu's internal Service, persistent PostgreSQL data service,
-explicit migration/initialization Jobs, and the bundled Keycloak identity
-service. Data operations are never selected by default. Follow
+explicit migration/initialization Jobs, bundled Keycloak identity, and the
+NGINX/OAuth2 Proxy HTTPS browser edge. Data operations are never selected by default. Follow
 deploy/helm/curu/README.md: hold runtime off, deliberately select migration and
 seed or empty initialization, then use an operation-free upgrade to launch
 runtime only after those Jobs and identity reconciliation succeed.
 
-Local HTTPS browser routing and gateway sessions remain unimplemented.
+{{- if .Values.edge.enabled }}
+The only host-facing route is the NGINX edge at NodePort {{ .Values.edge.service.nodePort }}.
+Use {{ .Values.runtime.loginURL }} for deliberate browser sign-in. The logout URL
+terminates the OAuth2 Proxy session only; it does not end the Keycloak provider
+session, so a subsequent sign-in may complete without another password prompt.
+{{- else }}
+The HTTPS edge is disabled for this operation-only release.
+{{- end }}

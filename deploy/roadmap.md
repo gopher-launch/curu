@@ -25,7 +25,7 @@ The deployment baseline is documented in [README.md](README.md). These documents
 ## Selection and reconciliation
 
 - Select one bounded `Kind: task` entry from this roadmap. Do not infer deployment task selection from the root roadmap or assume a runner selects this file automatically.
-- CDP-001 delivered the owned chart and configuration boundary, CDP-002 delivered the reproducible local kind/storage/image/name/trust inputs, CDP-003 delivered persistent PostgreSQL plus separated database authority, CDP-004 delivered explicit migration/initialization sequencing, and CDP-005 delivered repeatable Keycloak identity plus compatible access tokens. CDP-006 is the next ready deployment Task; later core Tasks remain planned. After reviewing a delivered prerequisite, promote the next core Task only when its concrete inputs and acceptance are satisfied. Optional/follow-up Tasks require deliberate selection; they never become a gate on the core milestone merely because their prerequisites are delivered.
+- CDP-001 through CDP-006 delivered the owned chart, reproducible kind/trust inputs, persistent separated data authority, explicit data sequencing, repeatable identity, and the HTTPS browser-authentication path. CDP-007 is the next ready deployment Task; later core Tasks remain planned. After reviewing a delivered prerequisite, promote the next core Task only when its concrete inputs and acceptance are satisfied. Optional/follow-up Tasks require deliberate selection; they never become a gate on the core milestone merely because their prerequisites are delivered.
 - `Depends on` references are confined to this roadmap. Existing application capabilities are source/contract prerequisites, not duplicated Tasks or unresolved cross-roadmap dependency IDs. Application changes need explicitly bounded scope in their owning workstream.
 - Preserve IDs. Reconcile affected templates, README interfaces, guidance, and roadmap readiness in the same candidate. Split oversized Tasks before widening execution scope. No task is delivered because it appears here or because manifests render.
 - Use disposable resources for destructive tests. Routine validation needs no paid provider or real retained-data reset. Keep operational progress, review verdicts, and pending integration notes in external records.
@@ -44,33 +44,13 @@ The selected application image supplies the HTTP server plus `/curu-migrate`, `/
 
 D1 includes actual target-browser acceptance, distinct from automated disposable-cluster verification. Phone acceptance is recorded only if performed. Neither optional row is a prerequisite for D1, and D1 does not claim a hosted or fully isolated production deployment.
 
-## CDP-006 — Integrate NGINX and OAuth2 Proxy browser authentication
+## CDP-007 — Deliver repeatable operator lifecycle and integration checks
 
 - Kind: task
 - Status: ready
 - Priority: high
 - Parent: none
 - Depends on: none
-
-**Objective:** Deliver the complete HTTPS browser-to-Curu path using the bundled identity provider.
-
-**Acceptance criteria:**
-
-- Add owned NGINX and OAuth2 Proxy templates. NGINX terminates HTTPS, routes identity and login/callback/logout requests, consults browser authentication, and is the immediate peer forwarding product requests to Curu. Keep backend Services and readiness off the host-facing route.
-- Use OIDC Authorization Code flow with PKCE and secure host-only browser cookies with explicit session/refresh policy. Configure redirects and upstream TLS trust from the selected local names, without open redirects or verification skips.
-- Strip spoofed browser Authorization, identity, and forwarding headers. Inject one Bearer access token intended for Curu and one trusted client address; never substitute an ID token or expose the access-token authentication response header to the browser.
-- Propagate refreshed cookies correctly, including split-cookie cases if applicable. Preserve Curu's CSRF/security response headers and enforce safe expiry behavior when either the application or gateway rejects a request: keep HTMX DOM/content, signal authentication required, and require deliberate sign-in without redirect/replay of mutations.
-- Prove owner login and another user's denial; document logout as gateway-session termination and explicitly describe provider-session behavior. Do not expose identity administration as an unrestricted application route.
-
-**Verification:** Disposable HTTPS browser checks for actual login/callback, library list/search/detail access, unknown-user `403`, spoofed-header resistance, refresh beyond access-token lifetime, gateway/application expiry handling, logout, and inaccessible backend/readiness host routes. Use existing boundary fixtures for editor-preservation semantics without implementing application authoring as part of deployment.
-
-## CDP-007 — Deliver repeatable operator lifecycle and integration checks
-
-- Kind: task
-- Status: planned
-- Priority: high
-- Parent: none
-- Depends on: CDP-006
 
 **Objective:** Assemble component interfaces into a small, repeatable operator workflow with useful diagnostics.
 
@@ -144,4 +124,4 @@ D1 includes actual target-browser acceptance, distinct from automated disposable
 
 ## Next task boundary
 
-CDP-006 is the only ready deployment Task. CDP-001 delivered chart/configuration/render interfaces, CDP-002 delivered the local cluster boundary, CDP-003 delivered the persistent data service and role boundary, CDP-004 delivered explicit migration and initialization sequencing, and CDP-005 delivered repeatable identity plus accepted/rejected real-token evidence; these do not yet constitute a browser-authenticated installation. CDP-007 and CDP-008 remain the subsequent core planned sequence; CDP-009 and CDP-010 are optional/follow-up work and stay planned even though CDP-010's dependency is satisfied. Application readiness continues to be managed independently in the root roadmap.
+CDP-007 is the only ready deployment Task. CDP-001 delivered chart/configuration/render interfaces, CDP-002 delivered the local cluster boundary, CDP-003 delivered the persistent data service and role boundary, CDP-004 delivered explicit migration and initialization sequencing, CDP-005 delivered repeatable identity plus accepted/rejected real-token evidence, and CDP-006 delivered the browser-authenticated HTTPS path with disposable evidence. CDP-008 remains the subsequent core planned Task; CDP-009 and CDP-010 are optional/follow-up work and stay planned even though CDP-010's dependency is satisfied. Application readiness continues to be managed independently in the root roadmap.

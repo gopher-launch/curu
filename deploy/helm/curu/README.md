@@ -2,7 +2,7 @@
 
 This repository-owned chart supplies the Curu Deployment and internal Service,
 CDP-003's PostgreSQL data-service boundary, CDP-004's explicit lifecycle Jobs,
-and CDP-005's Keycloak identity boundary. Bundled database mode
+CDP-005's Keycloak identity boundary, and CDP-006's HTTPS browser edge. Bundled database mode
 owns one pinned PostgreSQL 17.6 StatefulSet, internal Service, retained claim,
 stable credential Secret, and idempotent role-preparation Job. External mode
 provisions no database resource and accepts explicit endpoint, TLS/CA, and
@@ -11,9 +11,9 @@ scoped Secret references.
 Bundled identity mode owns one pinned, production-mode Keycloak Deployment and
 internal Service plus repeatable realm/client/development-user reconciliation.
 External mode creates no identity resource and accepts explicit issuer, JWKS,
-CA, and browser-client inputs. NGINX, OAuth2 Proxy, and a runnable browser
-login path remain with later tasks. PostgreSQL and identity readiness do not
-mean the Curu schema exists or the dataset is initialized.
+CA, and browser-client inputs. Pinned NGINX and OAuth2 Proxy workloads provide
+the runnable authorization-code/PKCE path. PostgreSQL and identity readiness
+do not mean the Curu schema exists or the dataset is initialized.
 
 ## Identity modes
 
@@ -21,7 +21,7 @@ Exactly one of `identity.bundled.enabled` and `identity.external.enabled` is
 true. Bundled mode requires the configured issuer and JWKS URL to be the
 declared Keycloak hostname and realm, and requires the audience and owner
 subject to match Curu's exact trust/owner settings. It starts Keycloak in
-explicit production mode behind the future HTTPS edge, trusts forwarded proxy
+explicit production mode behind the HTTPS edge, trusts forwarded proxy
 headers from that private hop, and keeps the Service cluster-internal. The
 master administration endpoint is not an application route; use a deliberately
 scoped local operator port-forward only when diagnosis is required.
@@ -42,8 +42,8 @@ an explicit deployment choice; Curu still binds them through separate exact
 `owner.subject` and `owner.id` values. The second development identity proves
 valid-token denial. Password-grant use is limited to the disposable token
 compatibility fixture; `identity.bundled.tokenFixture.enabled` defaults to
-`false` and is enabled only by the isolated verification script. CDP-006 owns
-the real authorization-code browser flow.
+`false` and is enabled only by the isolated token verification script. The
+browser verification uses the real authorization-code flow.
 
 Keycloak uses its separately scoped PostgreSQL role/database. Its durable users,
 credentials, realm state, and signing keys live there; pod-local Keycloak data
@@ -51,11 +51,11 @@ is disposable. Before Helm waits for Keycloak readiness, an ordinary bounded
 Job creates that database authority. Its name includes the Helm release
 revision, so each upgrade creates a new immutable Job and supported changes to
 the selected Secret, database names, image, deadline, or retry limit do not
-attempt to patch an earlier Job pod template. The future edge terminates HTTPS,
+attempt to patch an earlier Job pod template. The edge terminates HTTPS,
 while Curu mounts the public issuer CA ConfigMap named by `identity.caTrust` and
 never disables JWKS TLS verification. External identity mode provisions,
 reconciles, or deletes no provider resources. Its client Secret reference is an
-input for the gateway task and is not mounted into Curu by this chart.
+mounted only into OAuth2 Proxy, never Curu.
 
 ## Explicit data lifecycle
 
@@ -63,7 +63,9 @@ input for the gateway task and is not mounted into Curu by this chart.
 `dataLifecycle.initialize` defaults to `none`; installation and upgrade never
 choose seed or empty initialization implicitly. Selecting either operation
 requires `runtime.enabled=false`, so a first installation cannot launch the
-server before the operation sequence finishes. Helm runs retained,
+server before the operation sequence finishes. It also requires
+`edge.enabled=false`, so an operation-only release cannot expose a dead product
+route. Helm runs retained,
 independently inspectable hook Jobs in this order:
 
 1. bundled database readiness and role/database preparation;
@@ -87,6 +89,7 @@ first phase from the repository root:
 helm upgrade --install curu deploy/helm/curu \
   --kube-context kind-curu-local --namespace curu-system \
   --values /path/to/curu-local-values.yaml \
+  --set edge.enabled=false \
   --set runtime.enabled=false \
   --set dataLifecycle.migrate=true \
   --set-string dataLifecycle.initialize=seed \
@@ -100,6 +103,7 @@ no selected data operation:
 helm upgrade curu deploy/helm/curu \
   --kube-context kind-curu-local --namespace curu-system \
   --values /path/to/curu-local-values.yaml \
+  --set edge.enabled=true \
   --set runtime.enabled=true \
   --set dataLifecycle.migrate=false \
   --set-string dataLifecycle.initialize=none \
@@ -107,8 +111,7 @@ helm upgrade curu deploy/helm/curu \
 ```
 
 The server process starts against the compatible schema and uses the configured
-trusted JWKS. The integrated operator workflow can add a bounded readiness
-wait once CDP-006 supplies the final edge route.
+trusted JWKS. CDP-007 owns the integrated bounded operator workflow.
 Repeating the first command is an exact migration recheck and initialization
 no-op. Selecting `empty`, changing the seed owner, or encountering unrecorded
 content fails without replacing content. To invoke migration or initialization
@@ -117,6 +120,33 @@ initialization-only invocation still runs the narrow grant Job first and
 requires an already compatible schema. External mode requires distinct,
 explicit `initializerRole` and `runtimeRole` values; it prepares no external
 database or role.
+
+## HTTPS browser edge
+
+With `edge.enabled=true`, the chart owns one pinned NGINX Deployment and the
+only `NodePort` Service, plus one pinned OAuth2 Proxy Deployment on an internal
+Service. `edge.publicOrigin`, `edge.publicPort`, and `edge.service.port`
+describe the same stable HTTPS origin so issuer and callback names work from
+the browser and pods. The default kind boundary maps NodePort `30443` to host
+port `8443`. The leaf certificate comes from `edge.tlsSecretName`; issuer trust
+comes from `identity.caTrust` and is never skipped.
+
+OAuth2 Proxy uses authorization code with S256 PKCE, a secure HTTP-only
+host-only same-site-lax cookie, an eight-hour session, and five-minute
+proactive refresh by default. Its cookie key is retained in a generated Secret
+or supplied by `browserAuth.sessionSecret.existingName`. NGINX receives the
+access token through its private auth subrequest, propagates refreshed and
+split cookies, and alone injects `Authorization: Bearer` into Curu. Browser
+Authorization, identity, and forwarding headers are overwritten; access-token
+response headers are hidden. All backend Services remain internal.
+
+An unavailable or expired gateway session returns `401`; HTMX requests also
+receive `HX-Reswap: none` and `curu:authentication-required`, retaining the
+current DOM for deliberate sign-in. Curu independently produces the same
+signal when it rejects an application token. Sign-out clears the OAuth2 Proxy
+session only; it does not end the Keycloak provider session, so later sign-in
+can use provider SSO. Identity administration, the master realm, Curu health,
+and OAuth2 Proxy probes are not host routes.
 
 ## Database modes
 
@@ -246,5 +276,19 @@ disposable cluster on exit. It provisions local HTTPS solely for the test,
 checks discovery/JWKS trust, real RFC 9068 access-token claims, owner acceptance,
 other-user denial, ID-token/wrong-audience/expired-token rejection, and retained
 identity Secret, user, signing-key, and unmanaged-client state while an upgrade
-switches to a replacement database credential Secret. It does not claim the
-CDP-006 browser authorization-code flow or expose identity on the target host.
+switches to a replacement database credential Secret. It is the narrower token
+boundary check.
+
+Run the integrated disposable HTTPS browser-protocol check:
+
+```sh
+deploy/scripts/verify-browser-disposable.sh
+```
+
+It refuses a pre-existing `curu-browser-check` cluster and deletes its cluster
+on exit. Through CA-verified public names it performs real PKCE login/callback
+for the owner and other user, checks list/search/detail, denial, header
+spoofing, refresh beyond the original access-token lifetime, gateway expiry
+signaling, logout, and absent backend/readiness/administration routes.
+Application-side editor preservation remains covered by focused Go fixtures;
+this deployment task adds no authoring feature.

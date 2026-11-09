@@ -16,7 +16,7 @@ Usage: deploy/scripts/bootstrap-kind.sh \
 
 Creates the fixed curu-local kind cluster and curu-system namespace. The storage
 directory, declared PV capacity, and Docker CPU/memory limits are mandatory
-operator inputs. Only the future edge NodePort is mapped, on host loopback.
+operator inputs. Only the edge NodePort is mapped, on host loopback.
 EOF
 }
 

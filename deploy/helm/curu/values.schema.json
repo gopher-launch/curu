@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft-07/schema#",
   "type": "object",
   "additionalProperties": false,
-  "required": ["image", "replicaCount", "service", "runtime", "trust", "owner", "dataLifecycle", "database", "identity", "resources"],
+  "required": ["image", "replicaCount", "service", "edge", "browserAuth", "runtime", "trust", "owner", "dataLifecycle", "database", "identity", "resources"],
   "properties": {
     "image": {
       "type": "object",
@@ -25,6 +25,74 @@
       "additionalProperties": false,
       "required": ["port"],
       "properties": {"port": {"type": "integer", "minimum": 1024, "maximum": 65535}}
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "applicationHost", "identityHost", "publicOrigin", "publicPort", "tlsSecretName", "image", "service", "resources"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "applicationHost": {"type": "string", "pattern": "^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$"},
+        "identityHost": {"type": "string", "pattern": "^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$"},
+        "publicOrigin": {"type": "string", "pattern": "^https://[^/:]+:[0-9]+$"},
+        "publicPort": {"type": "integer", "minimum": 1024, "maximum": 65535},
+        "tlsSecretName": {"type": "string", "minLength": 1},
+        "image": {"$ref": "#/definitions/containerImage"},
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["port", "nodePort"],
+          "properties": {
+            "port": {"type": "integer", "minimum": 1024, "maximum": 65535},
+            "nodePort": {"type": "integer", "minimum": 30000, "maximum": 32767}
+          }
+        },
+        "resources": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["requests", "limits"],
+          "properties": {
+            "requests": {"$ref": "#/definitions/resourceList"},
+            "limits": {"$ref": "#/definitions/resourceList"}
+          }
+        }
+      }
+    },
+    "browserAuth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["image", "sessionSecret", "cookie", "resources"],
+      "properties": {
+        "image": {"$ref": "#/definitions/containerImage"},
+        "sessionSecret": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["existingName", "key"],
+          "properties": {
+            "existingName": {"type": "string"},
+            "key": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"}
+          }
+        },
+        "cookie": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "expire", "refresh"],
+          "properties": {
+            "name": {"type": "string", "const": "__Host-curu_session"},
+            "expire": {"type": "string", "pattern": "^[1-9][0-9]*[hm]$"},
+            "refresh": {"type": "string", "pattern": "^[1-9][0-9]*[sm]$"}
+          }
+        },
+        "resources": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["requests", "limits"],
+          "properties": {
+            "requests": {"$ref": "#/definitions/resourceList"},
+            "limits": {"$ref": "#/definitions/resourceList"}
+          }
+        }
+      }
     },
     "runtime": {
       "type": "object",

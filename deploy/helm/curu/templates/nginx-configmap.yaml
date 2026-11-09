@@ -1,0 +1,167 @@
+{{- if .Values.edge.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "curu.edgeName" . }}
+  labels:
+    {{- include "curu.labels" . | nindent 4 }}
+    app.kubernetes.io/component: edge
+data:
+  nginx.conf: |
+    worker_processes auto;
+    pid /tmp/nginx.pid;
+    error_log /dev/stderr notice;
+
+    events { worker_connections 1024; }
+
+    http {
+      include /etc/nginx/mime.types;
+      default_type application/octet-stream;
+      access_log /dev/stdout combined;
+      server_tokens off;
+      client_body_temp_path /tmp/client_body;
+      proxy_temp_path /tmp/proxy;
+      fastcgi_temp_path /tmp/fastcgi;
+      uwsgi_temp_path /tmp/uwsgi;
+      scgi_temp_path /tmp/scgi;
+
+      map $http_hx_request $curu_hx_reswap {
+        default "";
+        "true" "none";
+      }
+      map $http_hx_request $curu_hx_trigger {
+        default "";
+        "true" "curu:authentication-required";
+      }
+
+      server {
+        listen 8443 ssl;
+        server_name {{ .Values.edge.applicationHost }};
+        ssl_certificate /etc/curu/tls/tls.crt;
+        ssl_certificate_key /etc/curu/tls/tls.key;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_session_tickets off;
+
+        location = /oauth2/ping { return 404; }
+        location = /oauth2/ready { return 404; }
+        location /oauth2/ {
+          proxy_pass http://{{ include "curu.oauth2ProxyName" . }}:4180;
+          proxy_set_header Host $http_host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-Proto https;
+          proxy_set_header X-Forwarded-Host $http_host;
+          proxy_set_header X-Auth-Request-Redirect $scheme://$http_host$request_uri;
+          proxy_hide_header X-Auth-Request-Access-Token;
+          proxy_hide_header X-Forwarded-Access-Token;
+          proxy_hide_header Authorization;
+        }
+
+        location = /oauth2/auth {
+          internal;
+          proxy_pass http://{{ include "curu.oauth2ProxyName" . }}:4180;
+          proxy_buffer_size 32k;
+          proxy_buffers 4 32k;
+          proxy_busy_buffers_size 64k;
+          proxy_set_header Host $http_host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-Proto https;
+          proxy_set_header X-Forwarded-Host $http_host;
+          proxy_set_header X-Forwarded-Uri $request_uri;
+          proxy_set_header Content-Length "";
+          proxy_pass_request_body off;
+        }
+
+        location ^~ /health/ { return 404; }
+
+        location / {
+          auth_request /oauth2/auth;
+          error_page 401 = @authentication_required;
+
+          auth_request_set $curu_access_token $upstream_http_x_auth_request_access_token;
+          auth_request_set $curu_auth_cookie $upstream_http_set_cookie;
+          auth_request_set $curu_auth_cookie_upstream_1 $upstream_cookie___Host_curu_session_1;
+          add_header Set-Cookie $curu_auth_cookie always;
+          if ($curu_auth_cookie ~* "(; .*)") {
+            set $curu_auth_cookie_0 $curu_auth_cookie;
+            set $curu_auth_cookie_1 "__Host-curu_session_1=$curu_auth_cookie_upstream_1$1";
+          }
+          if ($curu_auth_cookie_upstream_1) {
+            add_header Set-Cookie $curu_auth_cookie_0 always;
+            add_header Set-Cookie $curu_auth_cookie_1 always;
+          }
+
+          proxy_pass http://{{ include "curu.fullname" . }}:{{ .Values.service.port }};
+          proxy_set_header Host $http_host;
+          proxy_set_header Authorization "Bearer $curu_access_token";
+          proxy_set_header X-Forwarded-For $remote_addr;
+          proxy_set_header X-Forwarded-Host "";
+          proxy_set_header X-Forwarded-Proto "";
+          proxy_set_header X-Forwarded-Port "";
+          proxy_set_header X-Forwarded-Server "";
+          proxy_set_header X-Forwarded-Ssl "";
+          proxy_set_header X-Forwarded-Prefix "";
+          proxy_set_header X-Forwarded-Uri "";
+          proxy_set_header X-Real-IP "";
+          proxy_set_header Forwarded "";
+          proxy_set_header X-Auth-Request-User "";
+          proxy_set_header X-Auth-Request-Email "";
+          proxy_set_header X-Auth-Request-Groups "";
+          proxy_set_header X-Auth-Request-Preferred-Username "";
+          proxy_set_header X-Auth-Request-Redirect "";
+          proxy_set_header X-Forwarded-Access-Token "";
+          proxy_hide_header X-Auth-Request-Access-Token;
+          proxy_hide_header X-Forwarded-Access-Token;
+          proxy_hide_header Authorization;
+        }
+
+        location @authentication_required {
+          add_header WWW-Authenticate "Bearer" always;
+          add_header HX-Reswap $curu_hx_reswap always;
+          add_header HX-Trigger $curu_hx_trigger always;
+          default_type text/html;
+          return 401 '<!doctype html><html lang="en"><meta charset="utf-8"><title>Authentication required</title><p>Your Curu session is unavailable or expired.</p><p><a href="/oauth2/start?rd={{ urlquery .Values.edge.publicOrigin }}%2Factivities">Sign in deliberately</a></p></html>';
+        }
+      }
+
+      {{- if .Values.identity.bundled.enabled }}
+      server {
+        listen 8443 ssl;
+        server_name {{ .Values.edge.identityHost }};
+        ssl_certificate /etc/curu/tls/tls.crt;
+        ssl_certificate_key /etc/curu/tls/tls.key;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_session_tickets off;
+
+        location ^~ /admin/ { return 404; }
+        location ^~ /realms/master { return 404; }
+        location = /realms/{{ .Values.identity.bundled.realm }}/protocol/openid-connect/certs {
+          proxy_pass http://{{ include "curu.keycloakName" . }}:8080;
+          proxy_set_header Host $http_host;
+          proxy_set_header X-Forwarded-Proto https;
+          proxy_set_header X-Forwarded-Host $http_host;
+          proxy_set_header X-Forwarded-Port {{ .Values.edge.publicPort }};
+          proxy_set_header X-Forwarded-For $remote_addr;
+          proxy_hide_header Cache-Control;
+          add_header Cache-Control "public, max-age=300" always;
+        }
+        location ~ ^/realms/{{ .Values.identity.bundled.realm }}(?:/|$) {
+          proxy_pass http://{{ include "curu.keycloakName" . }}:8080;
+          proxy_set_header Host $http_host;
+          proxy_set_header X-Forwarded-Proto https;
+          proxy_set_header X-Forwarded-Host $http_host;
+          proxy_set_header X-Forwarded-Port {{ .Values.edge.publicPort }};
+          proxy_set_header X-Forwarded-For $remote_addr;
+        }
+        location ^~ /resources/ {
+          proxy_pass http://{{ include "curu.keycloakName" . }}:8080;
+          proxy_set_header Host $http_host;
+          proxy_set_header X-Forwarded-Proto https;
+          proxy_set_header X-Forwarded-Host $http_host;
+          proxy_set_header X-Forwarded-Port {{ .Values.edge.publicPort }};
+          proxy_set_header X-Forwarded-For $remote_addr;
+        }
+        location / { return 404; }
+      }
+      {{- end }}
+    }
+{{- end }}
