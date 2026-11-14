@@ -268,6 +268,31 @@ func TestPostgresMigrationAndRuntimeRestrictions(t *testing.T) {
 	if err != nil || current.Title != "Renamed activity" || current.Revision != 2 {
 		t.Fatalf("current activity after stale update = %+v, error = %v", current, err)
 	}
+	draftInput := activity.Input{Title: "Stale submitted title", Summary: "Exact submitted summary", ContentMarkdown: "Exact submitted content", Tags: []string{"recovered"}, Progressions: []activity.ProgressionInput{{Title: "Harder", ContentMarkdown: "Exact progression"}}}
+	draft, err := repository.SaveRecoveryDraft(ctx, ownerID, created.ID, created.Revision, draftInput)
+	if err != nil {
+		t.Fatalf("SaveRecoveryDraft() error = %v", err)
+	}
+	loadedDraft, err := repository.FindRecoveryDraft(ctx, ownerID, draft.ID)
+	if err != nil || loadedDraft.ActivityID != created.ID || loadedDraft.BaseRevision != created.Revision || loadedDraft.Input.Title != draftInput.Title || loadedDraft.Input.ContentMarkdown != draftInput.ContentMarkdown || len(loadedDraft.Input.Progressions) != 1 || loadedDraft.Input.Progressions[0].ContentMarkdown != "Exact progression" {
+		t.Fatalf("FindRecoveryDraft() = %+v, error = %v", loadedDraft, err)
+	}
+	if _, err := repository.FindRecoveryDraft(ctx, "55555555-5555-4555-8555-555555555555", draft.ID); !errors.Is(err, activity.ErrNotFound) {
+		t.Fatalf("other-owner FindRecoveryDraft() error = %v, want not found", err)
+	}
+	if drafts, err := repository.ListRecoveryDrafts(ctx, ownerID); err != nil || len(drafts) != 1 || drafts[0].ID != draft.ID || drafts[0].Title != draftInput.Title {
+		t.Fatalf("ListRecoveryDrafts() = %+v, error = %v", drafts, err)
+	}
+	replaced, err := repository.SaveRecoveryDraft(ctx, ownerID, created.ID, current.Revision, activity.Input{Title: "Replacement recovery"})
+	if err != nil || replaced.ID != draft.ID || replaced.Input.Title != "Replacement recovery" {
+		t.Fatalf("replacement SaveRecoveryDraft() = %+v, error = %v", replaced, err)
+	}
+	if err := repository.DiscardRecoveryDraft(ctx, ownerID, draft.ID); err != nil {
+		t.Fatalf("DiscardRecoveryDraft() error = %v", err)
+	}
+	if _, err := repository.FindRecoveryDraft(ctx, ownerID, draft.ID); !errors.Is(err, activity.ErrNotFound) {
+		t.Fatalf("discarded FindRecoveryDraft() error = %v, want not found", err)
+	}
 	if _, err := repository.Archive(ctx, ownerID, created.ID, created.Revision); !errors.Is(err, activity.ErrConflict) {
 		t.Fatalf("stale Archive() error = %v, want conflict", err)
 	}

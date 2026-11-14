@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/gopher-launch/curu/internal/authorization"
@@ -79,6 +80,20 @@ type ProgressionInput struct {
 	DurationSeconds *int
 }
 
+// RecoveryDraft is an explicitly saved, owner-scoped copy of one conflicting
+// activity submission. It is never applied to the authoritative activity.
+type RecoveryDraft struct {
+	ID, OwnerID, ActivityID string
+	BaseRevision            int64
+	Input                   Input
+	CreatedAt, UpdatedAt    time.Time
+}
+
+type RecoveryDraftSummary struct {
+	ID, ActivityID, Title string
+	UpdatedAt             time.Time
+}
+
 type ValidationErrors map[string]string
 
 func (e ValidationErrors) Error() string { return ErrInvalidInput.Error() }
@@ -95,6 +110,64 @@ type Store interface {
 	Update(context.Context, string, string, int64, Input) (Activity, error)
 	Archive(context.Context, string, string, int64) (Activity, error)
 	Restore(context.Context, string, string, int64) (Activity, error)
+	ListRecoveryDrafts(context.Context, string) ([]RecoveryDraftSummary, error)
+	FindRecoveryDraft(context.Context, string, string) (RecoveryDraft, error)
+	SaveRecoveryDraft(context.Context, string, string, int64, Input) (RecoveryDraft, error)
+	DiscardRecoveryDraft(context.Context, string, string) error
+}
+
+func (l *Library) SaveRecoveryDraft(ctx context.Context, principal authorization.Principal, activityID string, baseRevision int64, input Input) (RecoveryDraft, error) {
+	activityID, err := authorization.NormalizeUUID(activityID)
+	if err != nil {
+		return RecoveryDraft{}, ErrNotFound
+	}
+	if err := l.policy.Authorize(principal, authorization.Recovery, principal.OwnerID); err != nil {
+		return RecoveryDraft{}, err
+	}
+	input, err = validateInput(input)
+	if err != nil {
+		return RecoveryDraft{}, err
+	}
+	if baseRevision < 1 {
+		return RecoveryDraft{}, ValidationErrors{"revision": "The activity revision is invalid. Reload and try again."}
+	}
+	return l.store.SaveRecoveryDraft(ctx, principal.OwnerID, activityID, baseRevision, input)
+}
+
+func (l *Library) ListRecoveryDrafts(ctx context.Context, principal authorization.Principal) ([]RecoveryDraftSummary, error) {
+	if err := l.policy.Authorize(principal, authorization.Recovery, principal.OwnerID); err != nil {
+		return nil, err
+	}
+	return l.store.ListRecoveryDrafts(ctx, principal.OwnerID)
+}
+
+func (l *Library) RecoveryDraft(ctx context.Context, principal authorization.Principal, id string) (RecoveryDraft, error) {
+	id, err := authorization.NormalizeUUID(id)
+	if err != nil {
+		return RecoveryDraft{}, ErrNotFound
+	}
+	if err := l.policy.Authorize(principal, authorization.Recovery, principal.OwnerID); err != nil {
+		return RecoveryDraft{}, err
+	}
+	draft, err := l.store.FindRecoveryDraft(ctx, principal.OwnerID, id)
+	if err != nil {
+		return RecoveryDraft{}, err
+	}
+	if err := l.policy.Authorize(principal, authorization.Recovery, draft.OwnerID); err != nil {
+		return RecoveryDraft{}, err
+	}
+	return draft, nil
+}
+
+func (l *Library) DiscardRecoveryDraft(ctx context.Context, principal authorization.Principal, id string) error {
+	id, err := authorization.NormalizeUUID(id)
+	if err != nil {
+		return ErrNotFound
+	}
+	if err := l.policy.Authorize(principal, authorization.Recovery, principal.OwnerID); err != nil {
+		return err
+	}
+	return l.store.DiscardRecoveryDraft(ctx, principal.OwnerID, id)
 }
 
 func (l *Library) Create(ctx context.Context, principal authorization.Principal, input Input) (Activity, error) {

@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gopher-launch/curu/internal/activity"
 	"github.com/gopher-launch/curu/internal/database"
 	"github.com/gopher-launch/curu/internal/initialization"
 	"github.com/gopher-launch/curu/internal/recovery"
@@ -112,6 +113,16 @@ func TestPostgresBackupRestoreRecovery(t *testing.T) {
 		WHERE id = ?`, library.Activities[1].ID).Error; err != nil {
 		t.Fatalf("archive recovery source activity: %v", err)
 	}
+	repository, err := database.NewActivityRepository(source)
+	if err != nil {
+		t.Fatalf("create recovery repository: %v", err)
+	}
+	if _, err := repository.SaveRecoveryDraft(ctx, ownerID, library.Activities[0].ID, 1, activity.Input{
+		Title: "Conflicting recovery submission", ContentMarkdown: "Exact submitted notes",
+		Progressions: []activity.ProgressionInput{{Title: "Recovered progression", ContentMarkdown: "Retained detail"}},
+	}); err != nil {
+		t.Fatalf("save recovery draft fixture: %v", err)
+	}
 	expected, err := recovery.Capture(ctx, source)
 	if err != nil {
 		t.Fatalf("capture source recovery manifest: %v", err)
@@ -120,7 +131,7 @@ func TestPostgresBackupRestoreRecovery(t *testing.T) {
 		t.Fatalf("close recovery source: %v", err)
 	}
 	if expected.Activities != seed.ExpectedActivities || expected.ActivityProgressions != seed.ExpectedProgressions ||
-		expected.DatasetInitializations != 1 || expected.ArchivedActivities != 1 || expected.ActivityOwners != 1 {
+		expected.ActivityRecoveryDrafts != 1 || expected.DatasetInitializations != 1 || expected.ArchivedActivities != 1 || expected.ActivityOwners != 1 {
 		t.Fatalf("source manifest = %+v, want complete edited seed fixture", expected)
 	}
 

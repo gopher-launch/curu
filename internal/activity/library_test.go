@@ -20,6 +20,29 @@ type fakeStore struct {
 	createInput, updateInput Input
 	updateRevision           int64
 	archiveRevision          int64
+	drafts                   []RecoveryDraftSummary
+	draft                    RecoveryDraft
+	draftInput               Input
+}
+
+func (s *fakeStore) ListRecoveryDrafts(_ context.Context, owner string) ([]RecoveryDraftSummary, error) {
+	s.operation, s.findOwner = "list-drafts", owner
+	return s.drafts, nil
+}
+
+func (s *fakeStore) FindRecoveryDraft(_ context.Context, owner, id string) (RecoveryDraft, error) {
+	s.operation, s.findOwner, s.findID = "find-draft", owner, id
+	return s.draft, nil
+}
+
+func (s *fakeStore) SaveRecoveryDraft(_ context.Context, owner, id string, revision int64, input Input) (RecoveryDraft, error) {
+	s.operation, s.findOwner, s.findID, s.updateRevision, s.draftInput = "save-draft", owner, id, revision, input
+	return s.draft, nil
+}
+
+func (s *fakeStore) DiscardRecoveryDraft(_ context.Context, owner, id string) error {
+	s.operation, s.findOwner, s.findID = "discard-draft", owner, id
+	return nil
 }
 
 func (s *fakeStore) Create(_ context.Context, _ string, input Input) (Activity, error) {
@@ -65,6 +88,32 @@ func TestLibraryUpdateCarriesExpectedRevisionAndStableID(t *testing.T) {
 	_, err := library.Update(context.Background(), principal, "BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB", 7, Input{Title: "Renamed"})
 	if err != nil || store.updateRevision != 7 || store.updateInput.Title != "Renamed" {
 		t.Fatalf("Update() revision/input/error = %d/%+v/%v", store.updateRevision, store.updateInput, err)
+	}
+}
+
+func TestLibraryRecoveryDraftsUseRecoveryPolicyAndBoundedInput(t *testing.T) {
+	activityID := "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+	draftID := "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+	store := &fakeStore{draft: RecoveryDraft{ID: draftID, OwnerID: testOwnerID, ActivityID: activityID}}
+	library, principal := newTestLibrary(t, store)
+
+	if _, err := library.SaveRecoveryDraft(context.Background(), principal, strings.ToUpper(activityID), 4, Input{Title: " Submitted "}); err != nil {
+		t.Fatalf("SaveRecoveryDraft() error = %v", err)
+	}
+	if store.operation != "save-draft" || store.findOwner != testOwnerID || store.findID != activityID || store.updateRevision != 4 || store.draftInput.Title != "Submitted" {
+		t.Fatalf("SaveRecoveryDraft() store call = %q/%q/%q/%d/%+v", store.operation, store.findOwner, store.findID, store.updateRevision, store.draftInput)
+	}
+	if _, err := library.RecoveryDraft(context.Background(), principal, strings.ToUpper(draftID)); err != nil || store.operation != "find-draft" || store.findID != draftID {
+		t.Fatalf("RecoveryDraft() operation/id/error = %q/%q/%v", store.operation, store.findID, err)
+	}
+	if err := library.DiscardRecoveryDraft(context.Background(), principal, draftID); err != nil || store.operation != "discard-draft" {
+		t.Fatalf("DiscardRecoveryDraft() operation/error = %q/%v", store.operation, err)
+	}
+	if _, err := library.SaveRecoveryDraft(context.Background(), principal, activityID, 0, Input{Title: "Submitted"}); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("SaveRecoveryDraft() invalid revision error = %v", err)
+	}
+	if _, err := library.SaveRecoveryDraft(context.Background(), principal, activityID, 4, Input{Title: ""}); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("SaveRecoveryDraft() invalid input error = %v", err)
 	}
 }
 

@@ -26,6 +26,7 @@ type Manifest struct {
 	ArchivedActivities     int64  `json:"archived_activities"`
 	ActivityOwners         int64  `json:"activity_owners"`
 	ActivityProgressions   int64  `json:"activity_progressions"`
+	ActivityRecoveryDrafts int64  `json:"activity_recovery_drafts"`
 	ApplicationDataSHA256  string `json:"application_data_sha256"`
 }
 
@@ -69,6 +70,7 @@ func captureSnapshot(ctx context.Context, db *gorm.DB) (Manifest, error) {
 		{&manifest.ArchivedActivities, "SELECT count(*) FROM curu.activities WHERE archived_at IS NOT NULL"},
 		{&manifest.ActivityOwners, "SELECT count(DISTINCT owner_id) FROM curu.activities"},
 		{&manifest.ActivityProgressions, "SELECT count(*) FROM curu.activity_progressions"},
+		{&manifest.ActivityRecoveryDrafts, "SELECT count(*) FROM curu.activity_recovery_drafts"},
 	}
 	for _, item := range counts {
 		if err := db.WithContext(ctx).Raw(item.query).Scan(item.destination).Error; err != nil {
@@ -95,6 +97,10 @@ func captureSnapshot(ctx context.Context, db *gorm.DB) (Manifest, error) {
 			to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
 			to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))::text AS value
 			FROM curu.activity_progressions ORDER BY id`},
+		{"activity_recovery_drafts", `SELECT jsonb_build_array(id, owner_id, activity_id, base_revision, payload,
+			to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
+			to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))::text AS value
+			FROM curu.activity_recovery_drafts ORDER BY id`},
 	}
 	for _, query := range queries {
 		var rows []digestRow

@@ -8,7 +8,7 @@ Provision distinct PostgreSQL login roles:
 
 - The migration owner owns the `curu` schema and its objects. Its URL is supplied only to the migration command as `CURU_MIGRATION_DATABASE_URL`.
 - A one-shot initialization operator receives only the data privileges listed below. Its URL is supplied only to the initialization command as `CURU_INITIALIZATION_DATABASE_URL`.
-- The restricted runtime role is named by `CURU_RUNTIME_DATABASE_ROLE`. Migrations grant it schema usage, read-only migration and initialization metadata, non-destructive activity access, and progression access. It cannot create or alter schema objects, change migration history or initialization state, or permanently delete activities.
+- The restricted runtime role is named by `CURU_RUNTIME_DATABASE_ROLE`. Migrations grant it schema usage, read-only migration and initialization metadata, non-destructive activity access, progression access, and owner-scoped recovery-draft DML. It cannot create or alter schema objects, change migration history or initialization state, or permanently delete activities.
 - The server receives the runtime role's URL as `CURU_DATABASE_URL`.
 
 The platform must create the runtime login without `SUPERUSER`, `CREATEDB`, `CREATEROLE`, `REPLICATION`, or `BYPASSRLS`, and must not grant it membership in any other PostgreSQL role. The no-membership rule prevents a `NOINHERIT` login from gaining additional authority through `SET ROLE`. The platform must also remove database-wide temporary-object creation inherited from PostgreSQL's default `PUBLIC` grant and ensure neither `PUBLIC` nor the runtime role can create objects in another schema. Run the database-wide revocation as the database owner, substituting the selected database name:
@@ -35,13 +35,13 @@ go run ./cmd/curu-migrate
 
 The application image also includes `/curu-migrate`; a deployment can run that binary as a separate one-shot migration process by overriding the image entrypoint and supplying the same two settings. Do not give the ordinary `/curu` server process the migration-owner URL.
 
-The command takes a PostgreSQL advisory lock, verifies the checksum and order of existing migration history, applies pending migrations transactionally, reconciles the documented runtime grants, and validates the effective runtime role boundary. Repeating it at the current version leaves schema and content unchanged while rechecking grants and restrictions. This build supports schema version 3.
+The command takes a PostgreSQL advisory lock, verifies the checksum and order of existing migration history, applies pending migrations transactionally, reconciles the documented runtime grants, and validates the effective runtime role boundary. Repeating it at the current version leaves schema and content unchanged while rechecking grants and restrictions. This build supports schema version 4.
 
-The schema contains owner-scoped activities, optional phase/theme/tags classification, ordered progressions, dataset-initialization metadata, archive timestamps, and positive revision tokens. Migration never seeds or replaces activities.
+The schema contains owner-scoped activities, optional phase/theme/tags classification, ordered progressions, dataset-initialization metadata, archive timestamps, positive revision tokens, and bounded activity recovery drafts. Migration never seeds or replaces activities.
 
 ## Backup and restore recovery
 
-The external data service owns backup scheduling, retention, protected storage, and restore execution. Curu supports recovery when the restored database has the exact migration history required by the application build. This build requires schema version 3; its application dataset consists of migration history, dataset-initialization metadata, activities (including owner, revision, archive, timestamps, optional classification, and all coaching content), and ordered activity progressions. Later schema-owning tasks must extend the recovery manifest and disposable fixture for their tables.
+The external data service owns backup scheduling, retention, protected storage, and restore execution. Curu supports recovery when the restored database has the exact migration history required by the application build. This build requires schema version 4; its application dataset consists of migration history, dataset-initialization metadata, activities (including owner, revision, archive, timestamps, optional classification, and all coaching content), ordered activity progressions, and complete activity recovery-draft payloads. A recovery draft is capped at 1 MiB of versioned JSON and at most one is retained for each owner/source activity. It has no automatic expiry: a deliberate later save replaces it and an explicit owner action discards it. Later schema-owning tasks must extend the recovery manifest and disposable fixture for their tables.
 
 Before a backup exercise, capture an application manifest using a read-only runtime connection. The command uses one read-only repeatable-read transaction, so its own counts and digest represent a consistent state. Application writes must still be quiesced between that capture and the backup, or both must come from the same fixed provider snapshot clone. The command emits counts and a SHA-256 digest, not content, owner identifiers, or credentials:
 
@@ -68,7 +68,7 @@ CURU_RECOVERY_DATABASE_URL='postgres://curu_runtime:...@isolated-db.example/curu
 go run ./cmd/curu-recovery-check --expect=curu-recovery-manifest.json
 ```
 
-A successful comparison proves exact preservation of every currently delivered application field, the initialization record, edited and archived content, ordered progressions, and migration history. It also proves that the restored runtime credential can read the supported schema. A mismatch or compatibility failure is a failed recovery exercise; do not promote that target.
+A successful comparison proves exact preservation of every currently delivered application field, the initialization record, edited and archived content, ordered progressions, activity recovery drafts, and migration history. It also proves that the restored runtime credential can read the supported schema. A mismatch or compatibility failure is a failed recovery exercise; do not promote that target.
 
 Database backups intentionally do not contain JWT signing trust, gateway sessions, database passwords, or deployment secrets. Supply those anew. Configure the restored deployment's owner binding with the stable internal owner UUID represented by the restored content; issuer/subject rebinding remains deployment configuration under the integration contract. Validate the gateway/JWKS and readiness separately before any promotion. Recovery does not rerun initialization or synchronize the seed over edited content.
 

@@ -434,6 +434,84 @@ func TestActivityValidationAndConflictPreserveSubmittedValues(t *testing.T) {
 	}
 }
 
+func TestActivityConflictRecoveryDraftSaveReopenAndDiscard(t *testing.T) {
+	t.Parallel()
+	activityID := "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+	draftID := "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+	library := &fakeActivityLibrary{
+		updateErr: activity.ErrConflict,
+		draft: activity.RecoveryDraft{ID: draftID, OwnerID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", ActivityID: activityID, BaseRevision: 3,
+			Input: activity.Input{Title: "Submitted", Summary: "Private summary", ContentMarkdown: "Exact unsaved notes", Progressions: []activity.ProgressionInput{{Title: "Harder", ContentMarkdown: "Recovered progression"}}}},
+	}
+	handler := newTestHandlerWithLibrary(t, library)
+	cookie := csrfCookie(t, handler)
+	form := "csrf_token=" + cookie.Value + "&title=Submitted&summary=Private+summary&duration_seconds=&content_markdown=Exact+unsaved+notes&revision=3&progression_title=Harder&progression_content_markdown=Recovered+progression&progression_duration_seconds="
+
+	conflict := newOwnerMutation(t, cookie, "/activities/"+activityID, form)
+	conflictResponse := httptest.NewRecorder()
+	handler.ServeHTTP(conflictResponse, conflict)
+	if conflictResponse.Code != http.StatusConflict || !strings.Contains(conflictResponse.Body.String(), "Save separate recovery draft") || !strings.Contains(conflictResponse.Body.String(), "/activities/"+activityID+"/recovery-draft") {
+		t.Fatalf("conflict response = %d, body %q", conflictResponse.Code, conflictResponse.Body.String())
+	}
+
+	save := newOwnerMutation(t, cookie, "/activities/"+activityID+"/recovery-draft", form)
+	saveResponse := httptest.NewRecorder()
+	handler.ServeHTTP(saveResponse, save)
+	if saveResponse.Code != http.StatusSeeOther || saveResponse.Header().Get("Location") != "/recovery-drafts/"+draftID+"?saved=1" {
+		t.Fatalf("draft save response = %d, location %q, body %q", saveResponse.Code, saveResponse.Header().Get("Location"), saveResponse.Body.String())
+	}
+	if library.operation != "save-draft" || library.id != activityID || library.revision != 3 || library.input.ContentMarkdown != "Exact unsaved notes" || len(library.input.Progressions) != 1 || library.input.Progressions[0].ContentMarkdown != "Recovered progression" {
+		t.Fatalf("saved draft call = %q/%q/%d/%+v", library.operation, library.id, library.revision, library.input)
+	}
+
+	reopen := httptest.NewRequest(http.MethodGet, saveResponse.Header().Get("Location"), nil)
+	reopen.Header.Set("Authorization", "Bearer owner")
+	reopenResponse := httptest.NewRecorder()
+	handler.ServeHTTP(reopenResponse, reopen)
+	for _, wanted := range []string{"Recovery draft saved", "current activity was not changed", "Submitted", "Exact unsaved notes", "Recovered progression", "Discard recovery draft"} {
+		if !strings.Contains(reopenResponse.Body.String(), wanted) {
+			t.Errorf("reopened draft omitted %q: %q", wanted, reopenResponse.Body.String())
+		}
+	}
+
+	discard := newOwnerMutation(t, cookie, "/recovery-drafts/"+draftID+"/discard", "csrf_token="+cookie.Value)
+	discardResponse := httptest.NewRecorder()
+	handler.ServeHTTP(discardResponse, discard)
+	if discardResponse.Code != http.StatusSeeOther || discardResponse.Header().Get("Location") != "/recovery-drafts" || library.operation != "discard-draft" || library.id != draftID {
+		t.Fatalf("discard response/call = %d/%q/%q/%q", discardResponse.Code, discardResponse.Header().Get("Location"), library.operation, library.id)
+	}
+}
+
+func TestActivityRecoveryDraftFailureRetainsOpenSubmission(t *testing.T) {
+	t.Parallel()
+	activityID := "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+	library := &fakeActivityLibrary{draftErr: errors.New("database unavailable")}
+	handler := newTestHandlerWithLibrary(t, library)
+	cookie := csrfCookie(t, handler)
+	form := "csrf_token=" + cookie.Value + "&title=Still+open&summary=&duration_seconds=&content_markdown=Do+not+lose+this&revision=3"
+	request := newOwnerMutation(t, cookie, "/activities/"+activityID+"/recovery-draft", form)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("draft failure status = %d, body %q", response.Code, response.Body.String())
+	}
+	for _, wanted := range []string{"not saved", "Still open", "Do not lose this", "retry deliberately"} {
+		if !strings.Contains(response.Body.String(), wanted) {
+			t.Errorf("draft failure omitted %q: %q", wanted, response.Body.String())
+		}
+	}
+}
+
+func newOwnerMutation(t *testing.T, cookie *http.Cookie, path, body string) *http.Request {
+	t.Helper()
+	request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+	request.Header.Set("Authorization", "Bearer owner")
+	request.Header.Set("Origin", "https://curu.example")
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.AddCookie(cookie)
+	return request
+}
+
 func TestBrowserProtectionRejectsCrossOriginAndInvalidCSRF(t *testing.T) {
 	t.Parallel()
 
@@ -747,6 +825,33 @@ type fakeActivityLibrary struct {
 	operation            string
 	createErr, updateErr error
 	archiveErr           error
+	drafts               []activity.RecoveryDraftSummary
+	draft                activity.RecoveryDraft
+	draftErr             error
+}
+
+func (l *fakeActivityLibrary) ListRecoveryDrafts(_ context.Context, principal authorization.Principal) ([]activity.RecoveryDraftSummary, error) {
+	l.calls++
+	l.operation, l.principal = "list-drafts", principal
+	return l.drafts, l.draftErr
+}
+
+func (l *fakeActivityLibrary) RecoveryDraft(_ context.Context, principal authorization.Principal, id string) (activity.RecoveryDraft, error) {
+	l.calls++
+	l.operation, l.principal, l.id = "find-draft", principal, id
+	return l.draft, l.draftErr
+}
+
+func (l *fakeActivityLibrary) SaveRecoveryDraft(_ context.Context, principal authorization.Principal, id string, revision int64, input activity.Input) (activity.RecoveryDraft, error) {
+	l.calls++
+	l.operation, l.principal, l.id, l.revision, l.input = "save-draft", principal, id, revision, input
+	return l.draft, l.draftErr
+}
+
+func (l *fakeActivityLibrary) DiscardRecoveryDraft(_ context.Context, principal authorization.Principal, id string) error {
+	l.calls++
+	l.operation, l.principal, l.id = "discard-draft", principal, id
+	return l.draftErr
 }
 
 func (l *fakeActivityLibrary) Create(_ context.Context, principal authorization.Principal, input activity.Input) (activity.Activity, error) {

@@ -1,0 +1,14 @@
+{{define "recovery-draft-list"}}{{template "layout-start" .}}
+  <p><a href="/activities">← All activities</a></p>
+  <h1>Recovery drafts</h1>
+  <p class="muted">Each draft is a separately saved conflicting submission. It has not been applied to the current activity.</p>
+  {{if .Drafts}}
+    <ul class="activity-list">
+      {{range .Drafts}}
+        <li><h2><a href="/recovery-drafts/{{.ID}}">{{.Title}}</a></h2><p class="muted">Saved {{.Updated}}</p></li>
+      {{end}}
+    </ul>
+  {{else}}
+    <p>No recovery drafts are saved.</p>
+  {{end}}
+{{template "layout-end" .}}{{end}}

@@ -1,6 +1,7 @@
 {{define "activity-form"}}{{template "layout-start" .}}
   <p><a href="/activities">← All activities</a></p>
   <h1>{{.Heading}}</h1>
+  {{if .RecoveryDraft}}<p class="muted">This is a separate recovery draft. Saving it does not change the current activity. <a href="/activities/{{.SourceActivityID}}/edit" target="_blank" rel="noopener">Open the latest activity in a new tab</a> to compare or copy deliberately.</p>{{end}}
   {{if .ErrorSummary}}<p class="error" role="alert">{{.ErrorSummary}}</p>{{end}}
   <p id="save-state" class="save-state" aria-live="polite">{{if .Status}}{{.Status}}{{else}}No unsaved changes.{{end}}</p>
   <form action="{{.Action}}" method="post" id="activity-form" data-preserve-on-rejection="true">
@@ -46,7 +47,14 @@
     </fieldset>
 
     <button type="submit">{{.SaveLabel}}</button>
+    {{if .Conflict}}<button type="submit" formaction="{{.DraftAction}}">Save separate recovery draft</button> <a href="/activities/{{.SourceActivityID}}/edit">Open latest activity without saving a draft</a>{{end}}
   </form>
+  {{if .DraftID}}
+    <form action="/recovery-drafts/{{.DraftID}}/discard" method="post">
+      {{template "csrf-field" .}}
+      <button type="submit">Discard recovery draft</button>
+    </form>
+  {{end}}
   <script>
     var activityForm = document.getElementById("activity-form");
     activityForm.addEventListener("input", function () {
@@ -57,7 +65,8 @@
       var saveState = document.getElementById("save-state");
       saveState.textContent = "Saving…";
       try {
-        var response = await fetch(activityForm.action, {
+        var target = event.submitter && event.submitter.formAction ? event.submitter.formAction : activityForm.action;
+        var response = await fetch(target, {
           method: "POST",
           credentials: "same-origin",
           redirect: "follow",

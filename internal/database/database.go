@@ -17,7 +17,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-const LatestSchemaVersion = 3
+const LatestSchemaVersion = 4
 
 const migrationLockID int64 = 4392508880345810201
 
@@ -155,6 +155,12 @@ func grantRuntimeAccess(tx *gorm.DB, role string) error {
 	}
 	if exists {
 		statements = append(statements, "GRANT SELECT, INSERT, UPDATE, DELETE ON curu.activity_progressions TO "+quoted)
+	}
+	if err := tx.Raw("SELECT to_regclass('curu.activity_recovery_drafts') IS NOT NULL").Scan(&exists).Error; err != nil {
+		return fmt.Errorf("inspect recovery draft table: %w", err)
+	}
+	if exists {
+		statements = append(statements, "GRANT SELECT, INSERT, UPDATE, DELETE ON curu.activity_recovery_drafts TO "+quoted)
 	}
 	for _, statement := range statements {
 		if err := tx.Exec(statement).Error; err != nil {

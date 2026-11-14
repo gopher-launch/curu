@@ -46,6 +46,10 @@ type activityLibrary interface {
 	Update(context.Context, authorization.Principal, string, int64, activity.Input) (activity.Activity, error)
 	Archive(context.Context, authorization.Principal, string, int64) (activity.Activity, error)
 	Restore(context.Context, authorization.Principal, string, int64) (activity.Activity, error)
+	ListRecoveryDrafts(context.Context, authorization.Principal) ([]activity.RecoveryDraftSummary, error)
+	RecoveryDraft(context.Context, authorization.Principal, string) (activity.RecoveryDraft, error)
+	SaveRecoveryDraft(context.Context, authorization.Principal, string, int64, activity.Input) (activity.RecoveryDraft, error)
+	DiscardRecoveryDraft(context.Context, authorization.Principal, string) error
 }
 
 type principalContextKey struct{}
@@ -91,8 +95,12 @@ func NewHandler(logger *slog.Logger, ready func() bool, authenticator requestAut
 	mux.HandleFunc("GET /activities/new", h.newActivity)
 	mux.HandleFunc("POST /activities", h.createActivity)
 	mux.HandleFunc("GET /activities/{id}/edit", h.editActivity)
+	mux.HandleFunc("POST /activities/{id}/recovery-draft", h.saveRecoveryDraft)
 	mux.HandleFunc("POST /activities/{id}", h.updateActivity)
 	mux.HandleFunc("GET /activities/{id}", h.activityDetail)
+	mux.HandleFunc("GET /recovery-drafts", h.listRecoveryDrafts)
+	mux.HandleFunc("GET /recovery-drafts/{id}", h.recoveryDraft)
+	mux.HandleFunc("POST /recovery-drafts/{id}/discard", h.discardRecoveryDraft)
 	mux.HandleFunc("GET /", h.notFound)
 	return h.logRequests(h.authorizePrivateRequests(h.protectBrowserRequests(mux))), nil
 }
@@ -150,6 +158,17 @@ type activityFormData struct {
 	ID, Title, Summary, ContentMarkdown              string
 	DurationSeconds, Phase, Theme, Tags, Revision    string
 	Progressions                                     []progressionFormView
+	Conflict, RecoveryDraft                          bool
+	DraftAction, DraftID, SourceActivityID           string
+}
+
+type recoveryDraftListData struct {
+	pageData
+	Drafts []recoveryDraftSummaryView
+}
+
+type recoveryDraftSummaryView struct {
+	ID, ActivityID, Title, Updated string
 }
 
 func (h *handler) activityIndexRedirect(w http.ResponseWriter, r *http.Request) {
@@ -428,7 +447,10 @@ func (h *handler) updateActivity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, activity.ErrConflict) {
-		data.ErrorSummary = "A newer revision exists. Your submitted values remain below; copy them before reloading the current activity."
+		data.ErrorSummary = "A newer revision exists. Your submitted values remain below. Save them as a separate recovery draft before deliberately opening the latest activity."
+		data.Conflict = true
+		data.DraftAction = "/activities/" + id + "/recovery-draft"
+		data.SourceActivityID = id
 		h.renderStatus(w, "activity-form", data, http.StatusConflict)
 		return
 	}
@@ -445,6 +467,131 @@ func (h *handler) updateActivity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.redirectSaved(w, r, item.ID)
+}
+
+func (h *handler) saveRecoveryDraft(w http.ResponseWriter, r *http.Request) {
+	principal, ok := PrincipalFromContext(r.Context())
+	if !ok {
+		h.deny(w, r, http.StatusForbidden, "authorization_denied")
+		return
+	}
+	id := r.PathValue("id")
+	input, data, ok := h.parseActivityForm(w, r, "Recovery draft", "/activities/"+id+"/recovery-draft", "Save recovery draft")
+	if !ok {
+		return
+	}
+	data.RecoveryDraft, data.SourceActivityID = true, id
+	revision, err := strconv.ParseInt(data.Revision, 10, 64)
+	if err != nil || revision < 1 {
+		data.ErrorSummary = "This recovery draft has an invalid source revision. Return to the open conflicting editor."
+		h.renderStatus(w, "activity-form", data, http.StatusUnprocessableEntity)
+		return
+	}
+	draft, err := h.library.SaveRecoveryDraft(r.Context(), principal, id, revision, input)
+	if errors.Is(err, activity.ErrInvalidInput) {
+		data.ErrorSummary = "Fix the invalid values and save the recovery draft again."
+		h.renderStatus(w, "activity-form", data, http.StatusUnprocessableEntity)
+		return
+	}
+	if errors.Is(err, activity.ErrNotFound) {
+		h.notFound(w, r)
+		return
+	}
+	if errors.Is(err, authorization.ErrDenied) {
+		h.deny(w, r, http.StatusForbidden, "authorization_denied")
+		return
+	}
+	if err != nil {
+		h.logger.Error("request failed", "operation", "save recovery draft", "error", err)
+		data.ErrorSummary = "The recovery draft was not saved. Your submitted values remain below; retry deliberately."
+		h.renderStatus(w, "activity-form", data, http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	http.Redirect(w, r, "/recovery-drafts/"+draft.ID+"?saved=1", http.StatusSeeOther)
+}
+
+func (h *handler) listRecoveryDrafts(w http.ResponseWriter, r *http.Request) {
+	principal, ok := PrincipalFromContext(r.Context())
+	if !ok {
+		h.deny(w, r, http.StatusForbidden, "authorization_denied")
+		return
+	}
+	items, err := h.library.ListRecoveryDrafts(r.Context(), principal)
+	if errors.Is(err, authorization.ErrDenied) {
+		h.deny(w, r, http.StatusForbidden, "authorization_denied")
+		return
+	}
+	if err != nil {
+		h.serverError(w, "list recovery drafts", err)
+		return
+	}
+	views := make([]recoveryDraftSummaryView, len(items))
+	for index, item := range items {
+		views[index] = recoveryDraftSummaryView{ID: item.ID, ActivityID: item.ActivityID, Title: item.Title, Updated: item.UpdatedAt.UTC().Format("2006-01-02 15:04 UTC")}
+	}
+	h.render(w, "recovery-draft-list", recoveryDraftListData{pageData: h.page(r, "Recovery drafts · Curu"), Drafts: views})
+}
+
+func (h *handler) recoveryDraft(w http.ResponseWriter, r *http.Request) {
+	principal, ok := PrincipalFromContext(r.Context())
+	if !ok {
+		h.deny(w, r, http.StatusForbidden, "authorization_denied")
+		return
+	}
+	draft, err := h.library.RecoveryDraft(r.Context(), principal, r.PathValue("id"))
+	if errors.Is(err, activity.ErrNotFound) {
+		h.notFound(w, r)
+		return
+	}
+	if errors.Is(err, authorization.ErrDenied) {
+		h.deny(w, r, http.StatusForbidden, "authorization_denied")
+		return
+	}
+	if err != nil {
+		h.serverError(w, "read recovery draft", err)
+		return
+	}
+	data := formDataFromInput(h.page(r, "Recovery draft · Curu"), draft.Input)
+	data.Heading, data.Action, data.SaveLabel = "Recovery draft", "/activities/"+draft.ActivityID+"/recovery-draft", "Save recovery draft"
+	data.Revision = strconv.FormatInt(draft.BaseRevision, 10)
+	data.RecoveryDraft, data.DraftID, data.SourceActivityID = true, draft.ID, draft.ActivityID
+	if r.URL.Query().Get("saved") == "1" {
+		data.Status = "Recovery draft saved. The current activity was not changed."
+	}
+	h.render(w, "activity-form", data)
+}
+
+func (h *handler) discardRecoveryDraft(w http.ResponseWriter, r *http.Request) {
+	principal, ok := PrincipalFromContext(r.Context())
+	if !ok {
+		h.deny(w, r, http.StatusForbidden, "authorization_denied")
+		return
+	}
+	mediaType, parameters, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/x-www-form-urlencoded" || len(parameters) != 0 {
+		h.rejectInput(w, http.StatusUnsupportedMediaType)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		h.rejectInput(w, http.StatusBadRequest)
+		return
+	}
+	err = h.library.DiscardRecoveryDraft(r.Context(), principal, r.PathValue("id"))
+	if errors.Is(err, activity.ErrNotFound) {
+		h.notFound(w, r)
+		return
+	}
+	if errors.Is(err, authorization.ErrDenied) {
+		h.deny(w, r, http.StatusForbidden, "authorization_denied")
+		return
+	}
+	if err != nil {
+		h.serverError(w, "discard recovery draft", err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	http.Redirect(w, r, "/recovery-drafts", http.StatusSeeOther)
 }
 
 func (h *handler) parseActivityForm(w http.ResponseWriter, r *http.Request, heading, action, label string) (activity.Input, activityFormData, bool) {
@@ -513,13 +660,22 @@ func parseOptionalSeconds(value string) (*int, error) {
 }
 
 func formDataFromActivity(page pageData, item activity.Activity) activityFormData {
-	data := activityFormData{pageData: page, Heading: "Edit activity", Action: "/activities/" + item.ID, SaveLabel: "Save changes", ID: item.ID,
-		Title: item.Title, Summary: item.Summary, ContentMarkdown: item.ContentMarkdown, Phase: item.Phase, Theme: item.Theme,
-		Tags: strings.Join(item.Tags, ", "), Revision: strconv.FormatInt(item.Revision, 10)}
-	if item.DurationSeconds != nil {
-		data.DurationSeconds = strconv.Itoa(*item.DurationSeconds)
-	}
+	input := activity.Input{Title: item.Title, Summary: item.Summary, ContentMarkdown: item.ContentMarkdown, DurationSeconds: item.DurationSeconds, Phase: item.Phase, Theme: item.Theme, Tags: item.Tags}
 	for _, progression := range item.Progressions {
+		input.Progressions = append(input.Progressions, activity.ProgressionInput{Title: progression.Title, ContentMarkdown: progression.ContentMarkdown, DurationSeconds: progression.DurationSeconds})
+	}
+	data := formDataFromInput(page, input)
+	data.Heading, data.Action, data.SaveLabel, data.ID = "Edit activity", "/activities/"+item.ID, "Save changes", item.ID
+	data.Revision = strconv.FormatInt(item.Revision, 10)
+	return data
+}
+
+func formDataFromInput(page pageData, input activity.Input) activityFormData {
+	data := activityFormData{pageData: page, Title: input.Title, Summary: input.Summary, ContentMarkdown: input.ContentMarkdown, Phase: input.Phase, Theme: input.Theme, Tags: strings.Join(input.Tags, ", ")}
+	if input.DurationSeconds != nil {
+		data.DurationSeconds = strconv.Itoa(*input.DurationSeconds)
+	}
+	for _, progression := range input.Progressions {
 		view := progressionFormView{Title: progression.Title, ContentMarkdown: progression.ContentMarkdown}
 		if progression.DurationSeconds != nil {
 			view.DurationSeconds = strconv.Itoa(*progression.DurationSeconds)
