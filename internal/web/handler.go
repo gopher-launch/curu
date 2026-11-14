@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"html/template"
 	"log/slog"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -326,7 +327,17 @@ func (h *handler) updateActivity(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) parseActivityForm(w http.ResponseWriter, r *http.Request, heading, action, label string) (activity.Input, activityFormData, bool) {
+	mediaType, parameters, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/x-www-form-urlencoded" || len(parameters) != 0 {
+		h.rejectInput(w, http.StatusUnsupportedMediaType)
+		return activity.Input{}, activityFormData{}, false
+	}
 	if err := r.ParseForm(); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			h.rejectInput(w, http.StatusRequestEntityTooLarge)
+			return activity.Input{}, activityFormData{}, false
+		}
 		h.rejectInput(w, http.StatusBadRequest)
 		return activity.Input{}, activityFormData{}, false
 	}
@@ -342,7 +353,6 @@ func (h *handler) parseActivityForm(w http.ResponseWriter, r *http.Request, head
 	if strings.TrimSpace(data.Tags) != "" {
 		input.Tags = strings.Split(data.Tags, ",")
 	}
-	var err error
 	input.DurationSeconds, err = parseOptionalSeconds(data.DurationSeconds)
 	if err != nil {
 		data.ErrorSummary = "Duration must be whole seconds, or blank."
@@ -489,9 +499,14 @@ func (h *handler) deny(w http.ResponseWriter, r *http.Request, status int, reaso
 	h.logger.Warn("security failure", "reason", reason, "request_id", requestLog.correlationID)
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	if status == http.StatusUnauthorized && r.Header.Get("HX-Request") == "true" {
+	if r.Header.Get("HX-Request") == "true" &&
+		(status == http.StatusUnauthorized || (!isSafeMethod(r.Method) && reason == "csrf_rejected")) {
 		w.Header().Set("HX-Reswap", "none")
-		w.Header().Set("HX-Trigger", htmxAuthEventName)
+		if status == http.StatusUnauthorized {
+			w.Header().Set("HX-Trigger", htmxAuthEventName)
+		} else {
+			w.Header().Set("HX-Trigger", htmxRejectedEventName)
+		}
 	}
 	w.WriteHeader(status)
 	_, _ = w.Write([]byte(http.StatusText(status) + "\n"))

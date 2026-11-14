@@ -33,7 +33,11 @@
   <header><nav aria-label="Primary"><a href="/activities">Curu</a>{{if .LogoutURL}} · <a href="{{.LogoutURL}}">Sign out</a>{{end}}</nav></header>
   <aside id="authentication-required" hidden role="alert">
     Your session expired. Your unsaved changes remain on this page.
-    {{if .LoginURL}}<a href="{{.LoginURL}}">Sign in again</a>{{else}}Sign in again through the application gateway.{{end}}
+    {{if .LoginURL}}<a href="{{.LoginURL}}" target="_blank" rel="noopener">Sign in again in a new tab</a>{{else}}Sign in again through the application gateway in a new tab.{{end}}
+  </aside>
+  <aside id="save-rejected" hidden role="alert">
+    Your save was rejected. Your unsaved changes remain on this page.
+    <a id="fresh-editor-link" href="/activities" target="_blank" rel="noopener">Open a fresh editor in a new tab</a> before retrying.
   </aside>
   <main>
 {{- end}}
@@ -46,6 +50,10 @@
     });
     document.addEventListener("curu:authentication-required", function () {
       document.getElementById("authentication-required").hidden = false;
+    });
+    document.addEventListener("curu:save-rejected", function () {
+      document.getElementById("fresh-editor-link").href = window.location.href;
+      document.getElementById("save-rejected").hidden = false;
     });
   </script>
 </body>

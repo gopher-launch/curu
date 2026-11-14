@@ -14,11 +14,12 @@ import (
 )
 
 const (
-	csrfCookieName    = "__Host-curu_csrf"
-	csrfFormField     = "csrf_token"
-	csrfHeaderName    = "X-CSRF-Token"
-	maxRequestBody    = 1 << 20
-	htmxAuthEventName = "curu:authentication-required"
+	csrfCookieName        = "__Host-curu_csrf"
+	csrfFormField         = "csrf_token"
+	csrfHeaderName        = "X-CSRF-Token"
+	maxRequestBody        = 1 << 20
+	htmxAuthEventName     = "curu:authentication-required"
+	htmxRejectedEventName = "curu:save-rejected"
 )
 
 // BrowserConfig supplies the explicit public and trusted-gateway boundary.

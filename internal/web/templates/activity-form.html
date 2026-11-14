@@ -3,7 +3,7 @@
   <h1>{{.Heading}}</h1>
   {{if .ErrorSummary}}<p class="error" role="alert">{{.ErrorSummary}}</p>{{end}}
   <p id="save-state" class="save-state" aria-live="polite">{{if .Status}}{{.Status}}{{else}}No unsaved changes.{{end}}</p>
-  <form action="{{.Action}}" method="post" id="activity-form">
+  <form action="{{.Action}}" method="post" id="activity-form" data-preserve-on-rejection="true">
     {{template "csrf-field" .}}
     {{if .Revision}}<input type="hidden" name="revision" value="{{.Revision}}">{{end}}
 
@@ -48,8 +48,50 @@
     <button type="submit">{{.SaveLabel}}</button>
   </form>
   <script>
-    document.getElementById("activity-form").addEventListener("input", function () {
+    var activityForm = document.getElementById("activity-form");
+    activityForm.addEventListener("input", function () {
       document.getElementById("save-state").textContent = "Unsaved changes.";
+    });
+    activityForm.addEventListener("submit", async function (event) {
+      event.preventDefault();
+      var saveState = document.getElementById("save-state");
+      saveState.textContent = "Saving…";
+      try {
+        var response = await fetch(activityForm.action, {
+          method: "POST",
+          credentials: "same-origin",
+          redirect: "follow",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "HX-Request": "true",
+            "X-CSRF-Token": document.querySelector('meta[name="curu-csrf-token"]').content
+          },
+          body: new URLSearchParams(new FormData(activityForm)).toString()
+        });
+        if (response.redirected) {
+          window.location.assign(response.url);
+          return;
+        }
+        if (response.status === 401) {
+          saveState.textContent = "Save not completed. Your unsaved changes remain.";
+          document.dispatchEvent(new CustomEvent("curu:authentication-required"));
+          return;
+        }
+        if (response.status === 403) {
+          saveState.textContent = "Save rejected. Your unsaved changes remain.";
+          document.dispatchEvent(new CustomEvent("curu:save-rejected"));
+          return;
+        }
+        if ((response.headers.get("Content-Type") || "").startsWith("text/html")) {
+          document.open();
+          document.write(await response.text());
+          document.close();
+          return;
+        }
+        saveState.textContent = "Save failed. Your unsaved changes remain; retry deliberately.";
+      } catch (_) {
+        saveState.textContent = "Save failed. Your unsaved changes remain; retry deliberately.";
+      }
     });
     document.getElementById("add-progression").addEventListener("click", function () {
       var editors = document.querySelectorAll(".progression-editor");

@@ -221,6 +221,102 @@ func TestActivityCreateExplicitSaveAndEditReopen(t *testing.T) {
 	}
 }
 
+func TestActivityFormUsesPreservationAwareSavePath(t *testing.T) {
+	t.Parallel()
+
+	library := &fakeActivityLibrary{}
+	handler := newTestHandlerWithLibrary(t, library)
+	pageRequest := httptest.NewRequest(http.MethodGet, "/activities/new", nil)
+	pageRequest.Header.Set("Authorization", "Bearer owner")
+	pageResponse := httptest.NewRecorder()
+	handler.ServeHTTP(pageResponse, pageRequest)
+	if pageResponse.Code != http.StatusOK {
+		t.Fatalf("activity form status = %d", pageResponse.Code)
+	}
+	body := pageResponse.Body.String()
+	for _, wanted := range []string{
+		`data-preserve-on-rejection="true"`, `addEventListener("submit"`, "event.preventDefault()",
+		`"Content-Type": "application/x-www-form-urlencoded"`, `"HX-Request": "true"`,
+		`"X-CSRF-Token"`, `response.status === 401`, `response.status === 403`,
+		`CustomEvent("curu:authentication-required")`, `CustomEvent("curu:save-rejected")`,
+		"Your unsaved changes remain", "Sign in again through the application gateway in a new tab", "Open a fresh editor in a new tab",
+	} {
+		if !strings.Contains(body, wanted) {
+			t.Errorf("activity form omitted preservation mechanism %q", wanted)
+		}
+	}
+
+	form := "title=Entered+title&content_markdown=Unsaved+content&progression_title=Harder&progression_content_markdown=Unsaved+progression&progression_duration_seconds="
+	expired := httptest.NewRequest(http.MethodPost, "/activities", strings.NewReader(form))
+	expired.Header.Set("Authorization", "Bearer expired")
+	expired.Header.Set("Origin", "https://curu.example")
+	expired.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	expired.Header.Set("HX-Request", "true")
+	expiredResponse := httptest.NewRecorder()
+	handler.ServeHTTP(expiredResponse, expired)
+	if expiredResponse.Code != http.StatusUnauthorized || expiredResponse.Header().Get("HX-Reswap") != "none" || expiredResponse.Header().Get("HX-Trigger") != htmxAuthEventName {
+		t.Fatalf("expired save response = %d, reswap %q, trigger %q", expiredResponse.Code, expiredResponse.Header().Get("HX-Reswap"), expiredResponse.Header().Get("HX-Trigger"))
+	}
+	if strings.Contains(expiredResponse.Body.String(), "Entered title") || library.calls != 0 {
+		t.Fatalf("expired save exposed input or reached library: body %q, calls %d", expiredResponse.Body.String(), library.calls)
+	}
+
+	validCookie := csrfCookie(t, handler)
+	for _, test := range []struct {
+		name   string
+		cookie *http.Cookie
+	}{
+		{name: "missing cookie"},
+		{name: "replaced cookie", cookie: validCookie},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/activities", strings.NewReader(form))
+			request.Header.Set("Authorization", "Bearer owner")
+			request.Header.Set("Origin", "https://curu.example")
+			request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			request.Header.Set("HX-Request", "true")
+			request.Header.Set("X-CSRF-Token", mustCSRFToken(t))
+			if test.cookie != nil {
+				request.AddCookie(test.cookie)
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusForbidden || response.Header().Get("HX-Reswap") != "none" || response.Header().Get("HX-Trigger") != htmxRejectedEventName {
+				t.Fatalf("CSRF rejection = %d, reswap %q, trigger %q", response.Code, response.Header().Get("HX-Reswap"), response.Header().Get("HX-Trigger"))
+			}
+			if strings.Contains(response.Body.String(), "Unsaved content") {
+				t.Errorf("CSRF rejection exposed submitted content: %q", response.Body.String())
+			}
+		})
+	}
+}
+
+func TestActivityMutationRejectsUnsupportedMediaTypesWithHeaderCSRF(t *testing.T) {
+	t.Parallel()
+
+	for _, contentType := range []string{"application/json", "multipart/form-data; boundary=curu-test"} {
+		t.Run(contentType, func(t *testing.T) {
+			library := &fakeActivityLibrary{}
+			handler := newTestHandlerWithLibrary(t, library)
+			cookie := csrfCookie(t, handler)
+			request := httptest.NewRequest(http.MethodPost, "/activities", strings.NewReader(`{"title":"unsupported"}`))
+			request.Header.Set("Authorization", "Bearer owner")
+			request.Header.Set("Origin", "https://curu.example")
+			request.Header.Set("Content-Type", contentType)
+			request.Header.Set("X-CSRF-Token", cookie.Value)
+			request.AddCookie(cookie)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusUnsupportedMediaType {
+				t.Fatalf("content type %q status = %d, want 415; body %q", contentType, response.Code, response.Body.String())
+			}
+			if library.calls != 0 {
+				t.Fatalf("unsupported content type reached library %d times", library.calls)
+			}
+		})
+	}
+}
+
 func TestActivityValidationAndConflictPreserveSubmittedValues(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
