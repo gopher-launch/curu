@@ -18,6 +18,7 @@ import (
 	"github.com/gopher-launch/curu/internal/activity"
 	"github.com/gopher-launch/curu/internal/auth"
 	"github.com/gopher-launch/curu/internal/authorization"
+	"github.com/gopher-launch/curu/internal/session"
 )
 
 func TestHealthEndpoints(t *testing.T) {
@@ -121,6 +122,66 @@ func TestActivityLibraryListSearchAndEmptyStates(t *testing.T) {
 	handler.ServeHTTP(noMatch, noMatchRequest)
 	if !strings.Contains(noMatch.Body.String(), "No current activities match") {
 		t.Errorf("empty search state missing: %q", noMatch.Body.String())
+	}
+}
+
+func TestSessionCreateEditConflictPreservesCompleteSubmission(t *testing.T) {
+	t.Parallel()
+	const id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+	planner := &fakeSessionPlanner{item: session.Session{ID: id, OwnerID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", Title: "Draft", Revision: 4}}
+	handler := newTestHandlerWithSessions(t, planner)
+	cookie := csrfCookie(t, handler)
+	values := "title=Future+session&date=&group_context=U12&intent=Support&block_name=Arrival&block_intent=Explore&block_notes=Choose+freely&block_observation_lens=Scanning&revision=4&csrf_token=" + cookie.Value
+	request := httptest.NewRequest(http.MethodPost, "/sessions/"+id, strings.NewReader(values))
+	request.Header.Set("Authorization", "Bearer owner")
+	request.Header.Set("Origin", "https://curu.example")
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.AddCookie(cookie)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusSeeOther || planner.operation != "update" || planner.revision != 4 || planner.input.Date != nil || len(planner.input.Blocks) != 1 {
+		t.Fatalf("response/update = %d/%q/%d %+v", response.Code, planner.operation, planner.revision, planner.input)
+	}
+	planner.err = session.ErrConflict
+	stale := httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodPost, "/sessions/"+id, strings.NewReader(values))
+	request.Header.Set("Authorization", "Bearer owner")
+	request.Header.Set("Origin", "https://curu.example")
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.AddCookie(cookie)
+	handler.ServeHTTP(stale, request)
+	body := stale.Body.String()
+	for _, wanted := range []string{"Future session", "U12", "Arrival", "Choose freely", "Scanning", "newer revision exists"} {
+		if stale.Code != http.StatusConflict || !strings.Contains(body, wanted) {
+			t.Fatalf("conflict omitted %q: status %d body %q", wanted, stale.Code, body)
+		}
+	}
+}
+
+func TestSessionDetailAllowsBlocksWithoutActivitiesAndArchiveLifecycle(t *testing.T) {
+	t.Parallel()
+	const id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+	planner := &fakeSessionPlanner{item: session.Session{ID: id, OwnerID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", Title: "Undated plan", Revision: 2, Blocks: []session.Block{{Name: "Warmup", Notes: "Freeform"}}}}
+	handler := newTestHandlerWithSessions(t, planner)
+	request := httptest.NewRequest(http.MethodGet, "/sessions/"+id, nil)
+	request.Header.Set("Authorization", "Bearer owner")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	for _, wanted := range []string{"Undated plan", "No date set", "Warmup", "No activities are required"} {
+		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), wanted) {
+			t.Fatalf("detail omitted %q: %q", wanted, response.Body.String())
+		}
+	}
+	cookie := csrfCookie(t, handler)
+	archive := httptest.NewRequest(http.MethodPost, "/sessions/"+id+"/archive", strings.NewReader("revision=2&csrf_token="+cookie.Value))
+	archive.Header.Set("Authorization", "Bearer owner")
+	archive.Header.Set("Origin", "https://curu.example")
+	archive.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	archive.AddCookie(cookie)
+	archived := httptest.NewRecorder()
+	handler.ServeHTTP(archived, archive)
+	if archived.Code != http.StatusSeeOther || archived.Header().Get("Location") != "/sessions/"+id+"/archived" || planner.operation != "archive" {
+		t.Fatalf("archive = %d %q %q", archived.Code, archived.Header().Get("Location"), planner.operation)
 	}
 }
 
@@ -251,7 +312,7 @@ func TestProductLikeMethodsAreUnavailable(t *testing.T) {
 	handler := newTestHandler(t, ready.Load)
 	cookie := csrfCookie(t, handler)
 	response := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/sessions", strings.NewReader("private=data"))
+	request := httptest.NewRequest(http.MethodPost, "/templates", strings.NewReader("private=data"))
 	request.Header.Set("Authorization", "Bearer owner")
 	request.Header.Set("Origin", "https://curu.example")
 	request.Header.Set("X-CSRF-Token", cookie.Value)
@@ -928,6 +989,69 @@ func (l *fakeActivityLibrary) Restore(_ context.Context, principal authorization
 	return l.item, nil
 }
 
+type fakeSessionPlanner struct {
+	items         []session.Summary
+	item          session.Session
+	err           error
+	archiveErr    error
+	operation, id string
+	principal     authorization.Principal
+	revision      int64
+	input         session.Input
+}
+
+func (p *fakeSessionPlanner) List(_ context.Context, principal authorization.Principal, archived bool) ([]session.Summary, error) {
+	p.operation, p.principal = "list", principal
+	if archived {
+		p.operation = "list-archived"
+	}
+	return p.items, p.err
+}
+func (p *fakeSessionPlanner) Detail(_ context.Context, principal authorization.Principal, id string, archived bool) (session.Session, error) {
+	p.operation, p.principal, p.id = "detail", principal, id
+	if archived {
+		p.operation = "detail-archived"
+	}
+	if p.err != nil {
+		return session.Session{}, p.err
+	}
+	if p.item.ID == "" {
+		return session.Session{}, session.ErrNotFound
+	}
+	return p.item, nil
+}
+func (p *fakeSessionPlanner) Create(_ context.Context, principal authorization.Principal, input session.Input) (session.Session, error) {
+	p.operation, p.principal, p.input = "create", principal, input
+	return p.item, p.err
+}
+func (p *fakeSessionPlanner) Update(_ context.Context, principal authorization.Principal, id string, revision int64, input session.Input) (session.Session, error) {
+	p.operation, p.principal, p.id, p.revision, p.input = "update", principal, id, revision, input
+	return p.item, p.err
+}
+func (p *fakeSessionPlanner) Archive(_ context.Context, principal authorization.Principal, id string, revision int64, archived bool) (session.Session, error) {
+	p.operation, p.principal, p.id, p.revision = "restore", principal, id, revision
+	if archived {
+		p.operation = "archive"
+	}
+	if p.archiveErr != nil {
+		return session.Session{}, p.archiveErr
+	}
+	return p.item, p.err
+}
+
+func newTestHandlerWithSessions(t *testing.T, planner sessionPlanner) http.Handler {
+	t.Helper()
+	policy, err := authorization.NewPolicy(authorization.ExternalIdentity{Issuer: "https://issuer.example/tenant", Subject: "coach-123"}, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), func() bool { return true }, fakeAuthenticator{}, policy, &fakeActivityLibrary{}, planner, BrowserConfig{PublicOrigin: "https://curu.example"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return handler
+}
+
 func newTestHandler(t *testing.T, ready func() bool) http.Handler {
 	t.Helper()
 	return newTestHandlerWithLogger(t, ready, slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -942,7 +1066,7 @@ func newTestHandlerWithLogger(t *testing.T, ready func() bool, logger *slog.Logg
 	if err != nil {
 		t.Fatalf("NewPolicy() error = %v", err)
 	}
-	handler, err := NewHandler(logger, ready, fakeAuthenticator{}, policy, &fakeActivityLibrary{}, BrowserConfig{PublicOrigin: "https://curu.example"})
+	handler, err := NewHandler(logger, ready, fakeAuthenticator{}, policy, &fakeActivityLibrary{}, &fakeSessionPlanner{}, BrowserConfig{PublicOrigin: "https://curu.example"})
 	if err != nil {
 		t.Fatalf("NewHandler() error = %v", err)
 	}
@@ -958,7 +1082,7 @@ func newTestHandlerWithLibrary(t *testing.T, library activityLibrary) http.Handl
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler, err := NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), func() bool { return true }, fakeAuthenticator{}, policy, library, BrowserConfig{PublicOrigin: "https://curu.example"})
+	handler, err := NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), func() bool { return true }, fakeAuthenticator{}, policy, library, &fakeSessionPlanner{}, BrowserConfig{PublicOrigin: "https://curu.example"})
 	if err != nil {
 		t.Fatal(err)
 	}

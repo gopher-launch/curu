@@ -1,0 +1,7 @@
+{{define "session-list"}}{{template "layout-start" .}}
+  <h1>{{if .Archived}}Archived sessions{{else}}Sessions{{end}}</h1>
+  {{if .Archived}}<p><a href="/sessions">← Current sessions</a></p>{{else}}<p><a href="/sessions/new">Create session</a> · <a href="/sessions/archived">View archived sessions</a></p>{{end}}
+  {{if .Sessions}}
+    <ul class="activity-list">{{range .Sessions}}<li><h2><a href="/sessions/{{.ID}}{{if $.Archived}}/archived{{end}}">{{.Title}}</a></h2>{{if .Date}}<p class="muted">{{.Date}}</p>{{else}}<p class="muted">Undated plan</p>{{end}}</li>{{end}}</ul>
+  {{else}}<p>There are no {{if .Archived}}archived{{else}}current{{end}} sessions.{{if not .Archived}} <a href="/sessions/new">Create the first session</a>.{{end}}</p>{{end}}
+{{template "layout-end" .}}{{end}}

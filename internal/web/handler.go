@@ -18,6 +18,7 @@ import (
 	"github.com/gopher-launch/curu/internal/activity"
 	"github.com/gopher-launch/curu/internal/auth"
 	"github.com/gopher-launch/curu/internal/authorization"
+	"github.com/gopher-launch/curu/internal/session"
 )
 
 //go:embed templates/*.html
@@ -29,6 +30,7 @@ type handler struct {
 	auth      requestAuthenticator
 	policy    authorization.Policy
 	library   activityLibrary
+	sessions  sessionPlanner
 	browser   BrowserConfig
 	templates *template.Template
 }
@@ -52,6 +54,14 @@ type activityLibrary interface {
 	DiscardRecoveryDraft(context.Context, authorization.Principal, string) error
 }
 
+type sessionPlanner interface {
+	List(context.Context, authorization.Principal, bool) ([]session.Summary, error)
+	Detail(context.Context, authorization.Principal, string, bool) (session.Session, error)
+	Create(context.Context, authorization.Principal, session.Input) (session.Session, error)
+	Update(context.Context, authorization.Principal, string, int64, session.Input) (session.Session, error)
+	Archive(context.Context, authorization.Principal, string, int64, bool) (session.Session, error)
+}
+
 type principalContextKey struct{}
 type requestLogContextKey struct{}
 
@@ -67,7 +77,7 @@ func PrincipalFromContext(ctx context.Context) (authorization.Principal, bool) {
 	return principal, ok
 }
 
-func NewHandler(logger *slog.Logger, ready func() bool, authenticator requestAuthenticator, policy authorization.Policy, library activityLibrary, browser BrowserConfig) (http.Handler, error) {
+func NewHandler(logger *slog.Logger, ready func() bool, authenticator requestAuthenticator, policy authorization.Policy, library activityLibrary, sessions sessionPlanner, browser BrowserConfig) (http.Handler, error) {
 	templates, err := template.ParseFS(templateFiles, "templates/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
@@ -82,7 +92,10 @@ func NewHandler(logger *slog.Logger, ready func() bool, authenticator requestAut
 	if library == nil {
 		return nil, fmt.Errorf("activity library is required")
 	}
-	h := &handler{logger: logger, ready: ready, auth: authenticator, policy: policy, library: library, browser: browser, templates: templates}
+	if sessions == nil {
+		return nil, fmt.Errorf("session planner is required")
+	}
+	h := &handler{logger: logger, ready: ready, auth: authenticator, policy: policy, library: library, sessions: sessions, browser: browser, templates: templates}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health/live", h.live)
 	mux.HandleFunc("GET /health/ready", h.readiness)
@@ -101,6 +114,16 @@ func NewHandler(logger *slog.Logger, ready func() bool, authenticator requestAut
 	mux.HandleFunc("GET /recovery-drafts", h.listRecoveryDrafts)
 	mux.HandleFunc("GET /recovery-drafts/{id}", h.recoveryDraft)
 	mux.HandleFunc("POST /recovery-drafts/{id}/discard", h.discardRecoveryDraft)
+	mux.HandleFunc("GET /sessions", h.listSessions)
+	mux.HandleFunc("GET /sessions/archived", h.listArchivedSessions)
+	mux.HandleFunc("GET /sessions/new", h.newSession)
+	mux.HandleFunc("POST /sessions", h.createSession)
+	mux.HandleFunc("GET /sessions/{id}/edit", h.editSession)
+	mux.HandleFunc("POST /sessions/{id}", h.updateSession)
+	mux.HandleFunc("POST /sessions/{id}/archive", h.archiveSession)
+	mux.HandleFunc("POST /sessions/{id}/restore", h.restoreSession)
+	mux.HandleFunc("GET /sessions/{id}/archived", h.archivedSessionDetail)
+	mux.HandleFunc("GET /sessions/{id}", h.sessionDetail)
 	mux.HandleFunc("GET /", h.notFound)
 	return h.logRequests(h.authorizePrivateRequests(h.protectBrowserRequests(mux))), nil
 }

@@ -27,6 +27,10 @@ type Manifest struct {
 	ActivityOwners         int64  `json:"activity_owners"`
 	ActivityProgressions   int64  `json:"activity_progressions"`
 	ActivityRecoveryDrafts int64  `json:"activity_recovery_drafts"`
+	Sessions               int64  `json:"sessions"`
+	ArchivedSessions       int64  `json:"archived_sessions"`
+	SessionOwners          int64  `json:"session_owners"`
+	SessionBlocks          int64  `json:"session_blocks"`
 	ApplicationDataSHA256  string `json:"application_data_sha256"`
 }
 
@@ -71,6 +75,10 @@ func captureSnapshot(ctx context.Context, db *gorm.DB) (Manifest, error) {
 		{&manifest.ActivityOwners, "SELECT count(DISTINCT owner_id) FROM curu.activities"},
 		{&manifest.ActivityProgressions, "SELECT count(*) FROM curu.activity_progressions"},
 		{&manifest.ActivityRecoveryDrafts, "SELECT count(*) FROM curu.activity_recovery_drafts"},
+		{&manifest.Sessions, "SELECT count(*) FROM curu.sessions"},
+		{&manifest.ArchivedSessions, "SELECT count(*) FROM curu.sessions WHERE archived_at IS NOT NULL"},
+		{&manifest.SessionOwners, "SELECT count(DISTINCT owner_id) FROM curu.sessions"},
+		{&manifest.SessionBlocks, "SELECT count(*) FROM curu.session_blocks"},
 	}
 	for _, item := range counts {
 		if err := db.WithContext(ctx).Raw(item.query).Scan(item.destination).Error; err != nil {
@@ -101,6 +109,15 @@ func captureSnapshot(ctx context.Context, db *gorm.DB) (Manifest, error) {
 			to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
 			to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))::text AS value
 			FROM curu.activity_recovery_drafts ORDER BY id`},
+		{"sessions", `SELECT jsonb_build_array(id, owner_id, title, session_date, group_context, intent, revision,
+			to_char(archived_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
+			to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
+			to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))::text AS value
+			FROM curu.sessions ORDER BY id`},
+		{"session_blocks", `SELECT jsonb_build_array(id, session_id, position, name, intent, notes, observation_lens,
+			to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
+			to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))::text AS value
+			FROM curu.session_blocks ORDER BY id`},
 	}
 	for _, query := range queries {
 		var rows []digestRow

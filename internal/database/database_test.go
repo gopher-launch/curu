@@ -11,6 +11,7 @@ import (
 
 	"github.com/gopher-launch/curu/internal/activity"
 	"github.com/gopher-launch/curu/internal/seed"
+	"github.com/gopher-launch/curu/internal/session"
 	"gorm.io/gorm"
 )
 
@@ -330,6 +331,39 @@ func TestPostgresMigrationAndRuntimeRestrictions(t *testing.T) {
 	if _, err := repository.FindCurrent(ctx, ownerID, fixtureID); !errors.Is(err, activity.ErrNotFound) {
 		t.Fatalf("FindCurrent() archived error = %v, want not found", err)
 	}
+	sessions, err := NewSessionRepository(runtime)
+	if err != nil {
+		t.Fatalf("NewSessionRepository() error = %v", err)
+	}
+	createdSession, err := sessions.Create(ctx, ownerID, session.Input{Title: "Undated plan", GroupContext: "U12", Intent: "Support", Blocks: []session.BlockInput{{Name: "Arrival", Notes: "Choose freely", ObservationLens: "Scanning"}}})
+	if err != nil || createdSession.Date != nil || createdSession.Revision != 1 || len(createdSession.Blocks) != 1 {
+		t.Fatalf("session Create() = %+v, error = %v", createdSession, err)
+	}
+	updatedSession, err := sessions.Update(ctx, ownerID, createdSession.ID, createdSession.Revision, session.Input{Title: "Reopened plan", Blocks: []session.BlockInput{{Name: "Warmup"}, {Name: "Main", Intent: "Decision making"}}})
+	if err != nil || updatedSession.Revision != 2 || len(updatedSession.Blocks) != 2 || updatedSession.Blocks[1].Position != 1 {
+		t.Fatalf("session Update() = %+v, error = %v", updatedSession, err)
+	}
+	if _, err := sessions.Update(ctx, ownerID, createdSession.ID, createdSession.Revision, session.Input{Title: "Stale", Blocks: []session.BlockInput{{Name: "Lost"}}}); !errors.Is(err, session.ErrConflict) {
+		t.Fatalf("stale session Update() error = %v", err)
+	}
+	currentSession, err := sessions.Find(ctx, ownerID, createdSession.ID, false)
+	if err != nil || currentSession.Title != "Reopened plan" || len(currentSession.Blocks) != 2 {
+		t.Fatalf("session after stale update = %+v, error = %v", currentSession, err)
+	}
+	archivedSession, err := sessions.Archive(ctx, ownerID, createdSession.ID, currentSession.Revision, true)
+	if err != nil || !archivedSession.Archived || len(archivedSession.Blocks) != 2 {
+		t.Fatalf("session Archive() = %+v, error = %v", archivedSession, err)
+	}
+	if currentItems, err := sessions.List(ctx, ownerID, false); err != nil || len(currentItems) != 0 {
+		t.Fatalf("current sessions after archive = %+v, error = %v", currentItems, err)
+	}
+	restoredSession, err := sessions.Archive(ctx, ownerID, createdSession.ID, archivedSession.Revision, false)
+	if err != nil || restoredSession.Archived || restoredSession.Revision != 4 || len(restoredSession.Blocks) != 2 {
+		t.Fatalf("session Restore() = %+v, error = %v", restoredSession, err)
+	}
+	if _, err := sessions.Find(ctx, "55555555-5555-4555-8555-555555555555", createdSession.ID, false); !errors.Is(err, session.ErrNotFound) {
+		t.Fatalf("other-owner session Find() error = %v", err)
+	}
 	if err := runtime.Exec(`INSERT INTO curu.activities
         (id, owner_id, title) VALUES
         ('33333333-3333-3333-3333-333333333333', ?, 'Runtime activity')`, ownerID).Error; err != nil {
@@ -349,6 +383,9 @@ func TestPostgresMigrationAndRuntimeRestrictions(t *testing.T) {
 	}
 	if err := runtime.Exec("DELETE FROM curu.activities WHERE id = ?", fixtureID).Error; err == nil {
 		t.Fatal("runtime role permanently deleted an activity")
+	}
+	if err := runtime.Exec("DELETE FROM curu.sessions WHERE id = ?", createdSession.ID).Error; err == nil {
+		t.Fatal("runtime role permanently deleted a session")
 	}
 	if err := runtime.Exec("INSERT INTO curu.dataset_initializations (kind) VALUES ('empty')").Error; err == nil {
 		t.Fatal("runtime role changed bootstrap metadata")

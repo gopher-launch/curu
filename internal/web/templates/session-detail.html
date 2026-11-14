@@ -1,0 +1,11 @@
+{{define "session-detail"}}{{template "layout-start" .}}
+  <p><a href="{{if .Archived}}/sessions/archived{{else}}/sessions{{end}}">← {{if .Archived}}Archived{{else}}All{{end}} sessions</a></p>
+  <article data-session-id="{{.ID}}"><h1>{{.Title}}</h1>
+    {{if .Archived}}<p>This session is archived and hidden from current plans.</p><form action="/sessions/{{.ID}}/restore" method="post">{{template "csrf-field" .}}<input type="hidden" name="revision" value="{{.Revision}}"><button type="submit">Restore session</button></form>
+    {{else}}<p><a href="/sessions/{{.ID}}/edit">Edit session</a></p><form action="/sessions/{{.ID}}/archive" method="post">{{template "csrf-field" .}}<input type="hidden" name="revision" value="{{.Revision}}"><button type="submit">Archive session</button></form>{{end}}
+    {{if .Date}}<p><strong>Date:</strong> {{.Date}}</p>{{else}}<p class="muted">No date set.</p>{{end}}
+    {{if .GroupContext}}<p><strong>Group / context:</strong> {{.GroupContext}}</p>{{end}}
+    {{if .Intent}}<p><strong>Intent:</strong> {{.Intent}}</p>{{end}}
+    <section><h2>Blocks</h2>{{if .Blocks}}<ol>{{range .Blocks}}<li><h3>{{.Name}}</h3>{{if .Intent}}<p><strong>Intent:</strong> {{.Intent}}</p>{{end}}{{if .Notes}}<p><strong>Notes:</strong> {{.Notes}}</p>{{end}}{{if .ObservationLens}}<p><strong>Observation lens:</strong> {{.ObservationLens}}</p>{{end}}<p class="muted">No activities are required in this block.</p></li>{{end}}</ol>{{else}}<p>This session has no blocks yet.</p>{{end}}</section>
+  </article>
+{{template "layout-end" .}}{{end}}

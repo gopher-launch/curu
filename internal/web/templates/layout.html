@@ -16,7 +16,7 @@
     input[type="search"] { flex: 1; min-width: 0; padding: .65rem; }
     button { padding: .65rem 1rem; }
     label { display: block; font-weight: 700; margin-top: 1rem; }
-    input[type="text"], input[type="number"], textarea { box-sizing: border-box; padding: .55rem; width: 100%; }
+    input[type="text"], input[type="number"], input[type="date"], textarea { box-sizing: border-box; padding: .55rem; width: 100%; }
     textarea { min-height: 8rem; }
     fieldset { margin-block: 1rem; }
     .save-state { margin-block: 1rem; }
@@ -30,7 +30,7 @@
   </style>
 </head>
 <body>
-  <header><nav aria-label="Primary"><a href="/activities">Curu</a> · <a href="/recovery-drafts">Recovery drafts</a>{{if .LogoutURL}} · <a href="{{.LogoutURL}}">Sign out</a>{{end}}</nav></header>
+  <header><nav aria-label="Primary"><a href="/activities">Curu</a> · <a href="/sessions">Sessions</a> · <a href="/recovery-drafts">Recovery drafts</a>{{if .LogoutURL}} · <a href="{{.LogoutURL}}">Sign out</a>{{end}}</nav></header>
   <aside id="authentication-required" hidden role="alert">
     Your session expired. Your unsaved changes remain on this page.
     {{if .LoginURL}}<a href="{{.LoginURL}}" target="_blank" rel="noopener">Sign in again in a new tab</a>{{else}}Sign in again through the application gateway in a new tab.{{end}}

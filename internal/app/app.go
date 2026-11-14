@@ -14,6 +14,7 @@ import (
 	"github.com/gopher-launch/curu/internal/authorization"
 	"github.com/gopher-launch/curu/internal/config"
 	"github.com/gopher-launch/curu/internal/database"
+	"github.com/gopher-launch/curu/internal/session"
 	"github.com/gopher-launch/curu/internal/web"
 	"gorm.io/gorm"
 )
@@ -55,8 +56,16 @@ func New(cfg config.Config, logger *slog.Logger, db *gorm.DB) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create activity library: %w", err)
 	}
+	sessionRepository, err := database.NewSessionRepository(db)
+	if err != nil {
+		return nil, fmt.Errorf("create session repository: %w", err)
+	}
+	planner, err := session.NewPlanner(sessionRepository, policy)
+	if err != nil {
+		return nil, fmt.Errorf("create session planner: %w", err)
+	}
 	application := &App{config: cfg, logger: logger, auth: authenticator}
-	handler, err := web.NewHandler(logger, func() bool { return application.ready.Load() && application.auth.Ready() }, authenticator, policy, library, web.BrowserConfig{
+	handler, err := web.NewHandler(logger, func() bool { return application.ready.Load() && application.auth.Ready() }, authenticator, policy, library, planner, web.BrowserConfig{
 		PublicOrigin: cfg.Browser.PublicOrigin, TrustedProxyCIDRs: cfg.Browser.TrustedProxyCIDRs,
 		LoginURL: cfg.Browser.LoginURL, LogoutURL: cfg.Browser.LogoutURL,
 	})

@@ -17,6 +17,7 @@ import (
 	"github.com/gopher-launch/curu/internal/initialization"
 	"github.com/gopher-launch/curu/internal/recovery"
 	"github.com/gopher-launch/curu/internal/seed"
+	"github.com/gopher-launch/curu/internal/session"
 )
 
 func TestPostgresBackupRestoreRecovery(t *testing.T) {
@@ -123,6 +124,17 @@ func TestPostgresBackupRestoreRecovery(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("save recovery draft fixture: %v", err)
 	}
+	sessionRepository, err := database.NewSessionRepository(source)
+	if err != nil {
+		t.Fatalf("create session repository: %v", err)
+	}
+	savedSession, err := sessionRepository.Create(ctx, ownerID, session.Input{Title: "Recovery session", GroupContext: "U12", Intent: "Support", Blocks: []session.BlockInput{{Name: "Arrival", Notes: "Choose freely", ObservationLens: "Scanning"}}})
+	if err != nil {
+		t.Fatalf("save recovery session fixture: %v", err)
+	}
+	if _, err := sessionRepository.Archive(ctx, ownerID, savedSession.ID, savedSession.Revision, true); err != nil {
+		t.Fatalf("archive recovery session fixture: %v", err)
+	}
 	expected, err := recovery.Capture(ctx, source)
 	if err != nil {
 		t.Fatalf("capture source recovery manifest: %v", err)
@@ -133,6 +145,9 @@ func TestPostgresBackupRestoreRecovery(t *testing.T) {
 	if expected.Activities != seed.ExpectedActivities || expected.ActivityProgressions != seed.ExpectedProgressions ||
 		expected.ActivityRecoveryDrafts != 1 || expected.DatasetInitializations != 1 || expected.ArchivedActivities != 1 || expected.ActivityOwners != 1 {
 		t.Fatalf("source manifest = %+v, want complete edited seed fixture", expected)
+	}
+	if expected.Sessions != 1 || expected.ArchivedSessions != 1 || expected.SessionOwners != 1 || expected.SessionBlocks != 1 {
+		t.Fatalf("source session manifest = %+v", expected)
 	}
 
 	archive := filepath.Join(t.TempDir(), "curu.dump")
