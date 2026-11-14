@@ -34,6 +34,7 @@ type sessionFormData struct {
 	pageData
 	Heading, Action, SaveLabel, Status, ErrorSummary, ID, Title, Date, GroupContext, Intent, Revision string
 	Conflict                                                                                          bool
+	CurrentURL                                                                                        string
 	Blocks                                                                                            []sessionBlockFormView
 }
 
@@ -183,9 +184,17 @@ func (h *handler) updateSession(w http.ResponseWriter, r *http.Request) {
 		h.renderStatus(w, "session-form", data, http.StatusUnprocessableEntity)
 		return
 	}
+	if errors.Is(err, session.ErrArchivedConflict) {
+		data.ErrorSummary = "This session was archived after you opened the editor. Your submitted session and blocks remain below. Open the archived session in a new tab before deciding what to copy."
+		data.Conflict = true
+		data.CurrentURL = "/sessions/" + id + "/archived"
+		h.renderStatus(w, "session-form", data, http.StatusConflict)
+		return
+	}
 	if errors.Is(err, session.ErrConflict) {
 		data.ErrorSummary = "A newer revision exists. Your submitted session and blocks remain below. Open the latest session in a new tab before deciding what to copy."
 		data.Conflict = true
+		data.CurrentURL = "/sessions/" + id + "/edit"
 		h.renderStatus(w, "session-form", data, http.StatusConflict)
 		return
 	}

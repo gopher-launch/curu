@@ -4,6 +4,7 @@ package session
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -18,9 +19,10 @@ const (
 )
 
 var (
-	ErrNotFound     = errors.New("session not found")
-	ErrInvalidInput = errors.New("invalid session input")
-	ErrConflict     = errors.New("session revision conflict")
+	ErrNotFound         = errors.New("session not found")
+	ErrInvalidInput     = errors.New("invalid session input")
+	ErrConflict         = errors.New("session revision conflict")
+	ErrArchivedConflict = fmt.Errorf("%w: session was archived", ErrConflict)
 )
 
 type Summary struct {

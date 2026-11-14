@@ -83,3 +83,9 @@ func TestArchiveRequiresPositiveRevision(t *testing.T) {
 		t.Fatalf("Archive() error = %v", err)
 	}
 }
+
+func TestArchivedConflictIsAStaleConflict(t *testing.T) {
+	if !errors.Is(ErrArchivedConflict, ErrConflict) {
+		t.Fatal("ErrArchivedConflict does not preserve the stale-conflict classification")
+	}
+}

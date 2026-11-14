@@ -354,6 +354,13 @@ func TestPostgresMigrationAndRuntimeRestrictions(t *testing.T) {
 	if err != nil || !archivedSession.Archived || len(archivedSession.Blocks) != 2 {
 		t.Fatalf("session Archive() = %+v, error = %v", archivedSession, err)
 	}
+	if _, err := sessions.Update(ctx, ownerID, createdSession.ID, currentSession.Revision, session.Input{Title: "Submitted after archive", Blocks: []session.BlockInput{{Name: "Preserved block"}}}); !errors.Is(err, session.ErrArchivedConflict) || !errors.Is(err, session.ErrConflict) {
+		t.Fatalf("session Update() after concurrent archive error = %v, want archived conflict", err)
+	}
+	archivedTruth, err := sessions.Find(ctx, ownerID, createdSession.ID, true)
+	if err != nil || archivedTruth.Title != "Reopened plan" || len(archivedTruth.Blocks) != 2 {
+		t.Fatalf("archived session after stale update = %+v, error = %v", archivedTruth, err)
+	}
 	if currentItems, err := sessions.List(ctx, ownerID, false); err != nil || len(currentItems) != 0 {
 		t.Fatalf("current sessions after archive = %+v, error = %v", currentItems, err)
 	}
@@ -363,6 +370,12 @@ func TestPostgresMigrationAndRuntimeRestrictions(t *testing.T) {
 	}
 	if _, err := sessions.Find(ctx, "55555555-5555-4555-8555-555555555555", createdSession.ID, false); !errors.Is(err, session.ErrNotFound) {
 		t.Fatalf("other-owner session Find() error = %v", err)
+	}
+	if _, err := sessions.Update(ctx, "55555555-5555-4555-8555-555555555555", createdSession.ID, restoredSession.Revision, session.Input{Title: "Other owner"}); !errors.Is(err, session.ErrNotFound) {
+		t.Fatalf("other-owner session Update() error = %v, want not found", err)
+	}
+	if _, err := sessions.Update(ctx, ownerID, "66666666-6666-4666-8666-666666666666", 1, session.Input{Title: "Missing"}); !errors.Is(err, session.ErrNotFound) {
+		t.Fatalf("missing session Update() error = %v, want not found", err)
 	}
 	if err := runtime.Exec(`INSERT INTO curu.activities
         (id, owner_id, title) VALUES

@@ -93,7 +93,7 @@ func (r *SessionRepository) Update(ctx context.Context, owner, id string, revisi
 			return fmt.Errorf("update session: %w", result.Error)
 		}
 		if result.RowsAffected == 0 {
-			return resolveSessionChange(tx, owner, id, false)
+			return resolveSessionUpdate(tx, owner, id)
 		}
 		if err := tx.Exec("DELETE FROM curu.session_blocks WHERE session_id = ?", id).Error; err != nil {
 			return fmt.Errorf("replace session blocks: %w", err)
@@ -105,6 +105,27 @@ func (r *SessionRepository) Update(ctx context.Context, owner, id string, revisi
 	}
 	return r.Find(ctx, owner, id, false)
 }
+
+func resolveSessionUpdate(db *gorm.DB, owner, id string) error {
+	var state struct {
+		Archived bool
+	}
+	err := db.Table("curu.sessions").
+		Select("archived_at IS NOT NULL AS archived").
+		Where("owner_id = ? AND id = ?", owner, id).
+		Take(&state).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return session.ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("resolve session update: %w", err)
+	}
+	if state.Archived {
+		return session.ErrArchivedConflict
+	}
+	return session.ErrConflict
+}
+
 func (r *SessionRepository) Archive(ctx context.Context, owner, id string, revision int64, archived bool) (session.Session, error) {
 	predicate := "archived_at IS NULL"
 	value := any(time.Now().UTC())

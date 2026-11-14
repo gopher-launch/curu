@@ -156,6 +156,20 @@ func TestSessionCreateEditConflictPreservesCompleteSubmission(t *testing.T) {
 			t.Fatalf("conflict omitted %q: status %d body %q", wanted, stale.Code, body)
 		}
 	}
+	planner.err = session.ErrArchivedConflict
+	archivedConflict := httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodPost, "/sessions/"+id, strings.NewReader(values))
+	request.Header.Set("Authorization", "Bearer owner")
+	request.Header.Set("Origin", "https://curu.example")
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.AddCookie(cookie)
+	handler.ServeHTTP(archivedConflict, request)
+	body = archivedConflict.Body.String()
+	for _, wanted := range []string{"Future session", "U12", "Arrival", "Choose freely", "Scanning", "was archived after you opened", `href="/sessions/` + id + `/archived"`} {
+		if archivedConflict.Code != http.StatusConflict || !strings.Contains(body, wanted) {
+			t.Fatalf("archived conflict omitted %q: status %d body %q", wanted, archivedConflict.Code, body)
+		}
+	}
 }
 
 func TestSessionDetailAllowsBlocksWithoutActivitiesAndArchiveLifecycle(t *testing.T) {
