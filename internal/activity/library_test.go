@@ -12,10 +12,48 @@ import (
 const testOwnerID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 
 type fakeStore struct {
-	listOwner, search string
-	findOwner, findID string
-	items             []Summary
-	item              Activity
+	listOwner, search        string
+	findOwner, findID        string
+	items                    []Summary
+	item                     Activity
+	createInput, updateInput Input
+	updateRevision           int64
+}
+
+func (s *fakeStore) Create(_ context.Context, _ string, input Input) (Activity, error) {
+	s.createInput = input
+	return s.item, nil
+}
+
+func (s *fakeStore) Update(_ context.Context, _ string, _ string, revision int64, input Input) (Activity, error) {
+	s.updateRevision, s.updateInput = revision, input
+	return s.item, nil
+}
+
+func TestLibraryCreateValidatesAndNormalizesEditableContent(t *testing.T) {
+	store := &fakeStore{item: Activity{ID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", OwnerID: testOwnerID}}
+	library, principal := newTestLibrary(t, store)
+	duration := 90
+	_, err := library.Create(context.Background(), principal, Input{Title: "  Passing  ", Tags: []string{" Handling ", "handling"}, Progressions: []ProgressionInput{{ContentMarkdown: "Harder"}}, DurationSeconds: &duration})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if store.createInput.Title != "Passing" || len(store.createInput.Tags) != 1 || store.createInput.Tags[0] != "Handling" {
+		t.Fatalf("Create() normalized input = %+v", store.createInput)
+	}
+	_, err = library.Create(context.Background(), principal, Input{Title: ""})
+	if !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("Create() invalid error = %v", err)
+	}
+}
+
+func TestLibraryUpdateCarriesExpectedRevisionAndStableID(t *testing.T) {
+	store := &fakeStore{item: Activity{ID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", OwnerID: testOwnerID}}
+	library, principal := newTestLibrary(t, store)
+	_, err := library.Update(context.Background(), principal, "BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB", 7, Input{Title: "Renamed"})
+	if err != nil || store.updateRevision != 7 || store.updateInput.Title != "Renamed" {
+		t.Fatalf("Update() revision/input/error = %d/%+v/%v", store.updateRevision, store.updateInput, err)
+	}
 }
 
 func (s *fakeStore) ListCurrent(_ context.Context, owner, search string) ([]Summary, error) {

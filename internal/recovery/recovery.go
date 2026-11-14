@@ -85,7 +85,7 @@ func captureSnapshot(ctx context.Context, db *gorm.DB) (Manifest, error) {
 			to_char(initialized_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))::text AS value
 			FROM curu.dataset_initializations ORDER BY singleton_id`},
 		{"activities", `SELECT jsonb_build_array(id, owner_id, source_identity, title, summary, content_markdown,
-			duration_seconds, revision,
+			duration_seconds, phase, theme, tags, revision,
 			to_char(archived_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
 			to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
 			to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))::text AS value

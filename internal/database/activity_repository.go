@@ -2,11 +2,14 @@ package database
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/gopher-launch/curu/internal/activity"
+	"github.com/lib/pq"
 	"gorm.io/gorm"
 )
 
@@ -28,6 +31,10 @@ type activityRow struct {
 	Summary         string
 	ContentMarkdown string
 	DurationSeconds *int
+	Phase           string
+	Theme           string
+	Tags            pq.StringArray `gorm:"type:text[]"`
+	Revision        int64
 	Progressions    []progressionRow `gorm:"foreignKey:ActivityID"`
 }
 
@@ -90,6 +97,7 @@ func (r *ActivityRepository) FindCurrent(ctx context.Context, ownerID, id string
 	item := activity.Activity{
 		ID: row.ID, OwnerID: row.OwnerID, Title: row.Title, Summary: row.Summary,
 		ContentMarkdown: row.ContentMarkdown, DurationSeconds: row.DurationSeconds,
+		Phase: row.Phase, Theme: row.Theme, Tags: []string(row.Tags), Revision: row.Revision,
 		Progressions: make([]activity.Progression, len(row.Progressions)),
 	}
 	for index, progression := range row.Progressions {
@@ -99,6 +107,83 @@ func (r *ActivityRepository) FindCurrent(ctx context.Context, ownerID, id string
 		}
 	}
 	return item, nil
+}
+
+func (r *ActivityRepository) Create(ctx context.Context, ownerID string, input activity.Input) (activity.Activity, error) {
+	id, err := newUUID()
+	if err != nil {
+		return activity.Activity{}, fmt.Errorf("create activity identity: %w", err)
+	}
+	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`INSERT INTO curu.activities
+			(id, owner_id, title, summary, content_markdown, duration_seconds, phase, theme, tags)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, ownerID, input.Title, input.Summary,
+			input.ContentMarkdown, input.DurationSeconds, input.Phase, input.Theme, pq.Array(input.Tags)).Error; err != nil {
+			return fmt.Errorf("insert activity: %w", err)
+		}
+		return replaceProgressions(tx, id, input.Progressions)
+	})
+	if err != nil {
+		return activity.Activity{}, err
+	}
+	return r.FindCurrent(ctx, ownerID, id)
+}
+
+func (r *ActivityRepository) Update(ctx context.Context, ownerID, id string, expectedRevision int64, input activity.Input) (activity.Activity, error) {
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		result := tx.Exec(`UPDATE curu.activities SET title = ?, summary = ?, content_markdown = ?,
+			duration_seconds = ?, phase = ?, theme = ?, tags = ?, revision = revision + 1, updated_at = ?
+			WHERE id = ? AND owner_id = ? AND archived_at IS NULL AND revision = ?`, input.Title, input.Summary,
+			input.ContentMarkdown, input.DurationSeconds, input.Phase, input.Theme, pq.Array(input.Tags), time.Now().UTC(), id, ownerID, expectedRevision)
+		if result.Error != nil {
+			return fmt.Errorf("update activity: %w", result.Error)
+		}
+		if result.RowsAffected == 0 {
+			var count int64
+			if err := tx.Table("curu.activities").Where("id = ? AND owner_id = ? AND archived_at IS NULL", id, ownerID).Count(&count).Error; err != nil {
+				return fmt.Errorf("resolve activity update: %w", err)
+			}
+			if count == 0 {
+				return activity.ErrNotFound
+			}
+			return activity.ErrConflict
+		}
+		if err := tx.Exec("DELETE FROM curu.activity_progressions WHERE activity_id = ?", id).Error; err != nil {
+			return fmt.Errorf("replace activity progressions: %w", err)
+		}
+		return replaceProgressions(tx, id, input.Progressions)
+	})
+	if err != nil {
+		return activity.Activity{}, err
+	}
+	return r.FindCurrent(ctx, ownerID, id)
+}
+
+func replaceProgressions(tx *gorm.DB, activityID string, inputs []activity.ProgressionInput) error {
+	for position, input := range inputs {
+		id, err := newUUID()
+		if err != nil {
+			return fmt.Errorf("create progression identity: %w", err)
+		}
+		if err := tx.Exec(`INSERT INTO curu.activity_progressions
+			(id, activity_id, position, title, content_markdown, duration_seconds)
+			VALUES (?, ?, ?, ?, ?, ?)`, id, activityID, position, input.Title,
+			input.ContentMarkdown, input.DurationSeconds).Error; err != nil {
+			return fmt.Errorf("insert progression %d: %w", position, err)
+		}
+	}
+	return nil
+}
+
+func newUUID() (string, error) {
+	var value [16]byte
+	if _, err := rand.Read(value[:]); err != nil {
+		return "", err
+	}
+	value[6] = (value[6] & 0x0f) | 0x40
+	value[8] = (value[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		value[0:4], value[4:6], value[6:8], value[8:10], value[10:16]), nil
 }
 
 func escapeLike(value string) string {

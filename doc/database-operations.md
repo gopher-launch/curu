@@ -35,13 +35,13 @@ go run ./cmd/curu-migrate
 
 The application image also includes `/curu-migrate`; a deployment can run that binary as a separate one-shot migration process by overriding the image entrypoint and supplying the same two settings. Do not give the ordinary `/curu` server process the migration-owner URL.
 
-The command takes a PostgreSQL advisory lock, verifies the checksum and order of existing migration history, applies pending migrations transactionally, reconciles the documented runtime grants, and validates the effective runtime role boundary. Repeating it at the current version leaves schema and content unchanged while rechecking grants and restrictions. This build supports schema version 2.
+The command takes a PostgreSQL advisory lock, verifies the checksum and order of existing migration history, applies pending migrations transactionally, reconciles the documented runtime grants, and validates the effective runtime role boundary. Repeating it at the current version leaves schema and content unchanged while rechecking grants and restrictions. This build supports schema version 3.
 
-The initial schema contains owner-scoped activities, their ordered progressions, dataset-initialization metadata, archive timestamps, and positive revision tokens. Migration never seeds or replaces activities.
+The schema contains owner-scoped activities, optional phase/theme/tags classification, ordered progressions, dataset-initialization metadata, archive timestamps, and positive revision tokens. Migration never seeds or replaces activities.
 
 ## Backup and restore recovery
 
-The external data service owns backup scheduling, retention, protected storage, and restore execution. Curu supports recovery when the restored database has the exact migration history required by the application build. This build requires schema version 2; its application dataset consists of migration history, dataset-initialization metadata, activities (including owner, revision, archive, timestamps, and all coaching content), and ordered activity progressions. Later schema-owning tasks must extend the recovery manifest and disposable fixture for their tables.
+The external data service owns backup scheduling, retention, protected storage, and restore execution. Curu supports recovery when the restored database has the exact migration history required by the application build. This build requires schema version 3; its application dataset consists of migration history, dataset-initialization metadata, activities (including owner, revision, archive, timestamps, optional classification, and all coaching content), and ordered activity progressions. Later schema-owning tasks must extend the recovery manifest and disposable fixture for their tables.
 
 Before a backup exercise, capture an application manifest using a read-only runtime connection. The command uses one read-only repeatable-read transaction, so its own counts and digest represent a consistent state. Application writes must still be quiesced between that capture and the backup, or both must come from the same fixed provider snapshot clone. The command emits counts and a SHA-256 digest, not content, owner identifiers, or credentials:
 

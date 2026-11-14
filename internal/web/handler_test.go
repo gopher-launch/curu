@@ -179,7 +179,7 @@ func TestProductLikeMethodsAreUnavailable(t *testing.T) {
 	handler := newTestHandler(t, ready.Load)
 	cookie := csrfCookie(t, handler)
 	response := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/activities", strings.NewReader("private=data"))
+	request := httptest.NewRequest(http.MethodPost, "/sessions", strings.NewReader("private=data"))
 	request.Header.Set("Authorization", "Bearer owner")
 	request.Header.Set("Origin", "https://curu.example")
 	request.Header.Set("X-CSRF-Token", cookie.Value)
@@ -187,6 +187,82 @@ func TestProductLikeMethodsAreUnavailable(t *testing.T) {
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusMethodNotAllowed {
 		t.Errorf("status = %d, want %d", response.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+func TestActivityCreateExplicitSaveAndEditReopen(t *testing.T) {
+	t.Parallel()
+	library := &fakeActivityLibrary{item: activity.Activity{ID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", OwnerID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", Title: "Renamed", Revision: 1}}
+	handler := newTestHandlerWithLibrary(t, library)
+	cookie := csrfCookie(t, handler)
+	form := "csrf_token=" + cookie.Value + "&title=Renamed&summary=Useful&duration_seconds=95&phase=Warmup&theme=Passing&tags=ball%2C+handling&content_markdown=%23%23+Setup&progression_title=Harder&progression_content_markdown=Add+pressure&progression_duration_seconds=30"
+	request := httptest.NewRequest(http.MethodPost, "/activities", strings.NewReader(form))
+	request.Header.Set("Authorization", "Bearer owner")
+	request.Header.Set("Origin", "https://curu.example")
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.AddCookie(cookie)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/activities/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/edit?saved=1" {
+		t.Fatalf("create response = %d, location %q, body %q", response.Code, response.Header().Get("Location"), response.Body.String())
+	}
+	if library.input.Title != "Renamed" || library.input.DurationSeconds == nil || *library.input.DurationSeconds != 95 || len(library.input.Progressions) != 1 || len(library.input.Tags) != 2 {
+		t.Fatalf("create input = %+v", library.input)
+	}
+
+	reopen := httptest.NewRequest(http.MethodGet, response.Header().Get("Location"), nil)
+	reopen.Header.Set("Authorization", "Bearer owner")
+	reopened := httptest.NewRecorder()
+	handler.ServeHTTP(reopened, reopen)
+	for _, wanted := range []string{"Saved.", `value="Renamed"`, `name="revision" value="1"`, "Unsaved changes."} {
+		if !strings.Contains(reopened.Body.String(), wanted) {
+			t.Errorf("reopened editor omitted %q: %q", wanted, reopened.Body.String())
+		}
+	}
+}
+
+func TestActivityValidationAndConflictPreserveSubmittedValues(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name        string
+		create      bool
+		err         error
+		status      int
+		path, extra string
+	}{
+		{name: "validation", create: true, err: activity.ValidationErrors{"title": "required"}, status: http.StatusUnprocessableEntity, path: "/activities"},
+		{name: "stale update", err: activity.ErrConflict, status: http.StatusConflict, path: "/activities/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", extra: "&revision=3"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			library := &fakeActivityLibrary{item: activity.Activity{ID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"}}
+			if test.create {
+				library.createErr = test.err
+			} else {
+				library.updateErr = test.err
+			}
+			handler := newTestHandlerWithLibrary(t, library)
+			cookie := csrfCookie(t, handler)
+			form := "csrf_token=" + cookie.Value + "&title=Submitted&summary=%3Cscript%3Eprivate%3C%2Fscript%3E&duration_seconds=&content_markdown=My+unsaved+notes" + test.extra
+			request := httptest.NewRequest(http.MethodPost, test.path, strings.NewReader(form))
+			request.Header.Set("Authorization", "Bearer owner")
+			request.Header.Set("Origin", "https://curu.example")
+			request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			request.AddCookie(cookie)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != test.status {
+				t.Fatalf("status = %d, want %d; body %q", response.Code, test.status, response.Body.String())
+			}
+			body := response.Body.String()
+			for _, wanted := range []string{"Submitted", "My unsaved notes", "&lt;script&gt;private&lt;/script&gt;"} {
+				if !strings.Contains(body, wanted) {
+					t.Errorf("preserved editor omitted %q: %q", wanted, body)
+				}
+			}
+			if strings.Contains(body, "<script>private</script>") {
+				t.Errorf("preserved editor rendered unsafe input: %q", body)
+			}
+		})
 	}
 }
 
@@ -491,13 +567,34 @@ func (fakeAuthenticator) AuthenticateRequest(_ context.Context, values []string)
 }
 
 type fakeActivityLibrary struct {
-	items     []activity.Summary
-	item      activity.Activity
-	err       error
-	principal authorization.Principal
-	search    string
-	id        string
-	calls     int
+	items                []activity.Summary
+	item                 activity.Activity
+	err                  error
+	principal            authorization.Principal
+	search               string
+	id                   string
+	calls                int
+	input                activity.Input
+	revision             int64
+	createErr, updateErr error
+}
+
+func (l *fakeActivityLibrary) Create(_ context.Context, principal authorization.Principal, input activity.Input) (activity.Activity, error) {
+	l.calls++
+	l.principal, l.input = principal, input
+	if l.createErr != nil {
+		return activity.Activity{}, l.createErr
+	}
+	return l.item, nil
+}
+
+func (l *fakeActivityLibrary) Update(_ context.Context, principal authorization.Principal, id string, revision int64, input activity.Input) (activity.Activity, error) {
+	l.calls++
+	l.principal, l.id, l.revision, l.input = principal, id, revision, input
+	if l.updateErr != nil {
+		return activity.Activity{}, l.updateErr
+	}
+	return l.item, nil
 }
 
 func (l *fakeActivityLibrary) List(_ context.Context, principal authorization.Principal, search string) ([]activity.Summary, error) {

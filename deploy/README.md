@@ -398,7 +398,7 @@ deploy/scripts/verify-data-lifecycle-disposable.sh
 
 The check builds and loads the selected Curu image, holds runtime off while
 Helm sequences preparation, migration, narrow grants, and seeded initialization,
-then verifies schema version 2 and the 44-activity/110-progression dataset. It
+then verifies schema version 3 and the 44-activity/110-progression dataset. It
 also exercises the exact no-op retry, conflicting-choice refusal, missing and
 incompatible schema rejection, initializer privilege scope, bounded hook
 failure, and operation-free runtime launch. It never targets `curu-local`,

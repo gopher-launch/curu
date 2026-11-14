@@ -2,8 +2,12 @@
   <p><a href="/activities">← All activities</a></p>
   <article data-activity-id="{{.ID}}">
     <h1>{{.Title}}</h1>
+    <p><a href="/activities/{{.ID}}/edit">Edit activity</a></p>
     {{if .Summary}}<p>{{.Summary}}</p>{{end}}
     {{if .Duration}}<p class="muted">Recommended duration: {{.Duration}}</p>{{end}}
+    {{if .Phase}}<p><strong>Phase:</strong> {{.Phase}}</p>{{end}}
+    {{if .Theme}}<p><strong>Theme:</strong> {{.Theme}}</p>{{end}}
+    {{if .Tags}}<p><strong>Tags:</strong> {{range $index, $tag := .Tags}}{{if $index}}, {{end}}{{$tag}}{{end}}</p>{{end}}
     <div class="markdown">{{.Content}}</div>
     {{if .Progressions}}
       <section aria-labelledby="progressions-heading">

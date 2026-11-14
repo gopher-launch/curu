@@ -77,7 +77,7 @@
 - Safe surface: the default listener is loopback-only. CURU-002 introduced no product-data route; unknown safe routes use the shared escaped HTML layout and unsafe or unimplemented routes remain unavailable.
 - Contributor interface: [`README.md`](README.md) defines the executable `go build ./cmd/curu`, `go test ./...`, and `go run ./cmd/curu` commands. [`doc/configuration.md`](doc/configuration.md) defines the implemented runtime settings.
 - Container interface: [`Dockerfile`](Dockerfile) builds the server and separate migration, initialization, and recovery-validation executables into a minimal image with TLS root certificates; all run as numeric non-root user `65532:65532`, and non-loopback binding must be selected explicitly by the deployment.
-- Subsequent delivery: CURU-015, CURU-020, and CURU-016 added authentication, single-owner authorization, and browser protections around this runtime shell. CURU-005 adds read-only activity library pages; mutation, session, and template behavior remains assigned to later roadmap tasks.
+- Subsequent delivery: CURU-015, CURU-020, and CURU-016 added authentication, single-owner authorization, and browser protections around this runtime shell. CURU-005 added read-only activity library pages and CURU-017 added activity creation/editing; archive/recovery, session, and template behavior remains assigned to later roadmap tasks.
 
 ## PostgreSQL migration and compatibility boundary
 
@@ -105,7 +105,7 @@
 - Safe repeat behavior: only an exact completion produces an `already_initialized` no-op. Seed retries must match the recorded seed identity/version and the owner established by all deterministic seeded activity rows. A different owner, a different recorded choice, missing seeded ownership evidence, or unrecorded existing activity is refused. Retries and ordinary server startup never synchronize or replace edited content.
 - Operator safety: [`doc/database-operations.md`](doc/database-operations.md) documents narrow initialization privileges, exact commands, disposable PostgreSQL verification, and a separate reset procedure guarded by the exact isolated database name. No web route or infrastructure lifecycle behavior is added.
 - Verification: local tests cover completion-record matching; opt-in disposable PostgreSQL checks cover fresh seed and empty initialization, same-owner no-op and different-owner refusal, concurrent invocation, induced partial failure rollback, non-empty refusal, exact 44/110 counts, edit preservation, and read-only startup compatibility.
-- Subsequent delivery: CURU-020 adds application authorization without changing initialization. CURU-013 adds backup/restore evidence and CURU-005 adds read-only library routes; later activity mutation and session behavior remain assigned to their roadmap tasks.
+- Subsequent delivery: CURU-020 added application authorization without changing initialization. CURU-013 added backup/restore evidence, CURU-005 added read-only library routes, and CURU-017 added ordinary activity saves without turning them into seed synchronization.
 
 ## Trusted JWT authentication
 
@@ -138,7 +138,7 @@
 ## Application data recovery evidence
 
 - Delivery: CURU-013
-- Recovery manifest: `cmd/curu-recovery-check` performs the application read-only compatibility check and emits counts plus a SHA-256 digest over every delivered schema-version-2 application field. It can compare an isolated restored database with a manifest captured from the fixed source state without exposing activity content, owner identifiers, or credentials.
+- Recovery manifest: `cmd/curu-recovery-check` performs the application read-only compatibility check and emits counts plus a SHA-256 digest over every application field. CURU-017 extends the current version-3 digest with optional classification. The command can compare an isolated restored database with a manifest captured from the fixed source state without exposing activity content, owner identifiers, or credentials.
 - Included data: recovery evidence covers migration history, seeded or intentionally empty initialization metadata, owner-scoped activities including edited content/revisions/archive state/timestamps, and ordered progressions. Later schema tasks must extend the manifest and restore fixture for their own tables.
 - External boundary: [`doc/database-operations.md`](doc/database-operations.md) assigns scheduling, retention, protected backup storage, target provisioning, and restore execution to the data service. Database credentials, gateway sessions, JWT/JWKS trust, and deployment secrets are supplied anew; the stable internal owner binding must remain consistent with restored content.
 - Verification: the opt-in disposable PostgreSQL exercise creates distinct source and restore databases, captures an edited and archived 44-activity/110-progression seeded fixture, uses `pg_dump`/`pg_restore`, reconciles restricted runtime grants, and compares the restored manifest through the runtime role. It never targets retained data or provisions cloud infrastructure.
@@ -151,3 +151,12 @@
 - Complete details: detail pages include summary and recommended duration when present, the full safely rendered activity Markdown, and ordered progressions with their titles, content, and optional durations. Empty-library and zero-match states are distinct.
 - Boundaries: the application use case rechecks read authorization, and PostgreSQL queries scope current rows to the exact internal owner. Missing, archived, malformed, guessed, and other-owner IDs do not disclose an activity. Shared JWT, owner, CSRF/browser, no-store, escaped-template, and safe-Markdown protections remain in force.
 - Verification: focused use-case and handler tests cover stable IDs, known content, search input, empty states, complete safe detail rendering, and denied access. The disposable PostgreSQL check covers title/text/progression search, literal wildcard handling, current-row loading, ordered progressions, owner isolation, and runtime-role restrictions.
+
+## Live activity authoring
+
+- Delivery: CURU-017
+- Explicit saves: the authenticated owner can create activities and reopen or edit them through server-rendered forms. Title, summary, optional integer-second recommendation, optional phase/theme/tags, labeled Markdown coaching content, and ordered editable progressions are persisted; renaming retains the stable activity UUID and seed provenance is never synchronized over user changes.
+- Feedback and validation: editors expose saved and unsaved state, bound text/count/duration inputs, and preserve escaped submitted values after validation errors. Detail rendering continues through the bounded safe-Markdown boundary.
+- Concurrency: each edit submits the expected positive revision. The repository updates the owner-scoped current activity with a single compare-and-update and replaces its progressions in the same transaction. A stale save returns a conflict, leaves authoritative content unchanged, and keeps the submitted form visible; durable owner-scoped recovery drafts remain assigned to CURU-022.
+- Data lifecycle: explicit migration 3 adds optional classification fields without replacing existing content, the restricted runtime role retains only table DML authority, and the content-free recovery digest includes the new fields.
+- Verification: focused domain and handler tests cover create/edit/reopen, saved/unsaved/error states, escaped validation recovery, stable IDs, and stale submitted-form preservation. The opt-in disposable PostgreSQL fixture covers persisted classification/progressions, rename stability, revision advancement, and rejection of a stale overwrite.

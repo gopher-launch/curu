@@ -1,6 +1,6 @@
 # Runtime configuration
 
-The Curu server reads runtime settings from environment variables and rejects malformed values before listening. It exposes protected read-only activity library routes and requires a migrated compatible database.
+The Curu server reads runtime settings from environment variables and rejects malformed values before listening. It exposes protected activity library browsing and create/edit routes and requires a migrated compatible database.
 
 | Variable | Default | Contract |
 | --- | --- | --- |

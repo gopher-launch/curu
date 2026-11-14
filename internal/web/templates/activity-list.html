@@ -1,5 +1,6 @@
 {{define "activity-list"}}{{template "layout-start" .}}
   <h1>Activities</h1>
+  <p><a href="/activities/new">Create activity</a></p>
   <form action="/activities" method="get" role="search">
     <label for="activity-search">Search activities</label>
     <input id="activity-search" name="q" type="search" maxlength="200" value="{{.Search}}" placeholder="Title, instructions, or progression">
@@ -19,6 +20,6 @@
   {{else if .Search}}
     <p>No current activities match this search. Try a different word or <a href="/activities">show the whole library</a>.</p>
   {{else}}
-    <p>The current activity library is empty. Activities can be added when library authoring is available.</p>
+    <p>The current activity library is empty. <a href="/activities/new">Create the first activity</a>.</p>
   {{end}}
 {{template "layout-end" .}}{{end}}

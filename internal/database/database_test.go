@@ -247,6 +247,27 @@ func TestPostgresMigrationAndRuntimeRestrictions(t *testing.T) {
 	if seededDetail.Title != library.Activities[0].Title || len(seededDetail.Progressions) != len(library.Activities[0].Progressions) {
 		t.Fatalf("FindCurrent() detail = %+v", seededDetail)
 	}
+	created, err := repository.Create(ctx, ownerID, activity.Input{Title: "User activity", Phase: "Warmup", Theme: "Passing", Tags: []string{"ball", "handling"}, Progressions: []activity.ProgressionInput{{Title: "Harder", ContentMarkdown: "Add pressure."}}})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if created.Revision != 1 || created.Phase != "Warmup" || len(created.Tags) != 2 || len(created.Progressions) != 1 {
+		t.Fatalf("Create() result = %+v", created)
+	}
+	updated, err := repository.Update(ctx, ownerID, created.ID, created.Revision, activity.Input{Title: "Renamed activity", Phase: "Main", Tags: []string{"contact"}})
+	if err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	if updated.ID != created.ID || updated.Revision != 2 || updated.Title != "Renamed activity" || len(updated.Progressions) != 0 {
+		t.Fatalf("Update() result = %+v", updated)
+	}
+	if _, err := repository.Update(ctx, ownerID, created.ID, created.Revision, activity.Input{Title: "Stale overwrite"}); !errors.Is(err, activity.ErrConflict) {
+		t.Fatalf("stale Update() error = %v, want conflict", err)
+	}
+	current, err := repository.FindCurrent(ctx, ownerID, created.ID)
+	if err != nil || current.Title != "Renamed activity" || current.Revision != 2 {
+		t.Fatalf("current activity after stale update = %+v, error = %v", current, err)
+	}
 	otherOwner, err := repository.ListCurrent(ctx, ownerID, "Release hands")
 	if err != nil || len(otherOwner) != 0 {
 		t.Fatalf("ListCurrent() other-owner results = %+v, error = %v", otherOwner, err)

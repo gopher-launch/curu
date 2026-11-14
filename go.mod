@@ -4,6 +4,7 @@ go 1.27.0
 
 require (
 	github.com/lestrrat-go/jwx/v3 v3.0.11
+	github.com/lib/pq v1.10.9
 	github.com/yuin/goldmark v1.8.6
 	golang.org/x/net v0.62.0
 	gorm.io/driver/postgres v1.6.3

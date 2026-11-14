@@ -17,7 +17,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-const LatestSchemaVersion = 2
+const LatestSchemaVersion = 3
 
 const migrationLockID int64 = 4392508880345810201
 

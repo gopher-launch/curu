@@ -102,7 +102,8 @@ func TestPostgresBackupRestoreRecovery(t *testing.T) {
 		t.Fatalf("initialize recovery source: %v", err)
 	}
 	if err := source.Exec(`UPDATE curu.activities
-		SET title = 'Recovery exercise edit', revision = revision + 1, updated_at = current_timestamp
+		SET title = 'Recovery exercise edit', phase = 'Warmup', theme = 'Handling', tags = ARRAY['ball', 'contact'],
+			revision = revision + 1, updated_at = current_timestamp
 		WHERE id = ?`, library.Activities[0].ID).Error; err != nil {
 		t.Fatalf("edit recovery source: %v", err)
 	}

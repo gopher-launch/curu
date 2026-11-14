@@ -1,0 +1,63 @@
+{{define "activity-form"}}{{template "layout-start" .}}
+  <p><a href="/activities">← All activities</a></p>
+  <h1>{{.Heading}}</h1>
+  {{if .ErrorSummary}}<p class="error" role="alert">{{.ErrorSummary}}</p>{{end}}
+  <p id="save-state" class="save-state" aria-live="polite">{{if .Status}}{{.Status}}{{else}}No unsaved changes.{{end}}</p>
+  <form action="{{.Action}}" method="post" id="activity-form">
+    {{template "csrf-field" .}}
+    {{if .Revision}}<input type="hidden" name="revision" value="{{.Revision}}">{{end}}
+
+    <label for="title">Title</label>
+    <input id="title" name="title" type="text" required maxlength="200" value="{{.Title}}">
+
+    <label for="summary">Summary</label>
+    <textarea id="summary" name="summary" maxlength="1000">{{.Summary}}</textarea>
+
+    <label for="duration-seconds">Recommended duration (seconds, optional)</label>
+    <input id="duration-seconds" name="duration_seconds" type="number" min="0" max="86400" step="1" value="{{.DurationSeconds}}">
+
+    <fieldset>
+      <legend>Optional classification</legend>
+      <label for="phase">Phase</label>
+      <input id="phase" name="phase" type="text" maxlength="100" value="{{.Phase}}">
+      <label for="theme">Theme</label>
+      <input id="theme" name="theme" type="text" maxlength="100" value="{{.Theme}}">
+      <label for="tags">Tags (comma-separated, up to 10)</label>
+      <input id="tags" name="tags" type="text" value="{{.Tags}}">
+    </fieldset>
+
+    <label for="content-markdown">Coaching content (Markdown)</label>
+    <textarea id="content-markdown" name="content_markdown" maxlength="100000">{{.ContentMarkdown}}</textarea>
+
+    <fieldset>
+      <legend>Progressions</legend>
+      <p class="muted">Edit the existing rows. Leave the final row blank if no additional progression is needed.</p>
+      {{range .Progressions}}
+        <section class="progression-editor">
+          <label>Progression title</label>
+          <input name="progression_title" type="text" maxlength="200" value="{{.Title}}">
+          <label>Progression coaching content (Markdown)</label>
+          <textarea name="progression_content_markdown" maxlength="100000">{{.ContentMarkdown}}</textarea>
+          <label>Progression duration (seconds, optional)</label>
+          <input name="progression_duration_seconds" type="number" min="0" max="86400" step="1" value="{{.DurationSeconds}}">
+        </section>
+      {{end}}
+      <button type="button" id="add-progression">Add progression</button>
+    </fieldset>
+
+    <button type="submit">{{.SaveLabel}}</button>
+  </form>
+  <script>
+    document.getElementById("activity-form").addEventListener("input", function () {
+      document.getElementById("save-state").textContent = "Unsaved changes.";
+    });
+    document.getElementById("add-progression").addEventListener("click", function () {
+      var editors = document.querySelectorAll(".progression-editor");
+      if (editors.length >= 50) return;
+      var copy = editors[editors.length - 1].cloneNode(true);
+      copy.querySelectorAll("input, textarea").forEach(function (field) { field.value = ""; });
+      this.before(copy);
+      document.getElementById("save-state").textContent = "Unsaved changes.";
+    });
+  </script>
+{{template "layout-end" .}}{{end}}

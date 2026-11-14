@@ -119,7 +119,7 @@ admin_psql() {
 
 [[ "$(admin_psql 'SELECT count(*) FROM curu.activities;' curu)" == 44 ]]
 [[ "$(admin_psql 'SELECT count(*) FROM curu.activity_progressions;' curu)" == 110 ]]
-[[ "$(admin_psql 'SELECT count(*) FROM curu.schema_migrations;' curu)" == 2 ]]
+[[ "$(admin_psql 'SELECT count(*) FROM curu.schema_migrations;' curu)" == 3 ]]
 [[ "$(admin_psql "SELECT kind || ':' || seed_identity || ':' || seed_version FROM curu.dataset_initializations;" curu)" == 'seed:curu-coaching-library:1' ]]
 [[ "$(admin_psql "SELECT has_schema_privilege('curu_initializer','curu','USAGE')::int, has_schema_privilege('curu_initializer','curu','CREATE')::int, has_table_privilege('curu_initializer','curu.activities','INSERT')::int, has_table_privilege('curu_initializer','curu.activities','UPDATE')::int, has_table_privilege('curu_initializer','curu.activities','DELETE')::int;" curu)" == '1|0|1|0|0' ]]
 
