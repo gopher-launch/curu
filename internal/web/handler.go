@@ -39,9 +39,13 @@ type requestAuthenticator interface {
 
 type activityLibrary interface {
 	List(context.Context, authorization.Principal, string) ([]activity.Summary, error)
+	ListArchived(context.Context, authorization.Principal, string) ([]activity.Summary, error)
 	Detail(context.Context, authorization.Principal, string) (activity.Activity, error)
+	ArchivedDetail(context.Context, authorization.Principal, string) (activity.Activity, error)
 	Create(context.Context, authorization.Principal, activity.Input) (activity.Activity, error)
 	Update(context.Context, authorization.Principal, string, int64, activity.Input) (activity.Activity, error)
+	Archive(context.Context, authorization.Principal, string, int64) (activity.Activity, error)
+	Restore(context.Context, authorization.Principal, string, int64) (activity.Activity, error)
 }
 
 type principalContextKey struct{}
@@ -80,6 +84,10 @@ func NewHandler(logger *slog.Logger, ready func() bool, authenticator requestAut
 	mux.HandleFunc("GET /health/ready", h.readiness)
 	mux.HandleFunc("GET /{$}", h.activityIndexRedirect)
 	mux.HandleFunc("GET /activities", h.listActivities)
+	mux.HandleFunc("GET /activities/archived", h.listArchivedActivities)
+	mux.HandleFunc("GET /activities/{id}/archived", h.archivedActivityDetail)
+	mux.HandleFunc("POST /activities/{id}/archive", h.archiveActivity)
+	mux.HandleFunc("POST /activities/{id}/restore", h.restoreActivity)
 	mux.HandleFunc("GET /activities/new", h.newActivity)
 	mux.HandleFunc("POST /activities", h.createActivity)
 	mux.HandleFunc("GET /activities/{id}/edit", h.editActivity)
@@ -100,6 +108,7 @@ type activityListData struct {
 	pageData
 	Activities []activitySummaryView
 	Search     string
+	Archived   bool
 }
 
 type activitySummaryView struct {
@@ -127,6 +136,8 @@ type activityDetailData struct {
 	Theme        string
 	Tags         []string
 	Progressions []progressionView
+	Revision     int64
+	Archived     bool
 }
 
 type progressionFormView struct {
@@ -147,6 +158,14 @@ func (h *handler) activityIndexRedirect(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *handler) listActivities(w http.ResponseWriter, r *http.Request) {
+	h.listActivityState(w, r, false)
+}
+
+func (h *handler) listArchivedActivities(w http.ResponseWriter, r *http.Request) {
+	h.listActivityState(w, r, true)
+}
+
+func (h *handler) listActivityState(w http.ResponseWriter, r *http.Request, archived bool) {
 	principal, ok := PrincipalFromContext(r.Context())
 	if !ok {
 		h.deny(w, r, http.StatusForbidden, "authorization_denied")
@@ -157,7 +176,13 @@ func (h *handler) listActivities(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	search := strings.TrimSpace(r.URL.Query().Get("q"))
-	items, err := h.library.List(r.Context(), principal, search)
+	var items []activity.Summary
+	var err error
+	if archived {
+		items, err = h.library.ListArchived(r.Context(), principal, search)
+	} else {
+		items, err = h.library.List(r.Context(), principal, search)
+	}
 	if errors.Is(err, activity.ErrInvalidQuery) {
 		h.rejectInput(w, http.StatusBadRequest)
 		return
@@ -177,18 +202,36 @@ func (h *handler) listActivities(w http.ResponseWriter, r *http.Request) {
 			Duration: formatDuration(item.DurationSeconds),
 		}
 	}
+	title := "Activities · Curu"
+	if archived {
+		title = "Archived activities · Curu"
+	}
 	h.render(w, "activity-list", activityListData{
-		pageData: h.page(r, "Activities · Curu"), Activities: views, Search: search,
+		pageData: h.page(r, title), Activities: views, Search: search, Archived: archived,
 	})
 }
 
 func (h *handler) activityDetail(w http.ResponseWriter, r *http.Request) {
+	h.activityDetailState(w, r, false)
+}
+
+func (h *handler) archivedActivityDetail(w http.ResponseWriter, r *http.Request) {
+	h.activityDetailState(w, r, true)
+}
+
+func (h *handler) activityDetailState(w http.ResponseWriter, r *http.Request, archived bool) {
 	principal, ok := PrincipalFromContext(r.Context())
 	if !ok {
 		h.deny(w, r, http.StatusForbidden, "authorization_denied")
 		return
 	}
-	item, err := h.library.Detail(r.Context(), principal, r.PathValue("id"))
+	var item activity.Activity
+	var err error
+	if archived {
+		item, err = h.library.ArchivedDetail(r.Context(), principal, r.PathValue("id"))
+	} else {
+		item, err = h.library.Detail(r.Context(), principal, r.PathValue("id"))
+	}
 	if errors.Is(err, activity.ErrNotFound) {
 		h.notFound(w, r)
 		return
@@ -222,8 +265,86 @@ func (h *handler) activityDetail(w http.ResponseWriter, r *http.Request) {
 		pageData: h.page(r, item.Title+" · Curu"), ID: item.ID, Title: item.Title,
 		Summary: item.Summary, Content: content, Duration: formatDuration(item.DurationSeconds),
 		Phase: item.Phase, Theme: item.Theme, Tags: item.Tags,
-		Progressions: progressions,
+		Progressions: progressions, Revision: item.Revision, Archived: archived,
 	})
+}
+
+func (h *handler) archiveActivity(w http.ResponseWriter, r *http.Request) {
+	h.changeArchiveState(w, r, true)
+}
+
+func (h *handler) restoreActivity(w http.ResponseWriter, r *http.Request) {
+	h.changeArchiveState(w, r, false)
+}
+
+func (h *handler) changeArchiveState(w http.ResponseWriter, r *http.Request, archive bool) {
+	principal, ok := PrincipalFromContext(r.Context())
+	if !ok {
+		h.deny(w, r, http.StatusForbidden, "authorization_denied")
+		return
+	}
+	revision, ok := h.parseActionRevision(w, r)
+	if !ok {
+		return
+	}
+	id := r.PathValue("id")
+	var item activity.Activity
+	var err error
+	if archive {
+		item, err = h.library.Archive(r.Context(), principal, id, revision)
+	} else {
+		item, err = h.library.Restore(r.Context(), principal, id, revision)
+	}
+	if errors.Is(err, activity.ErrInvalidInput) {
+		h.rejectInput(w, http.StatusUnprocessableEntity)
+		return
+	}
+	if errors.Is(err, activity.ErrConflict) {
+		w.Header().Set("Cache-Control", "no-store")
+		http.Error(w, "The activity changed. Reload it before trying again.", http.StatusConflict)
+		return
+	}
+	if errors.Is(err, activity.ErrNotFound) {
+		h.notFound(w, r)
+		return
+	}
+	if errors.Is(err, authorization.ErrDenied) {
+		h.deny(w, r, http.StatusForbidden, "authorization_denied")
+		return
+	}
+	if err != nil {
+		h.serverError(w, "change activity archive state", err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	target := "/activities/" + item.ID
+	if archive {
+		target = "/activities/" + item.ID + "/archived"
+	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
+}
+
+func (h *handler) parseActionRevision(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	mediaType, parameters, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/x-www-form-urlencoded" || len(parameters) != 0 {
+		h.rejectInput(w, http.StatusUnsupportedMediaType)
+		return 0, false
+	}
+	if err := r.ParseForm(); err != nil {
+		h.rejectInput(w, http.StatusBadRequest)
+		return 0, false
+	}
+	values := r.PostForm["revision"]
+	if len(values) != 1 {
+		h.rejectInput(w, http.StatusUnprocessableEntity)
+		return 0, false
+	}
+	revision, err := strconv.ParseInt(values[0], 10, 64)
+	if err != nil || revision < 1 {
+		h.rejectInput(w, http.StatusUnprocessableEntity)
+		return 0, false
+	}
+	return revision, true
 }
 
 func (h *handler) newActivity(w http.ResponseWriter, r *http.Request) {

@@ -50,6 +50,7 @@ type Activity struct {
 	Theme           string
 	Tags            []string
 	Revision        int64
+	Archived        bool
 	Progressions    []Progression
 }
 
@@ -87,9 +88,13 @@ func (e ValidationErrors) Is(target error) bool { return target == ErrInvalidInp
 // Store is the owner-scoped persistence boundary used by the library.
 type Store interface {
 	ListCurrent(context.Context, string, string) ([]Summary, error)
+	ListArchived(context.Context, string, string) ([]Summary, error)
 	FindCurrent(context.Context, string, string) (Activity, error)
+	FindArchived(context.Context, string, string) (Activity, error)
 	Create(context.Context, string, Input) (Activity, error)
 	Update(context.Context, string, string, int64, Input) (Activity, error)
+	Archive(context.Context, string, string, int64) (Activity, error)
+	Restore(context.Context, string, string, int64) (Activity, error)
 }
 
 func (l *Library) Create(ctx context.Context, principal authorization.Principal, input Input) (Activity, error) {
@@ -119,6 +124,31 @@ func (l *Library) Update(ctx context.Context, principal authorization.Principal,
 		return Activity{}, ValidationErrors{"revision": "The activity revision is invalid. Reload and try again."}
 	}
 	return l.store.Update(ctx, principal.OwnerID, id, revision, input)
+}
+
+func (l *Library) Archive(ctx context.Context, principal authorization.Principal, id string, revision int64) (Activity, error) {
+	return l.changeArchiveState(ctx, principal, id, revision, true)
+}
+
+func (l *Library) Restore(ctx context.Context, principal authorization.Principal, id string, revision int64) (Activity, error) {
+	return l.changeArchiveState(ctx, principal, id, revision, false)
+}
+
+func (l *Library) changeArchiveState(ctx context.Context, principal authorization.Principal, id string, revision int64, archive bool) (Activity, error) {
+	id, err := authorization.NormalizeUUID(id)
+	if err != nil {
+		return Activity{}, ErrNotFound
+	}
+	if err := l.policy.Authorize(principal, authorization.Archive, principal.OwnerID); err != nil {
+		return Activity{}, err
+	}
+	if revision < 1 {
+		return Activity{}, ValidationErrors{"revision": "The activity revision is invalid. Reload and try again."}
+	}
+	if archive {
+		return l.store.Archive(ctx, principal.OwnerID, id, revision)
+	}
+	return l.store.Restore(ctx, principal.OwnerID, id, revision)
 }
 
 func validateInput(input Input) (Input, error) {
@@ -193,6 +223,14 @@ func NewLibrary(store Store, policy authorization.Policy) (*Library, error) {
 }
 
 func (l *Library) List(ctx context.Context, principal authorization.Principal, search string) ([]Summary, error) {
+	return l.list(ctx, principal, search, false)
+}
+
+func (l *Library) ListArchived(ctx context.Context, principal authorization.Principal, search string) ([]Summary, error) {
+	return l.list(ctx, principal, search, true)
+}
+
+func (l *Library) list(ctx context.Context, principal authorization.Principal, search string, archived bool) ([]Summary, error) {
 	search = strings.TrimSpace(search)
 	if !utf8.ValidString(search) || len(search) > MaxSearchBytes {
 		return nil, ErrInvalidQuery
@@ -200,7 +238,13 @@ func (l *Library) List(ctx context.Context, principal authorization.Principal, s
 	if err := l.policy.Authorize(principal, authorization.Read, principal.OwnerID); err != nil {
 		return nil, err
 	}
-	items, err := l.store.ListCurrent(ctx, principal.OwnerID, search)
+	var items []Summary
+	var err error
+	if archived {
+		items, err = l.store.ListArchived(ctx, principal.OwnerID, search)
+	} else {
+		items, err = l.store.ListCurrent(ctx, principal.OwnerID, search)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -213,6 +257,14 @@ func (l *Library) List(ctx context.Context, principal authorization.Principal, s
 }
 
 func (l *Library) Detail(ctx context.Context, principal authorization.Principal, id string) (Activity, error) {
+	return l.detail(ctx, principal, id, false)
+}
+
+func (l *Library) ArchivedDetail(ctx context.Context, principal authorization.Principal, id string) (Activity, error) {
+	return l.detail(ctx, principal, id, true)
+}
+
+func (l *Library) detail(ctx context.Context, principal authorization.Principal, id string, archived bool) (Activity, error) {
 	id, err := authorization.NormalizeUUID(id)
 	if err != nil {
 		return Activity{}, ErrNotFound
@@ -220,7 +272,12 @@ func (l *Library) Detail(ctx context.Context, principal authorization.Principal,
 	if err := l.policy.Authorize(principal, authorization.Read, principal.OwnerID); err != nil {
 		return Activity{}, err
 	}
-	item, err := l.store.FindCurrent(ctx, principal.OwnerID, id)
+	var item Activity
+	if archived {
+		item, err = l.store.FindArchived(ctx, principal.OwnerID, id)
+	} else {
+		item, err = l.store.FindCurrent(ctx, principal.OwnerID, id)
+	}
 	if err != nil {
 		return Activity{}, err
 	}

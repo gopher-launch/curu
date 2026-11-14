@@ -1,6 +1,6 @@
 # Curu
 
-Curu is a greenfield Go application for maintaining activities and planning practical coaching sessions. The current runtime exposes protected activity library browsing and explicit create/edit saves plus coarse health checks. It requires a compatible migrated PostgreSQL schema and never mutates that schema at startup.
+Curu is a greenfield Go application for maintaining activities and planning practical coaching sessions. The current runtime exposes protected activity library browsing, explicit create/edit saves, and non-destructive archive/restore plus coarse health checks. It requires a compatible migrated PostgreSQL schema and never mutates that schema at startup.
 
 ## Requirements
 
@@ -47,7 +47,7 @@ curl --fail http://127.0.0.1:8080/health/live
 curl --fail http://127.0.0.1:8080/health/ready
 ```
 
-Liveness becomes available when the process listens. Readiness remains unavailable until Curu holds a non-expired trusted key set; a JWKS outage never causes unchecked-token fallback. Both endpoints contain only coarse platform-probe results. With a valid token for the exact configured owner binding, browse the current library at `/activities`, search it with the optional `q` query, follow stable activity detail links, and create or edit activities through explicit saves. Every non-health route requires that owner authorization.
+Liveness becomes available when the process listens. Readiness remains unavailable until Curu holds a non-expired trusted key set; a JWKS outage never causes unchecked-token fallback. Both endpoints contain only coarse platform-probe results. With a valid token for the exact configured owner binding, browse the current library at `/activities`, search it with the optional `q` query, follow stable activity detail links, create or edit activities through explicit saves, and archive or restore them through the protected `/activities/archived` view. Every non-health route requires that owner authorization.
 
 Stop it with `Ctrl-C`; `SIGINT` and `SIGTERM` both initiate graceful shutdown. See [`doc/configuration.md`](doc/configuration.md) for runtime settings.
 
@@ -94,4 +94,4 @@ docker run --rm \
   -p 127.0.0.1:8080:8080 curu:local
 ```
 
-This runtime implements explicit PostgreSQL migrations, read-only startup compatibility checks, separate explicit dataset initialization, RFC 9068 JWT validation, deny-by-default single-owner authorization, shared browser/HTMX protections, protected activity browsing/search, and revision-checked activity creation/editing. The bounded coaching-library asset is documented in [`doc/seed-library.md`](doc/seed-library.md); the gateway boundary is documented in [`doc/gateway.md`](doc/gateway.md). Activity archive/recovery and session/template pages remain with their owning roadmap tasks.
+This runtime implements explicit PostgreSQL migrations, read-only startup compatibility checks, separate explicit dataset initialization, RFC 9068 JWT validation, deny-by-default single-owner authorization, shared browser/HTMX protections, protected activity browsing/search, revision-checked activity creation/editing, and revision-checked non-destructive archive/restore. The bounded coaching-library asset is documented in [`doc/seed-library.md`](doc/seed-library.md); the gateway boundary is documented in [`doc/gateway.md`](doc/gateway.md). Activity recovery drafts and session/template pages remain with their owning roadmap tasks.

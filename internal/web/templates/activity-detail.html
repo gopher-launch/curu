@@ -1,8 +1,22 @@
 {{define "activity-detail"}}{{template "layout-start" .}}
-  <p><a href="/activities">← All activities</a></p>
+  <p><a href="{{if .Archived}}/activities/archived{{else}}/activities{{end}}">← {{if .Archived}}Archived{{else}}All{{end}} activities</a></p>
   <article data-activity-id="{{.ID}}">
     <h1>{{.Title}}</h1>
-    <p><a href="/activities/{{.ID}}/edit">Edit activity</a></p>
+    {{if .Archived}}
+      <p>This activity is archived and hidden from the current library.</p>
+      <form action="/activities/{{.ID}}/restore" method="post">
+        {{template "csrf-field" .}}
+        <input type="hidden" name="revision" value="{{.Revision}}">
+        <button type="submit">Restore activity</button>
+      </form>
+    {{else}}
+      <p><a href="/activities/{{.ID}}/edit">Edit activity</a></p>
+      <form action="/activities/{{.ID}}/archive" method="post">
+        {{template "csrf-field" .}}
+        <input type="hidden" name="revision" value="{{.Revision}}">
+        <button type="submit">Archive activity</button>
+      </form>
+    {{end}}
     {{if .Summary}}<p>{{.Summary}}</p>{{end}}
     {{if .Duration}}<p class="muted">Recommended duration: {{.Duration}}</p>{{end}}
     {{if .Phase}}<p><strong>Phase:</strong> {{.Phase}}</p>{{end}}

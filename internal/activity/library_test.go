@@ -14,10 +14,12 @@ const testOwnerID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 type fakeStore struct {
 	listOwner, search        string
 	findOwner, findID        string
+	operation                string
 	items                    []Summary
 	item                     Activity
 	createInput, updateInput Input
 	updateRevision           int64
+	archiveRevision          int64
 }
 
 func (s *fakeStore) Create(_ context.Context, _ string, input Input) (Activity, error) {
@@ -27,6 +29,16 @@ func (s *fakeStore) Create(_ context.Context, _ string, input Input) (Activity, 
 
 func (s *fakeStore) Update(_ context.Context, _ string, _ string, revision int64, input Input) (Activity, error) {
 	s.updateRevision, s.updateInput = revision, input
+	return s.item, nil
+}
+
+func (s *fakeStore) Archive(_ context.Context, owner, id string, revision int64) (Activity, error) {
+	s.operation, s.findOwner, s.findID, s.archiveRevision = "archive", owner, id, revision
+	return s.item, nil
+}
+
+func (s *fakeStore) Restore(_ context.Context, owner, id string, revision int64) (Activity, error) {
+	s.operation, s.findOwner, s.findID, s.archiveRevision = "restore", owner, id, revision
 	return s.item, nil
 }
 
@@ -57,13 +69,47 @@ func TestLibraryUpdateCarriesExpectedRevisionAndStableID(t *testing.T) {
 }
 
 func (s *fakeStore) ListCurrent(_ context.Context, owner, search string) ([]Summary, error) {
+	s.operation = "list-current"
 	s.listOwner, s.search = owner, search
 	return s.items, nil
 }
 
+func (s *fakeStore) ListArchived(_ context.Context, owner, search string) ([]Summary, error) {
+	s.operation, s.listOwner, s.search = "list-archived", owner, search
+	return s.items, nil
+}
+
 func (s *fakeStore) FindCurrent(_ context.Context, owner, id string) (Activity, error) {
+	s.operation = "find-current"
 	s.findOwner, s.findID = owner, id
 	return s.item, nil
+}
+
+func (s *fakeStore) FindArchived(_ context.Context, owner, id string) (Activity, error) {
+	s.operation, s.findOwner, s.findID = "find-archived", owner, id
+	return s.item, nil
+}
+
+func TestLibraryArchivedViewsAndTransitionsUseOwnerRevision(t *testing.T) {
+	id := "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+	store := &fakeStore{items: []Summary{{ID: id, OwnerID: testOwnerID}}, item: Activity{ID: id, OwnerID: testOwnerID, Archived: true}}
+	library, principal := newTestLibrary(t, store)
+
+	if _, err := library.ListArchived(context.Background(), principal, " retained "); err != nil || store.operation != "list-archived" || store.search != "retained" {
+		t.Fatalf("ListArchived() operation/search/error = %q/%q/%v", store.operation, store.search, err)
+	}
+	if _, err := library.ArchivedDetail(context.Background(), principal, strings.ToUpper(id)); err != nil || store.operation != "find-archived" || store.findID != id {
+		t.Fatalf("ArchivedDetail() operation/id/error = %q/%q/%v", store.operation, store.findID, err)
+	}
+	if _, err := library.Archive(context.Background(), principal, id, 4); err != nil || store.operation != "archive" || store.archiveRevision != 4 || store.findOwner != testOwnerID {
+		t.Fatalf("Archive() operation/revision/owner/error = %q/%d/%q/%v", store.operation, store.archiveRevision, store.findOwner, err)
+	}
+	if _, err := library.Restore(context.Background(), principal, id, 5); err != nil || store.operation != "restore" || store.archiveRevision != 5 {
+		t.Fatalf("Restore() operation/revision/error = %q/%d/%v", store.operation, store.archiveRevision, err)
+	}
+	if _, err := library.Archive(context.Background(), principal, id, 0); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("Archive() invalid revision error = %v", err)
+	}
 }
 
 func TestLibraryUsesOwnerScopeAndNormalizesSearch(t *testing.T) {

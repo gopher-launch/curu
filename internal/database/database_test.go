@@ -268,6 +268,29 @@ func TestPostgresMigrationAndRuntimeRestrictions(t *testing.T) {
 	if err != nil || current.Title != "Renamed activity" || current.Revision != 2 {
 		t.Fatalf("current activity after stale update = %+v, error = %v", current, err)
 	}
+	if _, err := repository.Archive(ctx, ownerID, created.ID, created.Revision); !errors.Is(err, activity.ErrConflict) {
+		t.Fatalf("stale Archive() error = %v, want conflict", err)
+	}
+	archived, err := repository.Archive(ctx, ownerID, created.ID, current.Revision)
+	if err != nil || !archived.Archived || archived.Revision != 3 || archived.Title != current.Title || len(archived.Progressions) != len(current.Progressions) {
+		t.Fatalf("Archive() result = %+v, error = %v", archived, err)
+	}
+	if results, err := repository.ListCurrent(ctx, ownerID, "Renamed activity"); err != nil || len(results) != 0 {
+		t.Fatalf("ListCurrent() after archive = %+v, error = %v", results, err)
+	}
+	if results, err := repository.ListArchived(ctx, ownerID, "Renamed activity"); err != nil || len(results) != 1 || results[0].ID != created.ID {
+		t.Fatalf("ListArchived() after archive = %+v, error = %v", results, err)
+	}
+	if _, err := repository.Restore(ctx, ownerID, created.ID, current.Revision); !errors.Is(err, activity.ErrConflict) {
+		t.Fatalf("stale Restore() error = %v, want conflict", err)
+	}
+	restored, err := repository.Restore(ctx, ownerID, created.ID, archived.Revision)
+	if err != nil || restored.Archived || restored.Revision != 4 || restored.ID != created.ID || restored.Title != current.Title {
+		t.Fatalf("Restore() result = %+v, error = %v", restored, err)
+	}
+	if results, err := repository.ListArchived(ctx, "55555555-5555-4555-8555-555555555555", "Renamed activity"); err != nil || len(results) != 0 {
+		t.Fatalf("ListArchived() crossed owner boundary = %+v, error = %v", results, err)
+	}
 	otherOwner, err := repository.ListCurrent(ctx, ownerID, "Release hands")
 	if err != nil || len(otherOwner) != 0 {
 		t.Fatalf("ListCurrent() other-owner results = %+v, error = %v", otherOwner, err)

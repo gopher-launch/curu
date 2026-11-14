@@ -52,9 +52,23 @@ type progressionRow struct {
 func (progressionRow) TableName() string { return "curu.activity_progressions" }
 
 func (r *ActivityRepository) ListCurrent(ctx context.Context, ownerID, search string) ([]activity.Summary, error) {
+	return r.list(ctx, ownerID, search, false)
+}
+
+func (r *ActivityRepository) ListArchived(ctx context.Context, ownerID, search string) ([]activity.Summary, error) {
+	return r.list(ctx, ownerID, search, true)
+}
+
+func (r *ActivityRepository) list(ctx context.Context, ownerID, search string, archived bool) ([]activity.Summary, error) {
+	archivePredicate := "activities.archived_at IS NULL"
+	operation := "list current activities"
+	if archived {
+		archivePredicate = "activities.archived_at IS NOT NULL"
+		operation = "list archived activities"
+	}
 	query := r.db.WithContext(ctx).Table("curu.activities AS activities").
 		Select("activities.id, activities.owner_id, activities.title, activities.summary, activities.duration_seconds").
-		Where("activities.owner_id = ? AND activities.archived_at IS NULL", ownerID)
+		Where("activities.owner_id = ? AND "+archivePredicate, ownerID)
 	if search != "" {
 		pattern := "%" + escapeLike(search) + "%"
 		query = query.Where(`(
@@ -70,7 +84,7 @@ func (r *ActivityRepository) ListCurrent(ctx context.Context, ownerID, search st
 	}
 	var rows []activityRow
 	if err := query.Order("lower(activities.title), activities.title, activities.id").Scan(&rows).Error; err != nil {
-		return nil, fmt.Errorf("list current activities: %w", err)
+		return nil, fmt.Errorf("%s: %w", operation, err)
 	}
 	items := make([]activity.Summary, len(rows))
 	for index, row := range rows {
@@ -83,21 +97,35 @@ func (r *ActivityRepository) ListCurrent(ctx context.Context, ownerID, search st
 }
 
 func (r *ActivityRepository) FindCurrent(ctx context.Context, ownerID, id string) (activity.Activity, error) {
+	return r.find(ctx, ownerID, id, false)
+}
+
+func (r *ActivityRepository) FindArchived(ctx context.Context, ownerID, id string) (activity.Activity, error) {
+	return r.find(ctx, ownerID, id, true)
+}
+
+func (r *ActivityRepository) find(ctx context.Context, ownerID, id string, archived bool) (activity.Activity, error) {
+	archivePredicate := "archived_at IS NULL"
+	operation := "find current activity"
+	if archived {
+		archivePredicate = "archived_at IS NOT NULL"
+		operation = "find archived activity"
+	}
 	var row activityRow
 	err := r.db.WithContext(ctx).
 		Preload("Progressions", func(db *gorm.DB) *gorm.DB { return db.Order("position, id") }).
-		Where("owner_id = ? AND id = ? AND archived_at IS NULL", ownerID, id).
+		Where("owner_id = ? AND id = ? AND "+archivePredicate, ownerID, id).
 		First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return activity.Activity{}, activity.ErrNotFound
 	}
 	if err != nil {
-		return activity.Activity{}, fmt.Errorf("find current activity: %w", err)
+		return activity.Activity{}, fmt.Errorf("%s: %w", operation, err)
 	}
 	item := activity.Activity{
 		ID: row.ID, OwnerID: row.OwnerID, Title: row.Title, Summary: row.Summary,
 		ContentMarkdown: row.ContentMarkdown, DurationSeconds: row.DurationSeconds,
-		Phase: row.Phase, Theme: row.Theme, Tags: []string(row.Tags), Revision: row.Revision,
+		Phase: row.Phase, Theme: row.Theme, Tags: []string(row.Tags), Revision: row.Revision, Archived: archived,
 		Progressions: make([]activity.Progression, len(row.Progressions)),
 	}
 	for index, progression := range row.Progressions {
@@ -157,6 +185,49 @@ func (r *ActivityRepository) Update(ctx context.Context, ownerID, id string, exp
 		return activity.Activity{}, err
 	}
 	return r.FindCurrent(ctx, ownerID, id)
+}
+
+func (r *ActivityRepository) Archive(ctx context.Context, ownerID, id string, expectedRevision int64) (activity.Activity, error) {
+	if err := r.changeArchiveState(ctx, ownerID, id, expectedRevision, true); err != nil {
+		return activity.Activity{}, err
+	}
+	return r.FindArchived(ctx, ownerID, id)
+}
+
+func (r *ActivityRepository) Restore(ctx context.Context, ownerID, id string, expectedRevision int64) (activity.Activity, error) {
+	if err := r.changeArchiveState(ctx, ownerID, id, expectedRevision, false); err != nil {
+		return activity.Activity{}, err
+	}
+	return r.FindCurrent(ctx, ownerID, id)
+}
+
+func (r *ActivityRepository) changeArchiveState(ctx context.Context, ownerID, id string, expectedRevision int64, archive bool) error {
+	now := time.Now().UTC()
+	sourcePredicate := "archived_at IS NULL"
+	archiveValue := any(now)
+	operation := "archive activity"
+	if !archive {
+		sourcePredicate = "archived_at IS NOT NULL"
+		archiveValue = nil
+		operation = "restore activity"
+	}
+	result := r.db.WithContext(ctx).Exec(`UPDATE curu.activities
+		SET archived_at = ?, revision = revision + 1, updated_at = ?
+		WHERE id = ? AND owner_id = ? AND `+sourcePredicate+` AND revision = ?`, archiveValue, now, id, ownerID, expectedRevision)
+	if result.Error != nil {
+		return fmt.Errorf("%s: %w", operation, result.Error)
+	}
+	if result.RowsAffected != 0 {
+		return nil
+	}
+	var count int64
+	if err := r.db.WithContext(ctx).Table("curu.activities").Where("id = ? AND owner_id = ? AND "+sourcePredicate, id, ownerID).Count(&count).Error; err != nil {
+		return fmt.Errorf("resolve %s: %w", operation, err)
+	}
+	if count == 0 {
+		return activity.ErrNotFound
+	}
+	return activity.ErrConflict
 }
 
 func replaceProgressions(tx *gorm.DB, activityID string, inputs []activity.ProgressionInput) error {

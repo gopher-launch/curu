@@ -1,25 +1,29 @@
 {{define "activity-list"}}{{template "layout-start" .}}
-  <h1>Activities</h1>
-  <p><a href="/activities/new">Create activity</a></p>
-  <form action="/activities" method="get" role="search">
-    <label for="activity-search">Search activities</label>
+  <h1>{{if .Archived}}Archived activities{{else}}Activities{{end}}</h1>
+  {{if .Archived}}
+    <p><a href="/activities">← Current activities</a></p>
+  {{else}}
+    <p><a href="/activities/new">Create activity</a> · <a href="/activities/archived">View archived activities</a></p>
+  {{end}}
+  <form action="{{if .Archived}}/activities/archived{{else}}/activities{{end}}" method="get" role="search">
+    <label for="activity-search">Search {{if .Archived}}archived {{end}}activities</label>
     <input id="activity-search" name="q" type="search" maxlength="200" value="{{.Search}}" placeholder="Title, instructions, or progression">
     <button type="submit">Search</button>
   </form>
-  {{if .Search}}<p>Results for <strong>{{.Search}}</strong>. <a href="/activities">Clear search</a></p>{{end}}
+  {{if .Search}}<p>Results for <strong>{{.Search}}</strong>. <a href="{{if .Archived}}/activities/archived{{else}}/activities{{end}}">Clear search</a></p>{{end}}
   {{if .Activities}}
     <ul class="activity-list">
       {{range .Activities}}
         <li>
-          <h2><a href="/activities/{{.ID}}">{{.Title}}</a></h2>
+          <h2><a href="/activities/{{.ID}}{{if $.Archived}}/archived{{end}}">{{.Title}}</a></h2>
           {{if .Summary}}<p>{{.Summary}}</p>{{end}}
           {{if .Duration}}<p class="muted">Recommended duration: {{.Duration}}</p>{{end}}
         </li>
       {{end}}
     </ul>
   {{else if .Search}}
-    <p>No current activities match this search. Try a different word or <a href="/activities">show the whole library</a>.</p>
+    <p>No {{if .Archived}}archived{{else}}current{{end}} activities match this search. Try a different word or <a href="{{if .Archived}}/activities/archived{{else}}/activities{{end}}">show the whole {{if .Archived}}archive{{else}}library{{end}}</a>.</p>
   {{else}}
-    <p>The current activity library is empty. <a href="/activities/new">Create the first activity</a>.</p>
+    {{if .Archived}}<p>There are no archived activities.</p>{{else}}<p>The current activity library is empty. <a href="/activities/new">Create the first activity</a>.</p>{{end}}
   {{end}}
 {{template "layout-end" .}}{{end}}

@@ -153,18 +153,90 @@ func TestActivityDetailRendersCompleteSafeContent(t *testing.T) {
 	}
 }
 
+func TestActivityArchiveViewRestoreAndStaleAction(t *testing.T) {
+	t.Parallel()
+	const id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+	library := &fakeActivityLibrary{
+		items: []activity.Summary{{ID: id, OwnerID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", Title: "Retained activity"}},
+		item:  activity.Activity{ID: id, OwnerID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", Title: "Retained activity", Revision: 7},
+	}
+	handler := newTestHandlerWithLibrary(t, library)
+
+	archivedList := httptest.NewRequest(http.MethodGet, "/activities/archived?q=retained", nil)
+	archivedList.Header.Set("Authorization", "Bearer owner")
+	listResponse := httptest.NewRecorder()
+	handler.ServeHTTP(listResponse, archivedList)
+	if listResponse.Code != http.StatusOK || library.operation != "list-archived" || library.search != "retained" || !strings.Contains(listResponse.Body.String(), "/activities/"+id+"/archived") {
+		t.Fatalf("archived list response/operation/search = %d/%q/%q; body %q", listResponse.Code, library.operation, library.search, listResponse.Body.String())
+	}
+
+	archivedDetail := httptest.NewRequest(http.MethodGet, "/activities/"+id+"/archived", nil)
+	archivedDetail.Header.Set("Authorization", "Bearer owner")
+	detailResponse := httptest.NewRecorder()
+	handler.ServeHTTP(detailResponse, archivedDetail)
+	for _, wanted := range []string{"Retained activity", "hidden from the current library", `action="/activities/` + id + `/restore"`, `name="revision" value="7"`} {
+		if detailResponse.Code != http.StatusOK || !strings.Contains(detailResponse.Body.String(), wanted) {
+			t.Fatalf("archived detail omitted %q: status %d body %q", wanted, detailResponse.Code, detailResponse.Body.String())
+		}
+	}
+
+	cookie := csrfCookie(t, handler)
+	archiveRequest := httptest.NewRequest(http.MethodPost, "/activities/"+id+"/archive", strings.NewReader("revision=7&csrf_token="+cookie.Value))
+	archiveRequest.Header.Set("Authorization", "Bearer owner")
+	archiveRequest.Header.Set("Origin", "https://curu.example")
+	archiveRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	archiveRequest.AddCookie(cookie)
+	archiveResponse := httptest.NewRecorder()
+	handler.ServeHTTP(archiveResponse, archiveRequest)
+	if archiveResponse.Code != http.StatusSeeOther || archiveResponse.Header().Get("Location") != "/activities/"+id+"/archived" || library.operation != "archive" || library.revision != 7 {
+		t.Fatalf("archive response/operation/revision = %d/%q/%d, location %q", archiveResponse.Code, library.operation, library.revision, archiveResponse.Header().Get("Location"))
+	}
+
+	library.archiveErr = activity.ErrConflict
+	staleRequest := httptest.NewRequest(http.MethodPost, "/activities/"+id+"/restore", strings.NewReader("revision=7&csrf_token="+cookie.Value))
+	staleRequest.Header.Set("Authorization", "Bearer owner")
+	staleRequest.Header.Set("Origin", "https://curu.example")
+	staleRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	staleRequest.AddCookie(cookie)
+	staleResponse := httptest.NewRecorder()
+	handler.ServeHTTP(staleResponse, staleRequest)
+	if staleResponse.Code != http.StatusConflict || !strings.Contains(staleResponse.Body.String(), "changed") {
+		t.Fatalf("stale restore response = %d, body %q", staleResponse.Code, staleResponse.Body.String())
+	}
+
+	library.archiveErr = nil
+	restoreRequest := httptest.NewRequest(http.MethodPost, "/activities/"+id+"/restore", strings.NewReader("revision=8&csrf_token="+cookie.Value))
+	restoreRequest.Header.Set("Authorization", "Bearer owner")
+	restoreRequest.Header.Set("Origin", "https://curu.example")
+	restoreRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	restoreRequest.AddCookie(cookie)
+	restoreResponse := httptest.NewRecorder()
+	handler.ServeHTTP(restoreResponse, restoreRequest)
+	if restoreResponse.Code != http.StatusSeeOther || restoreResponse.Header().Get("Location") != "/activities/"+id || library.operation != "restore" || library.revision != 8 {
+		t.Fatalf("restore response/operation/revision = %d/%q/%d, location %q", restoreResponse.Code, library.operation, library.revision, restoreResponse.Header().Get("Location"))
+	}
+}
+
 func TestActivityRoutesDoNotReachLibraryForDeniedIdentity(t *testing.T) {
 	t.Parallel()
 
 	library := &fakeActivityLibrary{}
 	handler := newTestHandlerWithLibrary(t, library)
-	for _, path := range []string{"/activities", "/activities/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"} {
-		request := httptest.NewRequest(http.MethodGet, path, nil)
+	requests := []struct{ method, path string }{
+		{http.MethodGet, "/activities"},
+		{http.MethodGet, "/activities/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"},
+		{http.MethodGet, "/activities/archived"},
+		{http.MethodGet, "/activities/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/archived"},
+		{http.MethodPost, "/activities/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/archive"},
+		{http.MethodPost, "/activities/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/restore"},
+	}
+	for _, test := range requests {
+		request := httptest.NewRequest(test.method, test.path, nil)
 		request.Header.Set("Authorization", "Bearer stranger")
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
 		if response.Code != http.StatusForbidden {
-			t.Errorf("%s status = %d, want 403", path, response.Code)
+			t.Errorf("%s %s status = %d, want 403", test.method, test.path, response.Code)
 		}
 	}
 	if library.calls != 0 {
@@ -672,7 +744,9 @@ type fakeActivityLibrary struct {
 	calls                int
 	input                activity.Input
 	revision             int64
+	operation            string
 	createErr, updateErr error
+	archiveErr           error
 }
 
 func (l *fakeActivityLibrary) Create(_ context.Context, principal authorization.Principal, input activity.Input) (activity.Activity, error) {
@@ -695,18 +769,56 @@ func (l *fakeActivityLibrary) Update(_ context.Context, principal authorization.
 
 func (l *fakeActivityLibrary) List(_ context.Context, principal authorization.Principal, search string) ([]activity.Summary, error) {
 	l.calls++
+	l.operation = "list-current"
 	l.principal, l.search = principal, search
+	return l.items, l.err
+}
+
+func (l *fakeActivityLibrary) ListArchived(_ context.Context, principal authorization.Principal, search string) ([]activity.Summary, error) {
+	l.calls++
+	l.operation, l.principal, l.search = "list-archived", principal, search
 	return l.items, l.err
 }
 
 func (l *fakeActivityLibrary) Detail(_ context.Context, principal authorization.Principal, id string) (activity.Activity, error) {
 	l.calls++
+	l.operation = "detail-current"
 	l.principal, l.id = principal, id
 	if l.err != nil {
 		return activity.Activity{}, l.err
 	}
 	if l.item.ID == "" {
 		return activity.Activity{}, activity.ErrNotFound
+	}
+	return l.item, nil
+}
+
+func (l *fakeActivityLibrary) ArchivedDetail(_ context.Context, principal authorization.Principal, id string) (activity.Activity, error) {
+	l.calls++
+	l.operation, l.principal, l.id = "detail-archived", principal, id
+	if l.err != nil {
+		return activity.Activity{}, l.err
+	}
+	if l.item.ID == "" {
+		return activity.Activity{}, activity.ErrNotFound
+	}
+	return l.item, nil
+}
+
+func (l *fakeActivityLibrary) Archive(_ context.Context, principal authorization.Principal, id string, revision int64) (activity.Activity, error) {
+	l.calls++
+	l.operation, l.principal, l.id, l.revision = "archive", principal, id, revision
+	if l.archiveErr != nil {
+		return activity.Activity{}, l.archiveErr
+	}
+	return l.item, nil
+}
+
+func (l *fakeActivityLibrary) Restore(_ context.Context, principal authorization.Principal, id string, revision int64) (activity.Activity, error) {
+	l.calls++
+	l.operation, l.principal, l.id, l.revision = "restore", principal, id, revision
+	if l.archiveErr != nil {
+		return activity.Activity{}, l.archiveErr
 	}
 	return l.item, nil
 }
