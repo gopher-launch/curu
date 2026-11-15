@@ -401,8 +401,8 @@ func TestPostgresMigrationAndRuntimeRestrictions(t *testing.T) {
 	if err := runtime.Exec("UPDATE curu.session_activity_placements SET local_notes='Retain this note', duration_seconds=45 WHERE id=?", actionPlacement.ID).Error; err != nil {
 		t.Fatalf("set plan-local placement properties: %v", err)
 	}
-	actionInput := session.Input{Title: "Action plan edited", Blocks: []session.BlockInput{
-		{ID: actionSession.Blocks[0].ID, Name: "Arrival edited", Placements: []session.PlacementInput{{ID: actionPlacement.ID, LocalNotes: "Unsaved note saved"}}},
+	actionInput := session.Input{Title: "Action plan edited", AllocationSeconds: intPointer(600), Blocks: []session.BlockInput{
+		{ID: actionSession.Blocks[0].ID, Name: "Arrival edited", AllocationSeconds: intPointer(180), Placements: []session.PlacementInput{{ID: actionPlacement.ID, LocalNotes: "Unsaved note saved", DurationSeconds: intPointer(75)}}},
 		{ID: actionSession.Blocks[1].ID, Name: "Warmup edited"},
 	}}
 	actionSession, err = sessions.ApplyPlacementAction(ctx, ownerID, actionSession.ID, actionSession.Revision, actionInput, session.PlacementAction{Kind: session.ReplacePlacementAction, PlacementID: actionPlacement.ID, ActivityID: replacementSource.ID})
@@ -410,7 +410,7 @@ func TestPostgresMigrationAndRuntimeRestrictions(t *testing.T) {
 		t.Fatalf("replace placement action = %+v, error = %v", actionSession, err)
 	}
 	replacedPlacement := actionSession.Blocks[0].Placements[0]
-	if replacedPlacement.SourceActivityID != replacementSource.ID || replacedPlacement.ContentMarkdown != replacementSource.ContentMarkdown || replacedPlacement.LocalNotes != "Unsaved note saved" || replacedPlacement.DurationSeconds == nil || *replacedPlacement.DurationSeconds != 45 {
+	if actionSession.AllocationSeconds == nil || *actionSession.AllocationSeconds != 600 || actionSession.Blocks[0].AllocationSeconds == nil || *actionSession.Blocks[0].AllocationSeconds != 180 || replacedPlacement.SourceActivityID != replacementSource.ID || replacedPlacement.ContentMarkdown != replacementSource.ContentMarkdown || replacedPlacement.LocalNotes != "Unsaved note saved" || replacedPlacement.DurationSeconds == nil || *replacedPlacement.DurationSeconds != 75 {
 		t.Fatalf("replaced placement did not preserve local properties: %+v", replacedPlacement)
 	}
 	actionInput.Blocks[0].Placements[0].LocalNotes = replacedPlacement.LocalNotes
@@ -588,11 +588,11 @@ func currentDatabase(t *testing.T, db *gorm.DB) string {
 func intPointer(value int) *int { return &value }
 
 func sessionInputForTest(item session.Session) session.Input {
-	input := session.Input{Title: item.Title, Date: item.Date, GroupContext: item.GroupContext, Intent: item.Intent}
+	input := session.Input{Title: item.Title, Date: item.Date, GroupContext: item.GroupContext, Intent: item.Intent, AllocationSeconds: item.AllocationSeconds}
 	for _, block := range item.Blocks {
-		blockInput := session.BlockInput{ID: block.ID, Name: block.Name, Intent: block.Intent, Notes: block.Notes, ObservationLens: block.ObservationLens}
+		blockInput := session.BlockInput{ID: block.ID, Name: block.Name, Intent: block.Intent, Notes: block.Notes, ObservationLens: block.ObservationLens, AllocationSeconds: block.AllocationSeconds}
 		for _, placement := range block.Placements {
-			blockInput.Placements = append(blockInput.Placements, session.PlacementInput{ID: placement.ID, LocalNotes: placement.LocalNotes})
+			blockInput.Placements = append(blockInput.Placements, session.PlacementInput{ID: placement.ID, LocalNotes: placement.LocalNotes, DurationSeconds: placement.DurationSeconds})
 		}
 		input.Blocks = append(input.Blocks, blockInput)
 	}

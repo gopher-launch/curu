@@ -235,6 +235,53 @@ func TestSessionDetailRendersPlacementSnapshotWithoutLibraryLookup(t *testing.T)
 	}
 }
 
+func TestSessionTimingEditorPersistsSecondsAndShowsNonBlockingWarnings(t *testing.T) {
+	t.Parallel()
+	const (
+		sessionID   = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+		blockID     = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+		placementID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+	)
+	sessionAllocation, blockAllocation, duration := 900, 300, 400
+	planner := &fakeSessionPlanner{item: session.Session{ID: sessionID, OwnerID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", Title: "Timed plan", Revision: 5, AllocationSeconds: &sessionAllocation, Blocks: []session.Block{{ID: blockID, Name: "Warmup", AllocationSeconds: &blockAllocation, Placements: []session.Placement{{ID: placementID, Title: "Quick feet", DurationSeconds: &duration}}}}}}
+	handler := newTestHandlerWithSessions(t, planner)
+
+	edit := httptest.NewRequest(http.MethodGet, "/sessions/"+sessionID+"/edit?saved=1", nil)
+	edit.Header.Set("Authorization", "Bearer owner")
+	shown := httptest.NewRecorder()
+	handler.ServeHTTP(shown, edit)
+	for _, wanted := range []string{`name="allocation_seconds"`, `value="900"`, `name="block_allocation_seconds"`, `value="300"`, `name="placement_duration_seconds_` + blockID + `"`, `value="400"`, "differs from its activity total", "Saved with timing warnings", "save is still allowed"} {
+		if shown.Code != http.StatusOK || !strings.Contains(shown.Body.String(), wanted) {
+			t.Fatalf("timing editor omitted %q: status=%d body=%q", wanted, shown.Code, shown.Body.String())
+		}
+	}
+
+	cookie := csrfCookie(t, handler)
+	values := "title=Timed+plan&date=&group_context=&intent=&allocation_seconds=900&revision=5&block_id=" + blockID + "&block_name=Warmup&block_intent=&block_notes=&block_observation_lens=&block_allocation_seconds=300&placement_id_" + blockID + "=" + placementID + "&placement_notes_" + blockID + "=Keep&placement_duration_seconds_" + blockID + "=400&csrf_token=" + cookie.Value
+	request := httptest.NewRequest(http.MethodPost, "/sessions/"+sessionID, strings.NewReader(values))
+	request.Header.Set("Authorization", "Bearer owner")
+	request.Header.Set("Origin", "https://curu.example")
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.AddCookie(cookie)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusSeeOther || planner.input.AllocationSeconds == nil || *planner.input.AllocationSeconds != 900 || planner.input.Blocks[0].AllocationSeconds == nil || *planner.input.Blocks[0].AllocationSeconds != 300 || planner.input.Blocks[0].Placements[0].DurationSeconds == nil || *planner.input.Blocks[0].Placements[0].DurationSeconds != 400 {
+		t.Fatalf("timing save response=%d input=%+v", response.Code, planner.input)
+	}
+
+	invalid := strings.Replace(values, "allocation_seconds=900", "allocation_seconds=1.5", 1)
+	request = httptest.NewRequest(http.MethodPost, "/sessions/"+sessionID, strings.NewReader(invalid))
+	request.Header.Set("Authorization", "Bearer owner")
+	request.Header.Set("Origin", "https://curu.example")
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.AddCookie(cookie)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), "whole seconds") || !strings.Contains(response.Body.String(), `value="1.5"`) {
+		t.Fatalf("malformed timing response=%d body=%q", response.Code, response.Body.String())
+	}
+}
+
 func TestSessionEditorSelectsAndChangesPlacementsWithoutLosingEnteredData(t *testing.T) {
 	t.Parallel()
 	const (

@@ -113,12 +113,12 @@ func captureSnapshot(ctx context.Context, db *gorm.DB) (Manifest, error) {
 			to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
 			to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))::text AS value
 			FROM curu.activity_recovery_drafts ORDER BY id`},
-		{"sessions", `SELECT jsonb_build_array(id, owner_id, title, session_date, group_context, intent, revision,
+		{"sessions", `SELECT jsonb_build_array(id, owner_id, title, session_date, group_context, intent, allocation_seconds, revision,
 			to_char(archived_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
 			to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
 			to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))::text AS value
 			FROM curu.sessions ORDER BY id`},
-		{"session_blocks", `SELECT jsonb_build_array(id, session_id, position, name, intent, notes, observation_lens,
+		{"session_blocks", `SELECT jsonb_build_array(id, session_id, position, name, intent, notes, observation_lens, allocation_seconds,
 			to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
 			to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))::text AS value
 			FROM curu.session_blocks ORDER BY id`},

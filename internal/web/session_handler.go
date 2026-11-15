@@ -24,6 +24,9 @@ type sessionSummaryView struct{ ID, Title, Date string }
 type sessionBlockView struct {
 	Position                             int
 	Name, Intent, Notes, ObservationLens string
+	Allocation, Timing                   string
+	TimingComplete                       bool
+	TimingWarnings                       []string
 	Placements                           []sessionPlacementView
 }
 type sessionPlacementView struct {
@@ -37,6 +40,9 @@ type sessionPlacementView struct {
 type sessionDetailData struct {
 	pageData
 	ID, Title, Date, GroupContext, Intent string
+	Allocation, Timing                    string
+	TimingComplete                        bool
+	TimingWarnings                        []string
 	Revision                              int64
 	Archived                              bool
 	Blocks                                []sessionBlockView
@@ -47,12 +53,18 @@ type sessionPlacementFormView struct {
 }
 type sessionBlockFormView struct {
 	ID, Name, Intent, Notes, ObservationLens string
+	Allocation, Timing                       string
+	TimingComplete                           bool
+	TimingWarnings                           []string
 	Placements                               []sessionPlacementFormView
 	CanMoveUp, CanMoveDown                   bool
 }
 type sessionFormData struct {
 	pageData
 	Heading, Action, SaveLabel, Status, ErrorSummary, ID, Title, Date, GroupContext, Intent, Revision string
+	Allocation, Timing                                                                                string
+	TimingComplete                                                                                    bool
+	TimingWarnings                                                                                    []string
 	Conflict                                                                                          bool
 	CurrentURL                                                                                        string
 	Blocks                                                                                            []sessionBlockFormView
@@ -118,12 +130,14 @@ func (h *handler) sessionDetailState(w http.ResponseWriter, r *http.Request, arc
 		h.serverError(w, "read session", err)
 		return
 	}
-	data := sessionDetailData{pageData: h.page(r, item.Title+" · Curu"), ID: item.ID, Title: item.Title, GroupContext: item.GroupContext, Intent: item.Intent, Revision: item.Revision, Archived: archived, Blocks: make([]sessionBlockView, len(item.Blocks))}
+	timing := session.SummarizeTiming(item)
+	data := sessionDetailData{pageData: h.page(r, item.Title+" · Curu"), ID: item.ID, Title: item.Title, GroupContext: item.GroupContext, Intent: item.Intent, Allocation: formatDuration(item.AllocationSeconds), Revision: item.Revision, Archived: archived, Timing: formatTimingTotal(timing), TimingComplete: timing.Complete, TimingWarnings: timing.Warnings, Blocks: make([]sessionBlockView, len(item.Blocks))}
 	if item.Date != nil {
 		data.Date = item.Date.Format("2006-01-02")
 	}
 	for i, block := range item.Blocks {
-		view := sessionBlockView{Position: i + 1, Name: block.Name, Intent: block.Intent, Notes: block.Notes, ObservationLens: block.ObservationLens, Placements: make([]sessionPlacementView, len(block.Placements))}
+		blockTiming := timing.Blocks[i]
+		view := sessionBlockView{Position: i + 1, Name: block.Name, Intent: block.Intent, Notes: block.Notes, ObservationLens: block.ObservationLens, Allocation: formatDuration(block.AllocationSeconds), Timing: formatBlockTiming(blockTiming), TimingComplete: blockTiming.Complete, TimingWarnings: blockTiming.Warnings, Placements: make([]sessionPlacementView, len(block.Placements))}
 		for j, placement := range block.Placements {
 			content, renderErr := RenderMarkdown(placement.ContentMarkdown)
 			if renderErr != nil {
@@ -192,6 +206,9 @@ func (h *handler) editSession(w http.ResponseWriter, r *http.Request) {
 		data.Status = "Activity removed from this plan; the library activity is unchanged."
 	case "reordered":
 		data.Status = "Session order changed and entered fields saved."
+	}
+	if data.Status != "" && len(data.TimingWarnings) > 0 {
+		data.Status = strings.TrimSpace(data.Status + " Saved with timing warnings; review the non-blocking feedback below.")
 	}
 	h.render(w, "session-form", data)
 }
@@ -438,19 +455,23 @@ func (h *handler) parseSessionForm(w http.ResponseWriter, r *http.Request, headi
 		h.rejectInput(w, http.StatusBadRequest)
 		return session.Input{}, sessionFormData{}, false
 	}
-	data := sessionFormData{pageData: h.page(r, heading+" · Curu"), Heading: heading, Action: action, SaveLabel: label, Title: r.PostForm.Get("title"), Date: r.PostForm.Get("date"), GroupContext: r.PostForm.Get("group_context"), Intent: r.PostForm.Get("intent"), Revision: r.PostForm.Get("revision")}
-	ids, names, intents, notes, lenses := r.PostForm["block_id"], r.PostForm["block_name"], r.PostForm["block_intent"], r.PostForm["block_notes"], r.PostForm["block_observation_lens"]
+	data := sessionFormData{pageData: h.page(r, heading+" · Curu"), Heading: heading, Action: action, SaveLabel: label, Title: r.PostForm.Get("title"), Date: r.PostForm.Get("date"), GroupContext: r.PostForm.Get("group_context"), Intent: r.PostForm.Get("intent"), Revision: r.PostForm.Get("revision"), Allocation: r.PostForm.Get("allocation_seconds")}
+	ids, names, intents, notes, lenses, allocations := r.PostForm["block_id"], r.PostForm["block_name"], r.PostForm["block_intent"], r.PostForm["block_notes"], r.PostForm["block_observation_lens"], r.PostForm["block_allocation_seconds"]
 	// Empty IDs are valid for newly added blocks, but an edit must submit one ID
 	// field per block. Otherwise an old or malformed editor could replace stable
 	// blocks and cascade their placement snapshots.
 	if len(ids) == 0 && len(names) > 0 && data.Revision == "" {
 		ids = make([]string, len(names))
 	}
-	if len(ids) != len(names) || len(names) != len(intents) || len(names) != len(notes) || len(names) != len(lenses) || len(names) > session.MaxBlocks {
+	if len(allocations) == 0 && len(names) > 0 {
+		allocations = make([]string, len(names))
+	}
+	if len(ids) != len(names) || len(names) != len(intents) || len(names) != len(notes) || len(names) != len(lenses) || len(names) != len(allocations) || len(names) > session.MaxBlocks {
 		h.rejectInput(w, http.StatusBadRequest)
 		return session.Input{}, data, false
 	}
 	input := session.Input{Title: data.Title, GroupContext: data.GroupContext, Intent: data.Intent}
+	input.AllocationSeconds = parseOptionalTiming(data.Allocation, "Session allocation", &data.ErrorSummary)
 	if strings.TrimSpace(data.Date) != "" {
 		parsed, dateErr := time.Parse("2006-01-02", data.Date)
 		if dateErr != nil {
@@ -460,22 +481,29 @@ func (h *handler) parseSessionForm(w http.ResponseWriter, r *http.Request, headi
 		}
 	}
 	for i := range names {
-		view := sessionBlockFormView{ID: ids[i], Name: names[i], Intent: intents[i], Notes: notes[i], ObservationLens: lenses[i]}
+		view := sessionBlockFormView{ID: ids[i], Name: names[i], Intent: intents[i], Notes: notes[i], ObservationLens: lenses[i], Allocation: allocations[i]}
 		placementIDs := r.PostForm["placement_id_"+view.ID]
 		placementNotes := r.PostForm["placement_notes_"+view.ID]
-		if len(placementIDs) != len(placementNotes) || len(placementIDs) > session.MaxPlacementsPerBlock {
+		placementDurations := r.PostForm["placement_duration_seconds_"+view.ID]
+		if len(placementDurations) == 0 && len(placementIDs) > 0 {
+			placementDurations = make([]string, len(placementIDs))
+		}
+		if len(placementIDs) != len(placementNotes) || len(placementIDs) != len(placementDurations) || len(placementIDs) > session.MaxPlacementsPerBlock {
 			h.rejectInput(w, http.StatusBadRequest)
 			return session.Input{}, data, false
 		}
 		blockInput := session.BlockInput{ID: view.ID, Name: view.Name, Intent: view.Intent, Notes: view.Notes, ObservationLens: view.ObservationLens}
+		blockInput.AllocationSeconds = parseOptionalTiming(view.Allocation, "Block allocation", &data.ErrorSummary)
 		for j := range placementIDs {
-			placementView := sessionPlacementFormView{ID: placementIDs[j], LocalNotes: placementNotes[j]}
+			placementView := sessionPlacementFormView{ID: placementIDs[j], LocalNotes: placementNotes[j], Duration: placementDurations[j]}
+			duration := parseOptionalTiming(placementView.Duration, "Activity duration", &data.ErrorSummary)
 			view.Placements = append(view.Placements, placementView)
-			blockInput.Placements = append(blockInput.Placements, session.PlacementInput{ID: placementView.ID, LocalNotes: placementView.LocalNotes})
+			blockInput.Placements = append(blockInput.Placements, session.PlacementInput{ID: placementView.ID, LocalNotes: placementView.LocalNotes, DurationSeconds: duration})
 		}
 		data.Blocks = append(data.Blocks, view)
 		input.Blocks = append(input.Blocks, blockInput)
 	}
+	applyTimingFormSummary(&data, input)
 	annotateSessionFormOrder(data.Blocks)
 	if data.ErrorSummary != "" {
 		h.renderStatus(w, "session-form", data, http.StatusUnprocessableEntity)
@@ -484,19 +512,77 @@ func (h *handler) parseSessionForm(w http.ResponseWriter, r *http.Request, headi
 	return input, data, true
 }
 func sessionFormFromItem(page pageData, item session.Session) sessionFormData {
-	data := sessionFormData{pageData: page, Heading: "Edit session", Action: "/sessions/" + item.ID, SaveLabel: "Save changes", ID: item.ID, Title: item.Title, GroupContext: item.GroupContext, Intent: item.Intent, Revision: strconv.FormatInt(item.Revision, 10)}
+	data := sessionFormData{pageData: page, Heading: "Edit session", Action: "/sessions/" + item.ID, SaveLabel: "Save changes", ID: item.ID, Title: item.Title, GroupContext: item.GroupContext, Intent: item.Intent, Revision: strconv.FormatInt(item.Revision, 10), Allocation: timingInput(item.AllocationSeconds)}
 	if item.Date != nil {
 		data.Date = item.Date.Format("2006-01-02")
 	}
 	for _, b := range item.Blocks {
-		view := sessionBlockFormView{ID: b.ID, Name: b.Name, Intent: b.Intent, Notes: b.Notes, ObservationLens: b.ObservationLens}
+		view := sessionBlockFormView{ID: b.ID, Name: b.Name, Intent: b.Intent, Notes: b.Notes, ObservationLens: b.ObservationLens, Allocation: timingInput(b.AllocationSeconds)}
 		for _, placement := range b.Placements {
-			view.Placements = append(view.Placements, sessionPlacementFormView{ID: placement.ID, Title: placement.Title, LocalNotes: placement.LocalNotes, Duration: formatDuration(placement.DurationSeconds)})
+			view.Placements = append(view.Placements, sessionPlacementFormView{ID: placement.ID, Title: placement.Title, LocalNotes: placement.LocalNotes, Duration: timingInput(placement.DurationSeconds)})
 		}
 		data.Blocks = append(data.Blocks, view)
 	}
+	applyTimingFormItemSummary(&data, item)
 	annotateSessionFormOrder(data.Blocks)
 	return data
+}
+
+func parseOptionalTiming(raw, label string, errorSummary *string) *int {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 0 || value > session.MaxTimingSeconds {
+		if *errorSummary == "" {
+			*errorSummary = label + " must be whole seconds from 0 through 86400, or blank."
+		}
+		return nil
+	}
+	return &value
+}
+
+func timingInput(value *int) string {
+	if value == nil {
+		return ""
+	}
+	return strconv.Itoa(*value)
+}
+
+func formatTimingTotal(summary session.TimingSummary) string {
+	if !summary.HasTiming {
+		return ""
+	}
+	return formatDuration(&summary.TotalSeconds)
+}
+
+func formatBlockTiming(summary session.BlockTiming) string {
+	if !summary.HasValue {
+		return ""
+	}
+	return formatDuration(&summary.Seconds)
+}
+
+func applyTimingFormItemSummary(data *sessionFormData, item session.Session) {
+	timing := session.SummarizeTiming(item)
+	data.Timing, data.TimingComplete, data.TimingWarnings = formatTimingTotal(timing), timing.Complete, timing.Warnings
+	for i := range data.Blocks {
+		data.Blocks[i].Timing = formatBlockTiming(timing.Blocks[i])
+		data.Blocks[i].TimingComplete = timing.Blocks[i].Complete
+		data.Blocks[i].TimingWarnings = timing.Blocks[i].Warnings
+	}
+}
+
+func applyTimingFormSummary(data *sessionFormData, input session.Input) {
+	item := session.Session{AllocationSeconds: input.AllocationSeconds, Blocks: make([]session.Block, len(input.Blocks))}
+	for i, block := range input.Blocks {
+		item.Blocks[i].AllocationSeconds = block.AllocationSeconds
+		for _, placement := range block.Placements {
+			item.Blocks[i].Placements = append(item.Blocks[i].Placements, session.Placement{DurationSeconds: placement.DurationSeconds})
+		}
+	}
+	applyTimingFormItemSummary(data, item)
 }
 
 func annotateSessionFormOrder(blocks []sessionBlockFormView) {

@@ -159,3 +159,52 @@ func TestArchivedConflictIsAStaleConflict(t *testing.T) {
 		t.Fatal("ErrArchivedConflict does not preserve the stale-conflict classification")
 	}
 }
+
+func TestSummarizeTimingExamples(t *testing.T) {
+	seconds := func(value int) *int { return &value }
+	tenShort := make([]Placement, 10)
+	for i := range tenShort {
+		tenShort[i].DurationSeconds = seconds(30)
+	}
+	tests := []struct {
+		name            string
+		item            Session
+		has, complete   bool
+		total, warnings int
+	}{
+		{name: "untimed session", item: Session{Blocks: []Block{{Name: "Open"}}}, complete: false},
+		{name: "ten short activities", item: Session{Blocks: []Block{{Placements: tenShort}}}, has: true, complete: true, total: 300},
+		{name: "block budget counted once", item: Session{Blocks: []Block{{AllocationSeconds: seconds(600), Placements: []Placement{{DurationSeconds: seconds(200)}, {DurationSeconds: seconds(400)}}}}}, has: true, complete: true, total: 600},
+		{name: "block mismatch warns but uses budget", item: Session{Blocks: []Block{{AllocationSeconds: seconds(300), Placements: []Placement{{DurationSeconds: seconds(200)}, {DurationSeconds: seconds(200)}}}}}, has: true, complete: true, total: 300, warnings: 1},
+		{name: "partial total", item: Session{AllocationSeconds: seconds(900), Blocks: []Block{{Placements: []Placement{{DurationSeconds: seconds(120)}, {}}}}}, has: true, complete: false, total: 120, warnings: 2},
+		{name: "session mismatch", item: Session{AllocationSeconds: seconds(900), Blocks: []Block{{AllocationSeconds: seconds(600)}}}, has: true, complete: true, total: 600, warnings: 1},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := SummarizeTiming(test.item)
+			if got.HasTiming != test.has || got.Complete != test.complete || got.TotalSeconds != test.total || len(got.Warnings) != test.warnings {
+				t.Fatalf("SummarizeTiming() = %+v", got)
+			}
+		})
+	}
+}
+
+func TestTimingValidationAllowsInconsistentPlansAndRejectsMalformedRanges(t *testing.T) {
+	store := &fakeStore{}
+	planner := testPlanner(t, store)
+	sessionBudget, blockBudget, placementDuration := 300, 200, 180
+	input := Input{Title: "Valid mismatch", AllocationSeconds: &sessionBudget, Blocks: []BlockInput{{Name: "Warmup", AllocationSeconds: &blockBudget}}}
+	if _, err := planner.Create(context.Background(), owner, input); err != nil {
+		t.Fatalf("valid inconsistent timing was rejected: %v", err)
+	}
+	input.Blocks[0].Placements = []PlacementInput{{ID: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", DurationSeconds: &placementDuration}}
+	input.Blocks[0].ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+	if _, err := planner.Update(context.Background(), owner, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", 1, input); err != nil {
+		t.Fatalf("valid placement seconds were rejected: %v", err)
+	}
+	bad := MaxTimingSeconds + 1
+	input.AllocationSeconds = &bad
+	if _, err := planner.Update(context.Background(), owner, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", 1, input); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("out-of-range timing error = %v", err)
+	}
+}

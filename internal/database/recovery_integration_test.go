@@ -136,8 +136,10 @@ func TestPostgresBackupRestoreRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("save recovery placement fixture: %v", err)
 	}
-	if err := source.Exec("UPDATE curu.session_activity_placements SET local_notes='Retained recovery note', duration_seconds=75 WHERE id=?", savedSession.Blocks[0].Placements[0].ID).Error; err != nil {
-		t.Fatalf("set recovery placement properties: %v", err)
+	sessionAllocation, blockAllocation, placementDuration := 600, 180, 75
+	savedSession, err = sessionRepository.Update(ctx, ownerID, savedSession.ID, savedSession.Revision, session.Input{Title: savedSession.Title, GroupContext: savedSession.GroupContext, Intent: savedSession.Intent, AllocationSeconds: &sessionAllocation, Blocks: []session.BlockInput{{ID: savedSession.Blocks[0].ID, Name: savedSession.Blocks[0].Name, Notes: savedSession.Blocks[0].Notes, ObservationLens: savedSession.Blocks[0].ObservationLens, AllocationSeconds: &blockAllocation, Placements: []session.PlacementInput{{ID: savedSession.Blocks[0].Placements[0].ID, LocalNotes: "Retained recovery note", DurationSeconds: &placementDuration}}}}})
+	if err != nil {
+		t.Fatalf("set recovery timing properties: %v", err)
 	}
 	if _, err := sessionRepository.Archive(ctx, ownerID, savedSession.ID, savedSession.Revision, true); err != nil {
 		t.Fatalf("archive recovery session fixture: %v", err)

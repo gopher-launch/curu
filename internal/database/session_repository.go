@@ -25,6 +25,7 @@ func NewSessionRepository(db *gorm.DB) (*SessionRepository, error) {
 type sessionRow struct {
 	ID, OwnerID, Title, GroupContext, Intent string
 	SessionDate                              *time.Time
+	AllocationSeconds                        *int
 	Revision                                 int64
 	Blocks                                   []sessionBlockRow `gorm:"foreignKey:SessionID"`
 }
@@ -35,6 +36,7 @@ type sessionBlockRow struct {
 	ID, SessionID                        string
 	Position                             int
 	Name, Intent, Notes, ObservationLens string
+	AllocationSeconds                    *int
 	Placements                           []sessionPlacementRow `gorm:"foreignKey:BlockID"`
 }
 
@@ -98,9 +100,9 @@ func (r *SessionRepository) Find(ctx context.Context, owner, id string, archived
 	if err != nil {
 		return session.Session{}, fmt.Errorf("find session: %w", err)
 	}
-	item := session.Session{ID: row.ID, OwnerID: row.OwnerID, Title: row.Title, Date: row.SessionDate, GroupContext: row.GroupContext, Intent: row.Intent, Revision: row.Revision, Archived: archived, Blocks: make([]session.Block, len(row.Blocks))}
+	item := session.Session{ID: row.ID, OwnerID: row.OwnerID, Title: row.Title, Date: row.SessionDate, GroupContext: row.GroupContext, Intent: row.Intent, AllocationSeconds: row.AllocationSeconds, Revision: row.Revision, Archived: archived, Blocks: make([]session.Block, len(row.Blocks))}
 	for i, b := range row.Blocks {
-		block := session.Block{ID: b.ID, Position: b.Position, Name: b.Name, Intent: b.Intent, Notes: b.Notes, ObservationLens: b.ObservationLens, Placements: make([]session.Placement, len(b.Placements))}
+		block := session.Block{ID: b.ID, Position: b.Position, Name: b.Name, Intent: b.Intent, Notes: b.Notes, ObservationLens: b.ObservationLens, AllocationSeconds: b.AllocationSeconds, Placements: make([]session.Placement, len(b.Placements))}
 		for j, p := range b.Placements {
 			placement := session.Placement{ID: p.ID, Position: p.Position, SourceActivityID: p.SourceActivityID, SourceActivityRevision: p.SourceActivityRevision, Title: p.Title, Summary: p.Summary, ContentMarkdown: p.ContentMarkdown, RecommendedDurationSeconds: p.RecommendedDurationSeconds, DurationSeconds: p.DurationSeconds, LocalNotes: p.LocalNotes, Phase: p.Phase, Theme: p.Theme, Tags: []string(p.Tags), Progressions: make([]session.PlacementProgression, len(p.Progressions))}
 			if p.SourceIdentity != nil {
@@ -121,7 +123,7 @@ func (r *SessionRepository) Create(ctx context.Context, owner string, input sess
 		return session.Session{}, err
 	}
 	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Exec(`INSERT INTO curu.sessions (id, owner_id, title, session_date, group_context, intent) VALUES (?, ?, ?, ?, ?, ?)`, id, owner, input.Title, input.Date, input.GroupContext, input.Intent).Error; err != nil {
+		if err := tx.Exec(`INSERT INTO curu.sessions (id, owner_id, title, session_date, group_context, intent, allocation_seconds) VALUES (?, ?, ?, ?, ?, ?, ?)`, id, owner, input.Title, input.Date, input.GroupContext, input.Intent, input.AllocationSeconds).Error; err != nil {
 			return fmt.Errorf("insert session: %w", err)
 		}
 		return createSessionBlocks(tx, id, input.Blocks)
@@ -142,7 +144,7 @@ func (r *SessionRepository) Update(ctx context.Context, owner, id string, revisi
 }
 
 func updateSessionAggregate(tx *gorm.DB, owner, id string, revision int64, input session.Input) error {
-	result := tx.Exec(`UPDATE curu.sessions SET title=?, session_date=?, group_context=?, intent=?, revision=revision+1, updated_at=? WHERE id=? AND owner_id=? AND archived_at IS NULL AND revision=?`, input.Title, input.Date, input.GroupContext, input.Intent, time.Now().UTC(), id, owner, revision)
+	result := tx.Exec(`UPDATE curu.sessions SET title=?, session_date=?, group_context=?, intent=?, allocation_seconds=?, revision=revision+1, updated_at=? WHERE id=? AND owner_id=? AND archived_at IS NULL AND revision=?`, input.Title, input.Date, input.GroupContext, input.Intent, input.AllocationSeconds, time.Now().UTC(), id, owner, revision)
 	if result.Error != nil {
 		return fmt.Errorf("update session: %w", result.Error)
 	}
@@ -213,7 +215,7 @@ func createSessionBlocks(tx *gorm.DB, sessionID string, blocks []session.BlockIn
 		if err != nil {
 			return err
 		}
-		if err := tx.Exec(`INSERT INTO curu.session_blocks (id, session_id, position, name, intent, notes, observation_lens) VALUES (?, ?, ?, ?, ?, ?, ?)`, id, sessionID, position, block.Name, block.Intent, block.Notes, block.ObservationLens).Error; err != nil {
+		if err := tx.Exec(`INSERT INTO curu.session_blocks (id, session_id, position, name, intent, notes, observation_lens, allocation_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, id, sessionID, position, block.Name, block.Intent, block.Notes, block.ObservationLens, block.AllocationSeconds).Error; err != nil {
 			return fmt.Errorf("insert session block: %w", err)
 		}
 	}
@@ -239,7 +241,7 @@ func reconcileSessionBlocks(tx *gorm.DB, sessionID string, blocks []session.Bloc
 			if err != nil {
 				return err
 			}
-			if err := tx.Exec(`INSERT INTO curu.session_blocks (id, session_id, position, name, intent, notes, observation_lens) VALUES (?, ?, ?, ?, ?, ?, ?)`, id, sessionID, position, block.Name, block.Intent, block.Notes, block.ObservationLens).Error; err != nil {
+			if err := tx.Exec(`INSERT INTO curu.session_blocks (id, session_id, position, name, intent, notes, observation_lens, allocation_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, id, sessionID, position, block.Name, block.Intent, block.Notes, block.ObservationLens, block.AllocationSeconds).Error; err != nil {
 				return fmt.Errorf("insert session block: %w", err)
 			}
 			continue
@@ -247,12 +249,12 @@ func reconcileSessionBlocks(tx *gorm.DB, sessionID string, blocks []session.Bloc
 		if !available[block.ID] {
 			return session.ValidationErrors{"blocks": "A submitted block does not belong to this session."}
 		}
-		if err := tx.Exec(`UPDATE curu.session_blocks SET position=?, name=?, intent=?, notes=?, observation_lens=?, updated_at=? WHERE id=? AND session_id=?`, position, block.Name, block.Intent, block.Notes, block.ObservationLens, time.Now().UTC(), block.ID, sessionID).Error; err != nil {
+		if err := tx.Exec(`UPDATE curu.session_blocks SET position=?, name=?, intent=?, notes=?, observation_lens=?, allocation_seconds=?, updated_at=? WHERE id=? AND session_id=?`, position, block.Name, block.Intent, block.Notes, block.ObservationLens, block.AllocationSeconds, time.Now().UTC(), block.ID, sessionID).Error; err != nil {
 			return fmt.Errorf("update session block: %w", err)
 		}
 		delete(available, block.ID)
 		for _, placement := range block.Placements {
-			result := tx.Exec(`UPDATE curu.session_activity_placements SET local_notes=?, updated_at=? WHERE id=? AND block_id=?`, placement.LocalNotes, time.Now().UTC(), placement.ID, block.ID)
+			result := tx.Exec(`UPDATE curu.session_activity_placements SET local_notes=?, duration_seconds=?, updated_at=? WHERE id=? AND block_id=?`, placement.LocalNotes, placement.DurationSeconds, time.Now().UTC(), placement.ID, block.ID)
 			if result.Error != nil {
 				return fmt.Errorf("update placement notes: %w", result.Error)
 			}

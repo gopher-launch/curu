@@ -17,6 +17,7 @@ const (
 	MaxTextBytes          = 10000
 	MaxBlocks             = 50
 	MaxPlacementsPerBlock = 100
+	MaxTimingSeconds      = 86400
 )
 
 var (
@@ -33,6 +34,7 @@ type Summary struct {
 type Session struct {
 	ID, OwnerID, Title, GroupContext, Intent string
 	Date                                     *time.Time
+	AllocationSeconds                        *int
 	Revision                                 int64
 	Archived                                 bool
 	Blocks                                   []Block
@@ -41,6 +43,7 @@ type Block struct {
 	ID                                   string
 	Position                             int
 	Name, Intent, Notes, ObservationLens string
+	AllocationSeconds                    *int
 	Placements                           []Placement
 }
 type Placement struct {
@@ -63,13 +66,86 @@ type PlacementProgression struct {
 type Input struct {
 	Title, GroupContext, Intent string
 	Date                        *time.Time
+	AllocationSeconds           *int
 	Blocks                      []BlockInput
 }
 type BlockInput struct {
 	ID, Name, Intent, Notes, ObservationLens string
+	AllocationSeconds                        *int
 	Placements                               []PlacementInput
 }
-type PlacementInput struct{ ID, LocalNotes string }
+type PlacementInput struct {
+	ID, LocalNotes  string
+	DurationSeconds *int
+}
+
+type TimingSummary struct {
+	HasTiming, Complete bool
+	TotalSeconds        int
+	Warnings            []string
+	Blocks              []BlockTiming
+}
+
+type BlockTiming struct {
+	Seconds            int
+	HasValue, Complete bool
+	Warnings           []string
+}
+
+// SummarizeTiming counts each block once. An explicit block allocation wins;
+// otherwise the block contributes the complete or partial sum of placement
+// durations. Recommendations are deliberately excluded.
+func SummarizeTiming(item Session) TimingSummary {
+	summary := TimingSummary{Complete: true, Blocks: make([]BlockTiming, len(item.Blocks))}
+	for i, block := range item.Blocks {
+		bt := BlockTiming{Complete: true}
+		placementTotal, timed := 0, 0
+		for _, placement := range block.Placements {
+			if placement.DurationSeconds == nil {
+				bt.Complete = false
+				continue
+			}
+			placementTotal += *placement.DurationSeconds
+			timed++
+		}
+		if block.AllocationSeconds != nil {
+			bt.HasValue, bt.Seconds = true, *block.AllocationSeconds
+			if len(block.Placements) > 0 && timed == len(block.Placements) && placementTotal != bt.Seconds {
+				bt.Warnings = append(bt.Warnings, "The block allocation differs from its activity total.")
+			}
+			bt.Complete = true
+		} else if timed > 0 {
+			bt.HasValue, bt.Seconds = true, placementTotal
+			if timed < len(block.Placements) {
+				bt.Warnings = append(bt.Warnings, "This is a partial total because some activities are untimed.")
+			}
+		} else if len(block.Placements) == 0 {
+			bt.Complete = false
+		}
+		if bt.HasValue {
+			summary.HasTiming = true
+			summary.TotalSeconds += bt.Seconds
+		}
+		if !bt.Complete {
+			summary.Complete = false
+		}
+		summary.Blocks[i] = bt
+	}
+	if item.AllocationSeconds != nil {
+		summary.HasTiming = true
+		if summary.Complete && summary.TotalSeconds != *item.AllocationSeconds {
+			summary.Warnings = append(summary.Warnings, "The session allocation differs from the block total.")
+		} else if !summary.Complete {
+			summary.Warnings = append(summary.Warnings, "The session total is partial because some blocks have unknown time.")
+		}
+	} else if summary.HasTiming && !summary.Complete {
+		summary.Warnings = append(summary.Warnings, "The session total is partial because some blocks have unknown time.")
+	}
+	for _, block := range summary.Blocks {
+		summary.Warnings = append(summary.Warnings, block.Warnings...)
+	}
+	return summary
+}
 
 type PlacementActionKind string
 
@@ -277,6 +353,12 @@ func validate(input Input) (Input, error) {
 	check("title", input.Title, MaxTitleBytes, true)
 	check("group_context", input.GroupContext, MaxTextBytes, false)
 	check("intent", input.Intent, MaxTextBytes, false)
+	checkTiming := func(field string, value *int) {
+		if value != nil && (*value < 0 || *value > MaxTimingSeconds) {
+			errs[field] = "Enter seconds from 0 through 86400, or leave blank."
+		}
+	}
+	checkTiming("allocation_seconds", input.AllocationSeconds)
 	if len(input.Blocks) > MaxBlocks {
 		errs["blocks"] = "A session can contain at most 50 blocks."
 	}
@@ -298,6 +380,7 @@ func validate(input Input) (Input, error) {
 		check("block_intent", block.Intent, MaxTextBytes, false)
 		check("block_notes", block.Notes, MaxTextBytes, false)
 		check("block_observation_lens", block.ObservationLens, MaxTextBytes, false)
+		checkTiming("block_allocation_seconds", block.AllocationSeconds)
 		if len(block.Placements) > MaxPlacementsPerBlock {
 			errs["placements"] = "A block can contain at most 100 activities."
 		}
@@ -316,6 +399,7 @@ func validate(input Input) (Input, error) {
 			}
 			placement.LocalNotes = strings.TrimSpace(placement.LocalNotes)
 			check("placement_notes", placement.LocalNotes, MaxTextBytes, false)
+			checkTiming("placement_duration_seconds", placement.DurationSeconds)
 		}
 	}
 	if input.Date != nil {
