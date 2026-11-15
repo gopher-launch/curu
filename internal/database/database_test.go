@@ -415,7 +415,7 @@ func TestPostgresMigrationAndRuntimeRestrictions(t *testing.T) {
 	}
 	actionInput.Blocks[0].Placements[0].LocalNotes = replacedPlacement.LocalNotes
 	actionSession, err = sessions.ApplyPlacementAction(ctx, ownerID, actionSession.ID, actionSession.Revision, actionInput, session.PlacementAction{Kind: session.MovePlacementAction, PlacementID: replacedPlacement.ID, TargetBlockID: actionSession.Blocks[1].ID})
-	if err != nil || len(actionSession.Blocks[0].Placements) != 0 || len(actionSession.Blocks[1].Placements) != 1 || actionSession.Blocks[1].Placements[0].LocalNotes != "Unsaved note saved" || actionSession.Blocks[1].Placements[0].DurationSeconds == nil || *actionSession.Blocks[1].Placements[0].DurationSeconds != 45 {
+	if err != nil || len(actionSession.Blocks[0].Placements) != 0 || len(actionSession.Blocks[1].Placements) != 1 || actionSession.Blocks[1].Placements[0].LocalNotes != "Unsaved note saved" || actionSession.Blocks[1].Placements[0].DurationSeconds == nil || *actionSession.Blocks[1].Placements[0].DurationSeconds != 75 {
 		t.Fatalf("move placement action = %+v, error = %v", actionSession, err)
 	}
 	moved := actionSession.Blocks[1].Placements[0]
