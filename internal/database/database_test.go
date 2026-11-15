@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -343,11 +344,65 @@ func TestPostgresMigrationAndRuntimeRestrictions(t *testing.T) {
 	if err != nil || updatedSession.Revision != 2 || len(updatedSession.Blocks) != 2 || updatedSession.Blocks[1].Position != 1 {
 		t.Fatalf("session Update() = %+v, error = %v", updatedSession, err)
 	}
+	snapshotSource, err := repository.Update(ctx, ownerID, restored.ID, restored.Revision, activity.Input{
+		Title: "Snapshot source", Summary: "Coherent recommendation", ContentMarkdown: "## Setup\nUse the whole space.",
+		DurationSeconds: intPointer(90), Phase: "Warmup", Theme: "Handling", Tags: []string{"ball", "scan"},
+		Progressions: []activity.ProgressionInput{{Title: "Add pressure", ContentMarkdown: "Close the space.", DurationSeconds: intPointer(30)}},
+	})
+	if err != nil {
+		t.Fatalf("prepare snapshot source: %v", err)
+	}
+	firstSnapshot, err := sessions.AddPlacement(ctx, ownerID, updatedSession.ID, updatedSession.Blocks[0].ID, updatedSession.Revision, snapshotSource.ID)
+	if err != nil || firstSnapshot.Revision != 3 || len(firstSnapshot.Blocks[0].Placements) != 1 {
+		t.Fatalf("first AddPlacement() = %+v, error = %v", firstSnapshot, err)
+	}
+	secondSnapshot, err := sessions.AddPlacement(ctx, ownerID, firstSnapshot.ID, firstSnapshot.Blocks[0].ID, firstSnapshot.Revision, snapshotSource.ID)
+	if err != nil || secondSnapshot.Revision != 4 || len(secondSnapshot.Blocks[0].Placements) != 2 || secondSnapshot.Blocks[0].Placements[1].Position != 1 {
+		t.Fatalf("second AddPlacement() = %+v, error = %v", secondSnapshot, err)
+	}
+	placement := secondSnapshot.Blocks[0].Placements[0]
+	if placement.SourceActivityID != snapshotSource.ID || placement.SourceActivityRevision != snapshotSource.Revision || placement.SourceIdentity != "" ||
+		placement.Title != snapshotSource.Title || placement.Summary != snapshotSource.Summary || placement.ContentMarkdown != snapshotSource.ContentMarkdown ||
+		placement.RecommendedDurationSeconds == nil || *placement.RecommendedDurationSeconds != 90 || placement.Phase != snapshotSource.Phase || placement.Theme != snapshotSource.Theme || !slices.Equal(placement.Tags, snapshotSource.Tags) ||
+		len(placement.Progressions) != 1 || placement.Progressions[0].ContentMarkdown != snapshotSource.Progressions[0].ContentMarkdown || placement.Progressions[0].RecommendedDurationSeconds == nil || *placement.Progressions[0].RecommendedDurationSeconds != 30 {
+		t.Fatalf("placement snapshot = %+v, want coherent copy of %+v", placement, snapshotSource)
+	}
+	if err := runtime.Exec("UPDATE curu.session_activity_placements SET title = 'Plan-local adaptation' WHERE id = ?", placement.ID).Error; err != nil {
+		t.Fatalf("adapt placement snapshot: %v", err)
+	}
+	var sourceTitle string
+	if err := runtime.Raw("SELECT title FROM curu.activities WHERE id = ?", snapshotSource.ID).Scan(&sourceTitle).Error; err != nil || sourceTitle != snapshotSource.Title {
+		t.Fatalf("source after placement adaptation = %q, error = %v", sourceTitle, err)
+	}
+	// Saving ordinary session/block fields retains stable block identities and
+	// their placements; only an explicitly removed block cascades its snapshots.
+	retained, err := sessions.Update(ctx, ownerID, secondSnapshot.ID, secondSnapshot.Revision, session.Input{Title: "Snapshot plan", Blocks: []session.BlockInput{
+		{ID: secondSnapshot.Blocks[0].ID, Name: "Warmup edited"},
+		{ID: secondSnapshot.Blocks[1].ID, Name: "Main", Intent: "Decision making"},
+	}})
+	if err != nil || retained.Revision != 5 || len(retained.Blocks[0].Placements) != 2 || retained.Blocks[0].Placements[0].Title != "Plan-local adaptation" {
+		t.Fatalf("session save retained placements = %+v, error = %v", retained, err)
+	}
+	beforeRollback := retained
+	if _, err := sessions.AddPlacement(ctx, ownerID, retained.ID, "77777777-7777-4777-8777-777777777777", retained.Revision, snapshotSource.ID); !errors.Is(err, session.ErrNotFound) {
+		t.Fatalf("AddPlacement() invalid block error = %v, want not found", err)
+	}
+	afterRollback, err := sessions.Find(ctx, ownerID, retained.ID, false)
+	if err != nil || afterRollback.Revision != beforeRollback.Revision || len(afterRollback.Blocks[0].Placements) != 2 {
+		t.Fatalf("session after placement rollback = %+v, error = %v", afterRollback, err)
+	}
+	if err := admin.Exec("DELETE FROM curu.activities WHERE id = ?", snapshotSource.ID).Error; err != nil {
+		t.Fatalf("remove source activity fixture: %v", err)
+	}
+	afterSourceRemoval, err := sessions.Find(ctx, ownerID, retained.ID, false)
+	if err != nil || len(afterSourceRemoval.Blocks[0].Placements) != 2 || afterSourceRemoval.Blocks[0].Placements[0].SourceActivityID != snapshotSource.ID || afterSourceRemoval.Blocks[0].Placements[0].Title != "Plan-local adaptation" {
+		t.Fatalf("snapshot after source removal = %+v, error = %v", afterSourceRemoval, err)
+	}
 	if _, err := sessions.Update(ctx, ownerID, createdSession.ID, createdSession.Revision, session.Input{Title: "Stale", Blocks: []session.BlockInput{{Name: "Lost"}}}); !errors.Is(err, session.ErrConflict) {
 		t.Fatalf("stale session Update() error = %v", err)
 	}
 	currentSession, err := sessions.Find(ctx, ownerID, createdSession.ID, false)
-	if err != nil || currentSession.Title != "Reopened plan" || len(currentSession.Blocks) != 2 {
+	if err != nil || currentSession.Title != "Snapshot plan" || len(currentSession.Blocks) != 2 || len(currentSession.Blocks[0].Placements) != 2 {
 		t.Fatalf("session after stale update = %+v, error = %v", currentSession, err)
 	}
 	archivedSession, err := sessions.Archive(ctx, ownerID, createdSession.ID, currentSession.Revision, true)
@@ -358,14 +413,14 @@ func TestPostgresMigrationAndRuntimeRestrictions(t *testing.T) {
 		t.Fatalf("session Update() after concurrent archive error = %v, want archived conflict", err)
 	}
 	archivedTruth, err := sessions.Find(ctx, ownerID, createdSession.ID, true)
-	if err != nil || archivedTruth.Title != "Reopened plan" || len(archivedTruth.Blocks) != 2 {
+	if err != nil || archivedTruth.Title != "Snapshot plan" || len(archivedTruth.Blocks) != 2 || len(archivedTruth.Blocks[0].Placements) != 2 {
 		t.Fatalf("archived session after stale update = %+v, error = %v", archivedTruth, err)
 	}
 	if currentItems, err := sessions.List(ctx, ownerID, false); err != nil || len(currentItems) != 0 {
 		t.Fatalf("current sessions after archive = %+v, error = %v", currentItems, err)
 	}
 	restoredSession, err := sessions.Archive(ctx, ownerID, createdSession.ID, archivedSession.Revision, false)
-	if err != nil || restoredSession.Archived || restoredSession.Revision != 4 || len(restoredSession.Blocks) != 2 {
+	if err != nil || restoredSession.Archived || restoredSession.Revision != 7 || len(restoredSession.Blocks) != 2 || len(restoredSession.Blocks[0].Placements) != 2 {
 		t.Fatalf("session Restore() = %+v, error = %v", restoredSession, err)
 	}
 	if _, err := sessions.Find(ctx, "55555555-5555-4555-8555-555555555555", createdSession.ID, false); !errors.Is(err, session.ErrNotFound) {
@@ -435,6 +490,8 @@ func currentDatabase(t *testing.T, db *gorm.DB) string {
 	}
 	return name
 }
+
+func intPointer(value int) *int { return &value }
 
 func databaseURLForRole(t *testing.T, value, role, password string) string {
 	t.Helper()

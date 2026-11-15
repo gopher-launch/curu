@@ -2,6 +2,7 @@ package web
 
 import (
 	"errors"
+	"html/template"
 	"mime"
 	"net/http"
 	"strconv"
@@ -21,6 +22,14 @@ type sessionSummaryView struct{ ID, Title, Date string }
 type sessionBlockView struct {
 	Position                             int
 	Name, Intent, Notes, ObservationLens string
+	Placements                           []sessionPlacementView
+}
+type sessionPlacementView struct {
+	Position                               int
+	Title, Summary, Duration, Phase, Theme string
+	Content                                template.HTML
+	Tags                                   []string
+	Progressions                           []progressionView
 }
 type sessionDetailData struct {
 	pageData
@@ -29,7 +38,7 @@ type sessionDetailData struct {
 	Archived                              bool
 	Blocks                                []sessionBlockView
 }
-type sessionBlockFormView struct{ Name, Intent, Notes, ObservationLens string }
+type sessionBlockFormView struct{ ID, Name, Intent, Notes, ObservationLens string }
 type sessionFormData struct {
 	pageData
 	Heading, Action, SaveLabel, Status, ErrorSummary, ID, Title, Date, GroupContext, Intent, Revision string
@@ -102,7 +111,25 @@ func (h *handler) sessionDetailState(w http.ResponseWriter, r *http.Request, arc
 		data.Date = item.Date.Format("2006-01-02")
 	}
 	for i, block := range item.Blocks {
-		data.Blocks[i] = sessionBlockView{Position: i + 1, Name: block.Name, Intent: block.Intent, Notes: block.Notes, ObservationLens: block.ObservationLens}
+		view := sessionBlockView{Position: i + 1, Name: block.Name, Intent: block.Intent, Notes: block.Notes, ObservationLens: block.ObservationLens, Placements: make([]sessionPlacementView, len(block.Placements))}
+		for j, placement := range block.Placements {
+			content, renderErr := RenderMarkdown(placement.ContentMarkdown)
+			if renderErr != nil {
+				h.serverError(w, "render placement snapshot", renderErr)
+				return
+			}
+			placementView := sessionPlacementView{Position: j + 1, Title: placement.Title, Summary: placement.Summary, Content: content, Duration: formatDuration(placement.RecommendedDurationSeconds), Phase: placement.Phase, Theme: placement.Theme, Tags: placement.Tags, Progressions: make([]progressionView, len(placement.Progressions))}
+			for k, progression := range placement.Progressions {
+				rendered, renderErr := RenderMarkdown(progression.ContentMarkdown)
+				if renderErr != nil {
+					h.serverError(w, "render placement progression snapshot", renderErr)
+					return
+				}
+				placementView.Progressions[k] = progressionView{Position: k + 1, Title: progression.Title, Content: rendered, Duration: formatDuration(progression.RecommendedDurationSeconds)}
+			}
+			view.Placements[j] = placementView
+		}
+		data.Blocks[i] = view
 	}
 	h.render(w, "session-detail", data)
 }
@@ -263,8 +290,14 @@ func (h *handler) parseSessionForm(w http.ResponseWriter, r *http.Request, headi
 		return session.Input{}, sessionFormData{}, false
 	}
 	data := sessionFormData{pageData: h.page(r, heading+" · Curu"), Heading: heading, Action: action, SaveLabel: label, Title: r.PostForm.Get("title"), Date: r.PostForm.Get("date"), GroupContext: r.PostForm.Get("group_context"), Intent: r.PostForm.Get("intent"), Revision: r.PostForm.Get("revision")}
-	names, intents, notes, lenses := r.PostForm["block_name"], r.PostForm["block_intent"], r.PostForm["block_notes"], r.PostForm["block_observation_lens"]
-	if len(names) != len(intents) || len(names) != len(notes) || len(names) != len(lenses) || len(names) > session.MaxBlocks {
+	ids, names, intents, notes, lenses := r.PostForm["block_id"], r.PostForm["block_name"], r.PostForm["block_intent"], r.PostForm["block_notes"], r.PostForm["block_observation_lens"]
+	// Empty IDs are valid for newly added blocks, but an edit must submit one ID
+	// field per block. Otherwise an old or malformed editor could replace stable
+	// blocks and cascade their placement snapshots.
+	if len(ids) == 0 && len(names) > 0 && data.Revision == "" {
+		ids = make([]string, len(names))
+	}
+	if len(ids) != len(names) || len(names) != len(intents) || len(names) != len(notes) || len(names) != len(lenses) || len(names) > session.MaxBlocks {
 		h.rejectInput(w, http.StatusBadRequest)
 		return session.Input{}, data, false
 	}
@@ -278,9 +311,9 @@ func (h *handler) parseSessionForm(w http.ResponseWriter, r *http.Request, headi
 		}
 	}
 	for i := range names {
-		view := sessionBlockFormView{Name: names[i], Intent: intents[i], Notes: notes[i], ObservationLens: lenses[i]}
+		view := sessionBlockFormView{ID: ids[i], Name: names[i], Intent: intents[i], Notes: notes[i], ObservationLens: lenses[i]}
 		data.Blocks = append(data.Blocks, view)
-		input.Blocks = append(input.Blocks, session.BlockInput{Name: view.Name, Intent: view.Intent, Notes: view.Notes, ObservationLens: view.ObservationLens})
+		input.Blocks = append(input.Blocks, session.BlockInput{ID: view.ID, Name: view.Name, Intent: view.Intent, Notes: view.Notes, ObservationLens: view.ObservationLens})
 	}
 	if data.ErrorSummary != "" {
 		h.renderStatus(w, "session-form", data, http.StatusUnprocessableEntity)
@@ -294,7 +327,7 @@ func sessionFormFromItem(page pageData, item session.Session) sessionFormData {
 		data.Date = item.Date.Format("2006-01-02")
 	}
 	for _, b := range item.Blocks {
-		data.Blocks = append(data.Blocks, sessionBlockFormView{Name: b.Name, Intent: b.Intent, Notes: b.Notes, ObservationLens: b.ObservationLens})
+		data.Blocks = append(data.Blocks, sessionBlockFormView{ID: b.ID, Name: b.Name, Intent: b.Intent, Notes: b.Notes, ObservationLens: b.ObservationLens})
 	}
 	return data
 }

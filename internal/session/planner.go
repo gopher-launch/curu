@@ -40,13 +40,29 @@ type Block struct {
 	ID                                   string
 	Position                             int
 	Name, Intent, Notes, ObservationLens string
+	Placements                           []Placement
+}
+type Placement struct {
+	ID, SourceActivityID, SourceIdentity string
+	Position                             int
+	SourceActivityRevision               int64
+	Title, Summary, ContentMarkdown      string
+	RecommendedDurationSeconds           *int
+	Phase, Theme                         string
+	Tags                                 []string
+	Progressions                         []PlacementProgression
+}
+type PlacementProgression struct {
+	ID, Title, ContentMarkdown string
+	Position                   int
+	RecommendedDurationSeconds *int
 }
 type Input struct {
 	Title, GroupContext, Intent string
 	Date                        *time.Time
 	Blocks                      []BlockInput
 }
-type BlockInput struct{ Name, Intent, Notes, ObservationLens string }
+type BlockInput struct{ ID, Name, Intent, Notes, ObservationLens string }
 
 type ValidationErrors map[string]string
 
@@ -59,6 +75,7 @@ type Store interface {
 	Create(context.Context, string, Input) (Session, error)
 	Update(context.Context, string, string, int64, Input) (Session, error)
 	Archive(context.Context, string, string, int64, bool) (Session, error)
+	AddPlacement(context.Context, string, string, string, int64, string) (Session, error)
 }
 
 type Planner struct {
@@ -137,6 +154,28 @@ func (p *Planner) Archive(ctx context.Context, principal authorization.Principal
 	return p.store.Archive(ctx, principal.OwnerID, id, revision, archived)
 }
 
+// AddPlacement atomically copies one current activity into a session-owned
+// snapshot. Selection and editor interactions are delivered by CURU-023.
+func (p *Planner) AddPlacement(ctx context.Context, principal authorization.Principal, sessionID, blockID string, revision int64, activityID string) (Session, error) {
+	var err error
+	if sessionID, err = authorization.NormalizeUUID(sessionID); err != nil {
+		return Session{}, ErrNotFound
+	}
+	if blockID, err = authorization.NormalizeUUID(blockID); err != nil {
+		return Session{}, ErrNotFound
+	}
+	if activityID, err = authorization.NormalizeUUID(activityID); err != nil {
+		return Session{}, ErrNotFound
+	}
+	if err := p.policy.Authorize(principal, authorization.Mutate, principal.OwnerID); err != nil {
+		return Session{}, err
+	}
+	if revision < 1 {
+		return Session{}, ValidationErrors{"revision": "Reload this session before adding an activity."}
+	}
+	return p.store.AddPlacement(ctx, principal.OwnerID, sessionID, blockID, revision, activityID)
+}
+
 func validate(input Input) (Input, error) {
 	input.Title = strings.TrimSpace(input.Title)
 	input.GroupContext = strings.TrimSpace(input.GroupContext)
@@ -155,6 +194,14 @@ func validate(input Input) (Input, error) {
 	}
 	for i := range input.Blocks {
 		block := &input.Blocks[i]
+		if block.ID != "" {
+			id, err := authorization.NormalizeUUID(block.ID)
+			if err != nil {
+				errs["blocks"] = "Reload this session before saving its blocks."
+			} else {
+				block.ID = id
+			}
+		}
 		block.Name = strings.TrimSpace(block.Name)
 		block.Intent = strings.TrimSpace(block.Intent)
 		block.Notes = strings.TrimSpace(block.Notes)

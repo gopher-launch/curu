@@ -132,6 +132,10 @@ func TestPostgresBackupRestoreRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("save recovery session fixture: %v", err)
 	}
+	savedSession, err = sessionRepository.AddPlacement(ctx, ownerID, savedSession.ID, savedSession.Blocks[0].ID, savedSession.Revision, library.Activities[0].ID)
+	if err != nil {
+		t.Fatalf("save recovery placement fixture: %v", err)
+	}
 	if _, err := sessionRepository.Archive(ctx, ownerID, savedSession.ID, savedSession.Revision, true); err != nil {
 		t.Fatalf("archive recovery session fixture: %v", err)
 	}
@@ -146,7 +150,7 @@ func TestPostgresBackupRestoreRecovery(t *testing.T) {
 		expected.ActivityRecoveryDrafts != 1 || expected.DatasetInitializations != 1 || expected.ArchivedActivities != 1 || expected.ActivityOwners != 1 {
 		t.Fatalf("source manifest = %+v, want complete edited seed fixture", expected)
 	}
-	if expected.Sessions != 1 || expected.ArchivedSessions != 1 || expected.SessionOwners != 1 || expected.SessionBlocks != 1 {
+	if expected.Sessions != 1 || expected.ArchivedSessions != 1 || expected.SessionOwners != 1 || expected.SessionBlocks != 1 || expected.SessionPlacements != 1 || expected.PlacementProgressions != int64(len(library.Activities[0].Progressions)) {
 		t.Fatalf("source session manifest = %+v", expected)
 	}
 

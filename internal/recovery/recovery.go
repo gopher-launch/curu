@@ -31,6 +31,8 @@ type Manifest struct {
 	ArchivedSessions       int64  `json:"archived_sessions"`
 	SessionOwners          int64  `json:"session_owners"`
 	SessionBlocks          int64  `json:"session_blocks"`
+	SessionPlacements      int64  `json:"session_placements"`
+	PlacementProgressions  int64  `json:"placement_progressions"`
 	ApplicationDataSHA256  string `json:"application_data_sha256"`
 }
 
@@ -79,6 +81,8 @@ func captureSnapshot(ctx context.Context, db *gorm.DB) (Manifest, error) {
 		{&manifest.ArchivedSessions, "SELECT count(*) FROM curu.sessions WHERE archived_at IS NOT NULL"},
 		{&manifest.SessionOwners, "SELECT count(DISTINCT owner_id) FROM curu.sessions"},
 		{&manifest.SessionBlocks, "SELECT count(*) FROM curu.session_blocks"},
+		{&manifest.SessionPlacements, "SELECT count(*) FROM curu.session_activity_placements"},
+		{&manifest.PlacementProgressions, "SELECT count(*) FROM curu.session_placement_progressions"},
 	}
 	for _, item := range counts {
 		if err := db.WithContext(ctx).Raw(item.query).Scan(item.destination).Error; err != nil {
@@ -118,6 +122,17 @@ func captureSnapshot(ctx context.Context, db *gorm.DB) (Manifest, error) {
 			to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
 			to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))::text AS value
 			FROM curu.session_blocks ORDER BY id`},
+		{"session_activity_placements", `SELECT jsonb_build_array(id, block_id, position, source_activity_id,
+			source_activity_revision, source_identity, title, summary, content_markdown, recommended_duration_seconds,
+			phase, theme, tags,
+			to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
+			to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))::text AS value
+			FROM curu.session_activity_placements ORDER BY id`},
+		{"session_placement_progressions", `SELECT jsonb_build_array(id, placement_id, position, title,
+			content_markdown, recommended_duration_seconds,
+			to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
+			to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))::text AS value
+			FROM curu.session_placement_progressions ORDER BY id`},
 	}
 	for _, query := range queries {
 		var rows []digestRow

@@ -131,7 +131,7 @@ func TestSessionCreateEditConflictPreservesCompleteSubmission(t *testing.T) {
 	planner := &fakeSessionPlanner{item: session.Session{ID: id, OwnerID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", Title: "Draft", Revision: 4}}
 	handler := newTestHandlerWithSessions(t, planner)
 	cookie := csrfCookie(t, handler)
-	values := "title=Future+session&date=&group_context=U12&intent=Support&block_name=Arrival&block_intent=Explore&block_notes=Choose+freely&block_observation_lens=Scanning&revision=4&csrf_token=" + cookie.Value
+	values := "title=Future+session&date=&group_context=U12&intent=Support&block_id=&block_name=Arrival&block_intent=Explore&block_notes=Choose+freely&block_observation_lens=Scanning&revision=4&csrf_token=" + cookie.Value
 	request := httptest.NewRequest(http.MethodPost, "/sessions/"+id, strings.NewReader(values))
 	request.Header.Set("Authorization", "Bearer owner")
 	request.Header.Set("Origin", "https://curu.example")
@@ -196,6 +196,41 @@ func TestSessionDetailAllowsBlocksWithoutActivitiesAndArchiveLifecycle(t *testin
 	handler.ServeHTTP(archived, archive)
 	if archived.Code != http.StatusSeeOther || archived.Header().Get("Location") != "/sessions/"+id+"/archived" || planner.operation != "archive" {
 		t.Fatalf("archive = %d %q %q", archived.Code, archived.Header().Get("Location"), planner.operation)
+	}
+}
+
+func TestSessionDetailRendersPlacementSnapshotWithoutLibraryLookup(t *testing.T) {
+	t.Parallel()
+	duration := 75
+	planner := &fakeSessionPlanner{item: session.Session{
+		ID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", OwnerID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", Title: "Snapshot plan", Revision: 3,
+		Blocks: []session.Block{{Name: "Warmup", Placements: []session.Placement{{
+			Title: "Copied activity", Summary: "Saved summary", ContentMarkdown: "Use **cones**.\n\n<script>unsafe</script>", RecommendedDurationSeconds: &duration,
+			Phase: "Arrival", Theme: "Scanning", Tags: []string{"ball"},
+			Progressions: []session.PlacementProgression{{Title: "Harder", ContentMarkdown: "Add pressure."}},
+		}}}},
+	}}
+	library := &fakeActivityLibrary{err: errors.New("library must not be queried")}
+	policy, err := authorization.NewPolicy(authorization.ExternalIdentity{Issuer: "https://issuer.example/tenant", Subject: "coach-123"}, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), func() bool { return true }, fakeAuthenticator{}, policy, library, planner, BrowserConfig{PublicOrigin: "https://curu.example"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/sessions/"+planner.item.ID, nil)
+	request.Header.Set("Authorization", "Bearer owner")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	body := response.Body.String()
+	for _, wanted := range []string{"Snapshot plan", "Copied activity", "Saved summary", "75 seconds", "Arrival", "Scanning", "ball", "<strong>cones</strong>", "Harder", "Add pressure."} {
+		if response.Code != http.StatusOK || !strings.Contains(body, wanted) {
+			t.Fatalf("snapshot detail omitted %q: status %d body %q", wanted, response.Code, body)
+		}
+	}
+	if library.calls != 0 || strings.Contains(body, "<script>unsafe</script>") {
+		t.Fatalf("snapshot detail used library or rendered unsafe HTML: calls=%d body=%q", library.calls, body)
 	}
 }
 

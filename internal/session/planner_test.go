@@ -36,6 +36,10 @@ func (s *fakeStore) Archive(_ context.Context, _, _ string, revision int64, arch
 	s.revision, s.archived = revision, archived
 	return s.item, s.err
 }
+func (s *fakeStore) AddPlacement(_ context.Context, _, _, _ string, revision int64, _ string) (Session, error) {
+	s.revision = revision
+	return s.item, s.err
+}
 
 func testPlanner(t *testing.T, store Store) *Planner {
 	t.Helper()
@@ -81,6 +85,27 @@ func TestArchiveRequiresPositiveRevision(t *testing.T) {
 	planner := testPlanner(t, &fakeStore{})
 	if _, err := planner.Archive(context.Background(), owner, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", 0, true); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("Archive() error = %v", err)
+	}
+}
+
+func TestAddPlacementValidatesIdentityRevisionAndOwnerPolicy(t *testing.T) {
+	store := &fakeStore{item: Session{ID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"}}
+	planner := testPlanner(t, store)
+	_, err := planner.AddPlacement(context.Background(), owner,
+		"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "cccccccc-cccc-4ccc-8ccc-cccccccccccc", 4,
+		"dddddddd-dddd-4ddd-8ddd-dddddddddddd")
+	if err != nil || store.revision != 4 {
+		t.Fatalf("AddPlacement() error = %v, revision = %d", err, store.revision)
+	}
+	if _, err := planner.AddPlacement(context.Background(), owner, "bad", "cccccccc-cccc-4ccc-8ccc-cccccccccccc", 4, "dddddddd-dddd-4ddd-8ddd-dddddddddddd"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("AddPlacement() malformed identity error = %v", err)
+	}
+	if _, err := planner.AddPlacement(context.Background(), owner, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "cccccccc-cccc-4ccc-8ccc-cccccccccccc", 0, "dddddddd-dddd-4ddd-8ddd-dddddddddddd"); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("AddPlacement() invalid revision error = %v", err)
+	}
+	stranger := authorization.Principal{OwnerID: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"}
+	if _, err := planner.AddPlacement(context.Background(), stranger, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "cccccccc-cccc-4ccc-8ccc-cccccccccccc", 4, "dddddddd-dddd-4ddd-8ddd-dddddddddddd"); !errors.Is(err, authorization.ErrDenied) {
+		t.Fatalf("AddPlacement() other-owner error = %v", err)
 	}
 }
 

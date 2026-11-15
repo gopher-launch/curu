@@ -27,6 +27,7 @@ func NewActivityRepository(db *gorm.DB) (*ActivityRepository, error) {
 type activityRow struct {
 	ID              string
 	OwnerID         string
+	SourceIdentity  *string
 	Title           string
 	Summary         string
 	ContentMarkdown string
