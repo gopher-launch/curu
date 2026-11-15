@@ -385,7 +385,7 @@ func TestPostgresMigrationAndRuntimeRestrictions(t *testing.T) {
 	}
 	// Structural editor actions save entered aggregate fields and placement
 	// notes atomically while preserving plan-owned duration and source data.
-	replacementSource, err := repository.Create(ctx, ownerID, activity.Input{Title: "Replacement source", ContentMarkdown: "Fresh source content"})
+	replacementSource, err := repository.Create(ctx, ownerID, activity.Input{Title: "Replacement source", ContentMarkdown: "Fresh source content", Tags: []string{}})
 	if err != nil {
 		t.Fatalf("create replacement source: %v", err)
 	}
@@ -427,6 +427,55 @@ func TestPostgresMigrationAndRuntimeRestrictions(t *testing.T) {
 	}
 	if sourceAfterRemoval, findErr := repository.FindCurrent(ctx, ownerID, replacementSource.ID); findErr != nil || sourceAfterRemoval.Title != replacementSource.Title {
 		t.Fatalf("library source after plan removal = %+v, error = %v", sourceAfterRemoval, findErr)
+	}
+	// Reordering uses the same aggregate revision and transaction as entered
+	// editor fields. Boundaries reject without advancing the revision, and a
+	// repeated request carrying the consumed revision is stale.
+	reorderSession, err := sessions.Create(ctx, ownerID, session.Input{Title: "Reorder plan", Blocks: []session.BlockInput{{Name: "First"}, {Name: "Second"}, {Name: "Third"}}})
+	if err != nil {
+		t.Fatalf("create reorder session: %v", err)
+	}
+	for range 3 {
+		reorderSession, err = sessions.AddPlacement(ctx, ownerID, reorderSession.ID, reorderSession.Blocks[0].ID, reorderSession.Revision, replacementSource.ID)
+		if err != nil {
+			t.Fatalf("add reorder placement: %v", err)
+		}
+	}
+	blockRevision := reorderSession.Revision
+	reorderInput := sessionInputForTest(reorderSession)
+	reorderInput.Title = "Reorder plan edited"
+	reorderSession, err = sessions.ApplyPlacementAction(ctx, ownerID, reorderSession.ID, blockRevision, reorderInput, session.PlacementAction{Kind: session.MoveBlockUpAction, BlockID: reorderSession.Blocks[1].ID})
+	if err != nil || reorderSession.Revision != blockRevision+1 || reorderSession.Title != "Reorder plan edited" || reorderSession.Blocks[0].Name != "Second" || reorderSession.Blocks[1].Name != "First" || reorderSession.Blocks[2].Name != "Third" {
+		t.Fatalf("block reorder = %+v, error = %v", reorderSession, err)
+	}
+	if _, err := sessions.ApplyPlacementAction(ctx, ownerID, reorderSession.ID, blockRevision, reorderInput, session.PlacementAction{Kind: session.MoveBlockUpAction, BlockID: reorderSession.Blocks[1].ID}); !errors.Is(err, session.ErrConflict) {
+		t.Fatalf("duplicate reorder error = %v, want conflict", err)
+	}
+	boundaryInput := sessionInputForTest(reorderSession)
+	boundaryInput.Title = "Must roll back"
+	if _, err := sessions.ApplyPlacementAction(ctx, ownerID, reorderSession.ID, reorderSession.Revision, boundaryInput, session.PlacementAction{Kind: session.MoveBlockUpAction, BlockID: reorderSession.Blocks[0].ID}); !errors.Is(err, session.ErrInvalidInput) {
+		t.Fatalf("block boundary error = %v, want invalid input", err)
+	}
+	afterBoundary, err := sessions.Find(ctx, ownerID, reorderSession.ID, false)
+	if err != nil || afterBoundary.Revision != reorderSession.Revision || afterBoundary.Title != reorderSession.Title {
+		t.Fatalf("block boundary did not roll back = %+v, error = %v", afterBoundary, err)
+	}
+	placementBlock := afterBoundary.Blocks[1]
+	middlePlacement := placementBlock.Placements[1]
+	reorderSession, err = sessions.ApplyPlacementAction(ctx, ownerID, afterBoundary.ID, afterBoundary.Revision, sessionInputForTest(afterBoundary), session.PlacementAction{Kind: session.MovePlacementUpAction, PlacementID: middlePlacement.ID})
+	if err != nil || reorderSession.Blocks[1].Placements[0].ID != middlePlacement.ID || reorderSession.Blocks[1].Placements[1].ID != placementBlock.Placements[0].ID {
+		t.Fatalf("placement reorder = %+v, error = %v", reorderSession, err)
+	}
+	placementRevision := reorderSession.Revision
+	if _, err := sessions.ApplyPlacementAction(ctx, ownerID, reorderSession.ID, placementRevision, sessionInputForTest(reorderSession), session.PlacementAction{Kind: session.MovePlacementUpAction, PlacementID: middlePlacement.ID}); !errors.Is(err, session.ErrInvalidInput) {
+		t.Fatalf("placement boundary error = %v, want invalid input", err)
+	}
+	afterPlacementBoundary, err := sessions.Find(ctx, ownerID, reorderSession.ID, false)
+	if err != nil || afterPlacementBoundary.Revision != placementRevision || afterPlacementBoundary.Blocks[1].Placements[0].ID != middlePlacement.ID {
+		t.Fatalf("placement boundary did not roll back = %+v, error = %v", afterPlacementBoundary, err)
+	}
+	if err := admin.Exec("DELETE FROM curu.sessions WHERE id IN (?, ?)", actionSession.ID, reorderSession.ID).Error; err != nil {
+		t.Fatalf("remove isolated structural-action fixtures: %v", err)
 	}
 	beforeRollback := retained
 	if _, err := sessions.AddPlacement(ctx, ownerID, retained.ID, "77777777-7777-4777-8777-777777777777", retained.Revision, snapshotSource.ID); !errors.Is(err, session.ErrNotFound) {
@@ -537,6 +586,18 @@ func currentDatabase(t *testing.T, db *gorm.DB) string {
 }
 
 func intPointer(value int) *int { return &value }
+
+func sessionInputForTest(item session.Session) session.Input {
+	input := session.Input{Title: item.Title, Date: item.Date, GroupContext: item.GroupContext, Intent: item.Intent}
+	for _, block := range item.Blocks {
+		blockInput := session.BlockInput{ID: block.ID, Name: block.Name, Intent: block.Intent, Notes: block.Notes, ObservationLens: block.ObservationLens}
+		for _, placement := range block.Placements {
+			blockInput.Placements = append(blockInput.Placements, session.PlacementInput{ID: placement.ID, LocalNotes: placement.LocalNotes})
+		}
+		input.Blocks = append(input.Blocks, blockInput)
+	}
+	return input
+}
 
 func databaseURLForRole(t *testing.T, value, role, password string) string {
 	t.Helper()

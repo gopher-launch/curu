@@ -43,10 +43,12 @@ type sessionDetailData struct {
 }
 type sessionPlacementFormView struct {
 	ID, Title, LocalNotes, Duration string
+	CanMoveUp, CanMoveDown          bool
 }
 type sessionBlockFormView struct {
 	ID, Name, Intent, Notes, ObservationLens string
 	Placements                               []sessionPlacementFormView
+	CanMoveUp, CanMoveDown                   bool
 }
 type sessionFormData struct {
 	pageData
@@ -188,6 +190,8 @@ func (h *handler) editSession(w http.ResponseWriter, r *http.Request) {
 		data.Status = "Activity moved and session changes saved."
 	case "removed":
 		data.Status = "Activity removed from this plan; the library activity is unchanged."
+	case "reordered":
+		data.Status = "Session order changed and entered fields saved."
 	}
 	h.render(w, "session-form", data)
 }
@@ -300,9 +304,30 @@ func (h *handler) changeSessionPlacements(w http.ResponseWriter, r *http.Request
 		TargetBlockID: r.PostForm.Get("target_block_id"),
 		ActivityID:    r.PostForm.Get("activity_id"),
 	}
+	reorderFields := []struct {
+		field string
+		kind  session.PlacementActionKind
+	}{{"move_block_up", session.MoveBlockUpAction}, {"move_block_down", session.MoveBlockDownAction}, {"move_placement_up", session.MovePlacementUpAction}, {"move_placement_down", session.MovePlacementDownAction}}
+	actionKindSet := action.Kind != ""
+	for _, candidate := range reorderFields {
+		field, kind := candidate.field, candidate.kind
+		if id := r.PostForm.Get(field); id != "" {
+			if actionKindSet {
+				action.Kind = "multiple"
+				continue
+			}
+			actionKindSet = true
+			action.Kind = kind
+			if kind == session.MoveBlockUpAction || kind == session.MoveBlockDownAction {
+				action.BlockID = id
+			} else {
+				action.PlacementID = id
+			}
+		}
+	}
 	item, err := h.sessions.ApplyPlacementAction(r.Context(), principal, id, revision, input, action)
 	if errors.Is(err, session.ErrInvalidInput) {
-		data.ErrorSummary = "Choose the required activity, placed activity, and target block, then try again. Your entered changes remain below."
+		data.ErrorSummary = "Choose a valid action for this saved block or activity, then try again. Your entered changes remain below."
 		h.renderStatus(w, "session-form", data, http.StatusUnprocessableEntity)
 		return
 	}
@@ -335,8 +360,17 @@ func (h *handler) changeSessionPlacements(w http.ResponseWriter, r *http.Request
 	result := map[session.PlacementActionKind]string{
 		session.AddPlacementAction: "added", session.ReplacePlacementAction: "replaced",
 		session.MovePlacementAction: "moved", session.RemovePlacementAction: "removed",
+		session.MoveBlockUpAction: "reordered", session.MoveBlockDownAction: "reordered",
+		session.MovePlacementUpAction: "reordered", session.MovePlacementDownAction: "reordered",
 	}[action.Kind]
-	http.Redirect(w, r, "/sessions/"+item.ID+"/edit?placement="+result, http.StatusSeeOther)
+	target := "/sessions/" + item.ID + "/edit?placement=" + result
+	if action.Kind == session.MoveBlockUpAction || action.Kind == session.MoveBlockDownAction {
+		target += "#item-" + action.BlockID
+	}
+	if action.Kind == session.MovePlacementUpAction || action.Kind == session.MovePlacementDownAction {
+		target += "#item-" + action.PlacementID
+	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
 func (h *handler) sessionEditorActivities(ctx context.Context, principal authorization.Principal) ([]activitySummaryView, error) {
@@ -442,6 +476,7 @@ func (h *handler) parseSessionForm(w http.ResponseWriter, r *http.Request, headi
 		data.Blocks = append(data.Blocks, view)
 		input.Blocks = append(input.Blocks, blockInput)
 	}
+	annotateSessionFormOrder(data.Blocks)
 	if data.ErrorSummary != "" {
 		h.renderStatus(w, "session-form", data, http.StatusUnprocessableEntity)
 		return session.Input{}, data, false
@@ -460,7 +495,19 @@ func sessionFormFromItem(page pageData, item session.Session) sessionFormData {
 		}
 		data.Blocks = append(data.Blocks, view)
 	}
+	annotateSessionFormOrder(data.Blocks)
 	return data
+}
+
+func annotateSessionFormOrder(blocks []sessionBlockFormView) {
+	for i := range blocks {
+		blocks[i].CanMoveUp = blocks[i].ID != "" && i > 0
+		blocks[i].CanMoveDown = blocks[i].ID != "" && i+1 < len(blocks)
+		for j := range blocks[i].Placements {
+			blocks[i].Placements[j].CanMoveUp = j > 0
+			blocks[i].Placements[j].CanMoveDown = j+1 < len(blocks[i].Placements)
+		}
+	}
 }
 func (h *handler) redirectSessionSaved(w http.ResponseWriter, r *http.Request, id string) {
 	w.Header().Set("Cache-Control", "no-store")

@@ -132,11 +132,25 @@ func TestPlacementActionsValidateAndPreserveSubmittedAggregate(t *testing.T) {
 		{Kind: ReplacePlacementAction, PlacementID: "dddddddd-dddd-4ddd-8ddd-dddddddddddd"},
 		{Kind: MovePlacementAction, PlacementID: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", TargetBlockID: "bad"},
 		{Kind: RemovePlacementAction},
+		{Kind: MoveBlockUpAction, BlockID: "bad"},
+		{Kind: MovePlacementDownAction, PlacementID: "bad"},
 		{Kind: "unknown"},
 	} {
 		if _, err := planner.ApplyPlacementAction(context.Background(), owner, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", 7, input, test); !errors.Is(err, ErrInvalidInput) {
 			t.Errorf("action %+v error=%v, want invalid input", test, err)
 		}
+	}
+	_, err = planner.ApplyPlacementAction(context.Background(), owner, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", 7, input, PlacementAction{
+		Kind: MoveBlockDownAction, BlockID: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+	})
+	if err != nil || store.action.Kind != MoveBlockDownAction || store.action.BlockID != "cccccccc-cccc-4ccc-8ccc-cccccccccccc" {
+		t.Fatalf("block reorder action error=%v store=%+v", err, store)
+	}
+	_, err = planner.ApplyPlacementAction(context.Background(), owner, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", 7, input, PlacementAction{
+		Kind: MovePlacementUpAction, PlacementID: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+	})
+	if err != nil || store.action.Kind != MovePlacementUpAction || store.action.PlacementID != "dddddddd-dddd-4ddd-8ddd-dddddddddddd" {
+		t.Fatalf("placement reorder action error=%v store=%+v", err, store)
 	}
 }
 

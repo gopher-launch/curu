@@ -307,6 +307,14 @@ func (r *SessionRepository) ApplyPlacementAction(ctx context.Context, owner, ses
 				return session.ErrNotFound
 			}
 			return nil
+		case session.MoveBlockUpAction:
+			return reorderBlock(tx, sessionID, action.BlockID, -1)
+		case session.MoveBlockDownAction:
+			return reorderBlock(tx, sessionID, action.BlockID, 1)
+		case session.MovePlacementUpAction:
+			return reorderPlacement(tx, sessionID, action.PlacementID, -1)
+		case session.MovePlacementDownAction:
+			return reorderPlacement(tx, sessionID, action.PlacementID, 1)
 		default:
 			return session.ValidationErrors{"placement_action": "Choose a supported activity action."}
 		}
@@ -315,6 +323,85 @@ func (r *SessionRepository) ApplyPlacementAction(ctx context.Context, owner, ses
 		return session.Session{}, err
 	}
 	return r.Find(ctx, owner, sessionID, false)
+}
+
+func reorderBlock(tx *gorm.DB, sessionID, blockID string, direction int) error {
+	type orderedBlock struct {
+		ID       string
+		Position int
+	}
+	var blocks []orderedBlock
+	if err := tx.Raw(`SELECT id, position FROM curu.session_blocks WHERE session_id=? ORDER BY position, id FOR UPDATE`, sessionID).Scan(&blocks).Error; err != nil {
+		return fmt.Errorf("read blocks for reordering: %w", err)
+	}
+	index := -1
+	for i := range blocks {
+		if blocks[i].ID == blockID {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		return session.ErrNotFound
+	}
+	target := index + direction
+	if target < 0 || target >= len(blocks) {
+		return session.ValidationErrors{"placement_action": "That block is already at the requested boundary."}
+	}
+	temporary := blocks[len(blocks)-1].Position + 1
+	if err := swapOrderedPositions(tx, "curu.session_blocks", blocks[index].ID, blocks[index].Position, blocks[target].ID, blocks[target].Position, temporary); err != nil {
+		return fmt.Errorf("reorder blocks: %w", err)
+	}
+	return nil
+}
+
+func reorderPlacement(tx *gorm.DB, sessionID, placementID string, direction int) error {
+	type orderedPlacement struct {
+		ID       string
+		BlockID  string
+		Position int
+	}
+	var selected orderedPlacement
+	err := tx.Raw(`SELECT p.id, p.block_id, p.position
+		FROM curu.session_activity_placements p
+		JOIN curu.session_blocks b ON b.id=p.block_id
+		WHERE p.id=? AND b.session_id=? FOR UPDATE`, placementID, sessionID).Scan(&selected).Error
+	if err != nil {
+		return fmt.Errorf("read placement for reordering: %w", err)
+	}
+	if selected.ID == "" {
+		return session.ErrNotFound
+	}
+	var placements []orderedPlacement
+	if err := tx.Raw(`SELECT id, block_id, position FROM curu.session_activity_placements WHERE block_id=? ORDER BY position, id FOR UPDATE`, selected.BlockID).Scan(&placements).Error; err != nil {
+		return fmt.Errorf("read placement order: %w", err)
+	}
+	index := -1
+	for i := range placements {
+		if placements[i].ID == placementID {
+			index = i
+			break
+		}
+	}
+	target := index + direction
+	if index < 0 || target < 0 || target >= len(placements) {
+		return session.ValidationErrors{"placement_action": "That activity is already at the requested boundary."}
+	}
+	temporary := placements[len(placements)-1].Position + 1
+	if err := swapOrderedPositions(tx, "curu.session_activity_placements", placements[index].ID, placements[index].Position, placements[target].ID, placements[target].Position, temporary); err != nil {
+		return fmt.Errorf("reorder placements: %w", err)
+	}
+	return nil
+}
+
+func swapOrderedPositions(tx *gorm.DB, table, firstID string, firstPosition int, secondID string, secondPosition, temporary int) error {
+	if err := tx.Exec("UPDATE "+table+" SET position=?, updated_at=? WHERE id=?", temporary, time.Now().UTC(), firstID).Error; err != nil {
+		return err
+	}
+	if err := tx.Exec("UPDATE "+table+" SET position=?, updated_at=? WHERE id=?", firstPosition, time.Now().UTC(), secondID).Error; err != nil {
+		return err
+	}
+	return tx.Exec("UPDATE "+table+" SET position=?, updated_at=? WHERE id=?", secondPosition, time.Now().UTC(), firstID).Error
 }
 
 func readSnapshotSource(tx *gorm.DB, owner, activityID string) (activityRow, error) {

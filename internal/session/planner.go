@@ -74,16 +74,20 @@ type PlacementInput struct{ ID, LocalNotes string }
 type PlacementActionKind string
 
 const (
-	AddPlacementAction     PlacementActionKind = "add"
-	ReplacePlacementAction PlacementActionKind = "replace"
-	MovePlacementAction    PlacementActionKind = "move"
-	RemovePlacementAction  PlacementActionKind = "remove"
+	AddPlacementAction      PlacementActionKind = "add"
+	ReplacePlacementAction  PlacementActionKind = "replace"
+	MovePlacementAction     PlacementActionKind = "move"
+	RemovePlacementAction   PlacementActionKind = "remove"
+	MoveBlockUpAction       PlacementActionKind = "move_block_up"
+	MoveBlockDownAction     PlacementActionKind = "move_block_down"
+	MovePlacementUpAction   PlacementActionKind = "move_placement_up"
+	MovePlacementDownAction PlacementActionKind = "move_placement_down"
 )
 
 type PlacementAction struct {
-	Kind                       PlacementActionKind
-	PlacementID, TargetBlockID string
-	ActivityID                 string
+	Kind                                PlacementActionKind
+	BlockID, PlacementID, TargetBlockID string
+	ActivityID                          string
 }
 
 type ValidationErrors map[string]string
@@ -200,7 +204,7 @@ func (p *Planner) AddPlacement(ctx context.Context, principal authorization.Prin
 }
 
 // ApplyPlacementAction saves the submitted editor aggregate and applies one
-// structural placement action in the same revision-checked transaction.
+// block or placement structural action in the same revision-checked transaction.
 func (p *Planner) ApplyPlacementAction(ctx context.Context, principal authorization.Principal, sessionID string, revision int64, input Input, action PlacementAction) (Session, error) {
 	var err error
 	if sessionID, err = authorization.NormalizeUUID(sessionID); err != nil {
@@ -245,6 +249,14 @@ func (p *Planner) ApplyPlacementAction(ctx context.Context, principal authorizat
 	case RemovePlacementAction:
 		if action.PlacementID, _ = normalize(action.PlacementID); action.PlacementID == "" {
 			return Session{}, ValidationErrors{"placement_action": "Choose a placed activity."}
+		}
+	case MoveBlockUpAction, MoveBlockDownAction:
+		if action.BlockID, _ = normalize(action.BlockID); action.BlockID == "" {
+			return Session{}, ValidationErrors{"placement_action": "Choose a saved block to reorder."}
+		}
+	case MovePlacementUpAction, MovePlacementDownAction:
+		if action.PlacementID, _ = normalize(action.PlacementID); action.PlacementID == "" {
+			return Session{}, ValidationErrors{"placement_action": "Choose a placed activity to reorder."}
 		}
 	default:
 		return Session{}, ValidationErrors{"placement_action": "Choose a supported activity action."}

@@ -289,6 +289,49 @@ func TestSessionEditorSelectsAndChangesPlacementsWithoutLosingEnteredData(t *tes
 	}
 }
 
+func TestSessionEditorReordersWithBoundaryControlsAndFocusedRedirect(t *testing.T) {
+	t.Parallel()
+	const (
+		sessionID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+		blockOne  = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+		blockTwo  = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+		placeOne  = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+		placeTwo  = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+	)
+	planner := &fakeSessionPlanner{item: session.Session{ID: sessionID, OwnerID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", Title: "Plan", Revision: 9, Blocks: []session.Block{
+		{ID: blockOne, Name: "Arrival", Placements: []session.Placement{{ID: placeOne, Title: "First"}, {ID: placeTwo, Title: "Second"}}},
+		{ID: blockTwo, Name: "Warmup"},
+	}}}
+	handler := newTestHandlerWithSessions(t, planner)
+	request := httptest.NewRequest(http.MethodGet, "/sessions/"+sessionID+"/edit", nil)
+	request.Header.Set("Authorization", "Bearer owner")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	body := response.Body.String()
+	for _, wanted := range []string{"move_block_up", "move_block_down", "move_placement_up", "move_placement_down", "id=\"item-" + placeOne + "\"", "location.hash", "getElementById(location.hash.slice(1))", "focus({preventScroll:true})", "submitter.disabled=true", "submitter.disabled=false"} {
+		if response.Code != http.StatusOK || !strings.Contains(body, wanted) {
+			t.Fatalf("reorder editor omitted %q: status=%d body=%q", wanted, response.Code, body)
+		}
+	}
+	if !strings.Contains(body, `name="move_block_up" value="`+blockOne+`" disabled`) || !strings.Contains(body, `name="move_block_down" value="`+blockTwo+`" disabled`) ||
+		!strings.Contains(body, `name="move_placement_up" value="`+placeOne+`" disabled`) || !strings.Contains(body, `name="move_placement_down" value="`+placeTwo+`" disabled`) {
+		t.Fatalf("first/last boundary controls were not disabled: %q", body)
+	}
+	cookie := csrfCookie(t, handler)
+	values := "title=Unsaved+title&date=&group_context=U14&intent=Scan&revision=9&block_id=" + blockOne + "&block_name=Arrival&block_intent=&block_notes=Keep&block_observation_lens=&placement_id_" + blockOne + "=" + placeOne + "&placement_notes_" + blockOne + "=First+note&placement_id_" + blockOne + "=" + placeTwo + "&placement_notes_" + blockOne + "=Second+note&block_id=" + blockTwo + "&block_name=Warmup&block_intent=&block_notes=&block_observation_lens=&move_placement_down=" + placeOne + "&csrf_token=" + cookie.Value
+	request = httptest.NewRequest(http.MethodPost, "/sessions/"+sessionID+"/placements", strings.NewReader(values))
+	request.Header.Set("Authorization", "Bearer owner")
+	request.Header.Set("Origin", "https://curu.example")
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.AddCookie(cookie)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	wantLocation := "/sessions/" + sessionID + "/edit?placement=reordered#item-" + placeOne
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != wantLocation || planner.action.Kind != session.MovePlacementDownAction || planner.action.PlacementID != placeOne || planner.input.Title != "Unsaved title" || planner.input.Blocks[0].Placements[1].LocalNotes != "Second note" {
+		t.Fatalf("reorder response=%d location=%q planner=%+v", response.Code, response.Header().Get("Location"), planner)
+	}
+}
+
 func TestActivityDetailRendersCompleteSafeContent(t *testing.T) {
 	t.Parallel()
 
