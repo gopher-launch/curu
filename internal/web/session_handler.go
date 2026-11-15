@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"html/template"
 	"mime"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gopher-launch/curu/internal/activity"
 	"github.com/gopher-launch/curu/internal/authorization"
 	"github.com/gopher-launch/curu/internal/session"
 )
@@ -25,11 +27,12 @@ type sessionBlockView struct {
 	Placements                           []sessionPlacementView
 }
 type sessionPlacementView struct {
-	Position                               int
-	Title, Summary, Duration, Phase, Theme string
-	Content                                template.HTML
-	Tags                                   []string
-	Progressions                           []progressionView
+	Position                                                  int
+	Title, Summary, RecommendedDuration, Duration, LocalNotes string
+	Phase, Theme                                              string
+	Content                                                   template.HTML
+	Tags                                                      []string
+	Progressions                                              []progressionView
 }
 type sessionDetailData struct {
 	pageData
@@ -38,13 +41,20 @@ type sessionDetailData struct {
 	Archived                              bool
 	Blocks                                []sessionBlockView
 }
-type sessionBlockFormView struct{ ID, Name, Intent, Notes, ObservationLens string }
+type sessionPlacementFormView struct {
+	ID, Title, LocalNotes, Duration string
+}
+type sessionBlockFormView struct {
+	ID, Name, Intent, Notes, ObservationLens string
+	Placements                               []sessionPlacementFormView
+}
 type sessionFormData struct {
 	pageData
 	Heading, Action, SaveLabel, Status, ErrorSummary, ID, Title, Date, GroupContext, Intent, Revision string
 	Conflict                                                                                          bool
 	CurrentURL                                                                                        string
 	Blocks                                                                                            []sessionBlockFormView
+	Activities                                                                                        []activitySummaryView
 }
 
 func (h *handler) listSessions(w http.ResponseWriter, r *http.Request) {
@@ -118,7 +128,7 @@ func (h *handler) sessionDetailState(w http.ResponseWriter, r *http.Request, arc
 				h.serverError(w, "render placement snapshot", renderErr)
 				return
 			}
-			placementView := sessionPlacementView{Position: j + 1, Title: placement.Title, Summary: placement.Summary, Content: content, Duration: formatDuration(placement.RecommendedDurationSeconds), Phase: placement.Phase, Theme: placement.Theme, Tags: placement.Tags, Progressions: make([]progressionView, len(placement.Progressions))}
+			placementView := sessionPlacementView{Position: j + 1, Title: placement.Title, Summary: placement.Summary, Content: content, RecommendedDuration: formatDuration(placement.RecommendedDurationSeconds), Duration: formatDuration(placement.DurationSeconds), LocalNotes: placement.LocalNotes, Phase: placement.Phase, Theme: placement.Theme, Tags: placement.Tags, Progressions: make([]progressionView, len(placement.Progressions))}
 			for k, progression := range placement.Progressions {
 				rendered, renderErr := RenderMarkdown(progression.ContentMarkdown)
 				if renderErr != nil {
@@ -156,8 +166,28 @@ func (h *handler) editSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := sessionFormFromItem(h.page(r, "Edit "+item.Title+" · Curu"), item)
+	activities, err := h.library.List(r.Context(), principal, "")
+	if errors.Is(err, authorization.ErrDenied) {
+		h.deny(w, r, http.StatusForbidden, "authorization_denied")
+		return
+	}
+	if err != nil {
+		h.serverError(w, "list activities for session editor", err)
+		return
+	}
+	data.Activities = activitySummaryViews(activities)
 	if r.URL.Query().Get("saved") == "1" {
 		data.Status = "Saved."
+	}
+	switch r.URL.Query().Get("placement") {
+	case "added":
+		data.Status = "Activity added and session changes saved."
+	case "replaced":
+		data.Status = "Activity content replaced; retained notes may need review."
+	case "moved":
+		data.Status = "Activity moved and session changes saved."
+	case "removed":
+		data.Status = "Activity removed from this plan; the library activity is unchanged."
 	}
 	h.render(w, "session-form", data)
 }
@@ -239,6 +269,91 @@ func (h *handler) updateSession(w http.ResponseWriter, r *http.Request) {
 	}
 	h.redirectSessionSaved(w, r, item.ID)
 }
+
+func (h *handler) changeSessionPlacements(w http.ResponseWriter, r *http.Request) {
+	principal, ok := PrincipalFromContext(r.Context())
+	if !ok {
+		h.deny(w, r, http.StatusForbidden, "authorization_denied")
+		return
+	}
+	id := r.PathValue("id")
+	input, data, ok := h.parseSessionForm(w, r, "Edit session", "/sessions/"+id, "Save changes")
+	if !ok {
+		return
+	}
+	data.ID = id
+	activities, listErr := h.sessionEditorActivities(r.Context(), principal)
+	if listErr != nil {
+		h.serverError(w, "list activities for submitted session editor", listErr)
+		return
+	}
+	data.Activities = activities
+	revision, err := strconv.ParseInt(data.Revision, 10, 64)
+	if err != nil || revision < 1 {
+		data.ErrorSummary = "This editor has an invalid revision. Reload the session before changing activities."
+		h.renderStatus(w, "session-form", data, http.StatusUnprocessableEntity)
+		return
+	}
+	action := session.PlacementAction{
+		Kind:          session.PlacementActionKind(r.PostForm.Get("placement_action")),
+		PlacementID:   r.PostForm.Get("placement_id"),
+		TargetBlockID: r.PostForm.Get("target_block_id"),
+		ActivityID:    r.PostForm.Get("activity_id"),
+	}
+	item, err := h.sessions.ApplyPlacementAction(r.Context(), principal, id, revision, input, action)
+	if errors.Is(err, session.ErrInvalidInput) {
+		data.ErrorSummary = "Choose the required activity, placed activity, and target block, then try again. Your entered changes remain below."
+		h.renderStatus(w, "session-form", data, http.StatusUnprocessableEntity)
+		return
+	}
+	if errors.Is(err, session.ErrArchivedConflict) {
+		data.ErrorSummary = "This session was archived after you opened the editor. Your entered session, blocks, and activity notes remain below."
+		data.Conflict, data.CurrentURL = true, "/sessions/"+id+"/archived"
+		h.renderStatus(w, "session-form", data, http.StatusConflict)
+		return
+	}
+	if errors.Is(err, session.ErrConflict) {
+		data.ErrorSummary = "A newer revision exists. Your entered session, blocks, and activity notes remain below; no structural action was applied."
+		data.Conflict, data.CurrentURL = true, "/sessions/"+id+"/edit"
+		h.renderStatus(w, "session-form", data, http.StatusConflict)
+		return
+	}
+	if errors.Is(err, session.ErrNotFound) || errors.Is(err, activity.ErrNotFound) {
+		data.ErrorSummary = "The selected activity or plan item is no longer available. Your entered changes remain below."
+		h.renderStatus(w, "session-form", data, http.StatusConflict)
+		return
+	}
+	if errors.Is(err, authorization.ErrDenied) {
+		h.deny(w, r, http.StatusForbidden, "authorization_denied")
+		return
+	}
+	if err != nil {
+		h.serverError(w, "change session placements", err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	result := map[session.PlacementActionKind]string{
+		session.AddPlacementAction: "added", session.ReplacePlacementAction: "replaced",
+		session.MovePlacementAction: "moved", session.RemovePlacementAction: "removed",
+	}[action.Kind]
+	http.Redirect(w, r, "/sessions/"+item.ID+"/edit?placement="+result, http.StatusSeeOther)
+}
+
+func (h *handler) sessionEditorActivities(ctx context.Context, principal authorization.Principal) ([]activitySummaryView, error) {
+	items, err := h.library.List(ctx, principal, "")
+	if err != nil {
+		return nil, err
+	}
+	return activitySummaryViews(items), nil
+}
+
+func activitySummaryViews(items []activity.Summary) []activitySummaryView {
+	views := make([]activitySummaryView, len(items))
+	for i, item := range items {
+		views[i] = activitySummaryView{ID: item.ID, Title: item.Title, Summary: item.Summary, Duration: formatDuration(item.DurationSeconds)}
+	}
+	return views
+}
 func (h *handler) archiveSession(w http.ResponseWriter, r *http.Request) {
 	h.changeSessionArchiveState(w, r, true)
 }
@@ -312,8 +427,20 @@ func (h *handler) parseSessionForm(w http.ResponseWriter, r *http.Request, headi
 	}
 	for i := range names {
 		view := sessionBlockFormView{ID: ids[i], Name: names[i], Intent: intents[i], Notes: notes[i], ObservationLens: lenses[i]}
+		placementIDs := r.PostForm["placement_id_"+view.ID]
+		placementNotes := r.PostForm["placement_notes_"+view.ID]
+		if len(placementIDs) != len(placementNotes) || len(placementIDs) > session.MaxPlacementsPerBlock {
+			h.rejectInput(w, http.StatusBadRequest)
+			return session.Input{}, data, false
+		}
+		blockInput := session.BlockInput{ID: view.ID, Name: view.Name, Intent: view.Intent, Notes: view.Notes, ObservationLens: view.ObservationLens}
+		for j := range placementIDs {
+			placementView := sessionPlacementFormView{ID: placementIDs[j], LocalNotes: placementNotes[j]}
+			view.Placements = append(view.Placements, placementView)
+			blockInput.Placements = append(blockInput.Placements, session.PlacementInput{ID: placementView.ID, LocalNotes: placementView.LocalNotes})
+		}
 		data.Blocks = append(data.Blocks, view)
-		input.Blocks = append(input.Blocks, session.BlockInput{ID: view.ID, Name: view.Name, Intent: view.Intent, Notes: view.Notes, ObservationLens: view.ObservationLens})
+		input.Blocks = append(input.Blocks, blockInput)
 	}
 	if data.ErrorSummary != "" {
 		h.renderStatus(w, "session-form", data, http.StatusUnprocessableEntity)
@@ -327,7 +454,11 @@ func sessionFormFromItem(page pageData, item session.Session) sessionFormData {
 		data.Date = item.Date.Format("2006-01-02")
 	}
 	for _, b := range item.Blocks {
-		data.Blocks = append(data.Blocks, sessionBlockFormView{ID: b.ID, Name: b.Name, Intent: b.Intent, Notes: b.Notes, ObservationLens: b.ObservationLens})
+		view := sessionBlockFormView{ID: b.ID, Name: b.Name, Intent: b.Intent, Notes: b.Notes, ObservationLens: b.ObservationLens}
+		for _, placement := range b.Placements {
+			view.Placements = append(view.Placements, sessionPlacementFormView{ID: placement.ID, Title: placement.Title, LocalNotes: placement.LocalNotes, Duration: formatDuration(placement.DurationSeconds)})
+		}
+		data.Blocks = append(data.Blocks, view)
 	}
 	return data
 }

@@ -60,6 +60,7 @@ type sessionPlanner interface {
 	Create(context.Context, authorization.Principal, session.Input) (session.Session, error)
 	Update(context.Context, authorization.Principal, string, int64, session.Input) (session.Session, error)
 	Archive(context.Context, authorization.Principal, string, int64, bool) (session.Session, error)
+	ApplyPlacementAction(context.Context, authorization.Principal, string, int64, session.Input, session.PlacementAction) (session.Session, error)
 }
 
 type principalContextKey struct{}
@@ -120,6 +121,7 @@ func NewHandler(logger *slog.Logger, ready func() bool, authenticator requestAut
 	mux.HandleFunc("POST /sessions", h.createSession)
 	mux.HandleFunc("GET /sessions/{id}/edit", h.editSession)
 	mux.HandleFunc("POST /sessions/{id}", h.updateSession)
+	mux.HandleFunc("POST /sessions/{id}/placements", h.changeSessionPlacements)
 	mux.HandleFunc("POST /sessions/{id}/archive", h.archiveSession)
 	mux.HandleFunc("POST /sessions/{id}/restore", h.restoreSession)
 	mux.HandleFunc("GET /sessions/{id}/archived", h.archivedSessionDetail)

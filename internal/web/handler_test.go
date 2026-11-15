@@ -202,10 +202,11 @@ func TestSessionDetailAllowsBlocksWithoutActivitiesAndArchiveLifecycle(t *testin
 func TestSessionDetailRendersPlacementSnapshotWithoutLibraryLookup(t *testing.T) {
 	t.Parallel()
 	duration := 75
+	planDuration := 60
 	planner := &fakeSessionPlanner{item: session.Session{
 		ID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", OwnerID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", Title: "Snapshot plan", Revision: 3,
 		Blocks: []session.Block{{Name: "Warmup", Placements: []session.Placement{{
-			Title: "Copied activity", Summary: "Saved summary", ContentMarkdown: "Use **cones**.\n\n<script>unsafe</script>", RecommendedDurationSeconds: &duration,
+			Title: "Copied activity", Summary: "Saved summary", ContentMarkdown: "Use **cones**.\n\n<script>unsafe</script>", RecommendedDurationSeconds: &duration, DurationSeconds: &planDuration, LocalNotes: "Watch the defensive line",
 			Phase: "Arrival", Theme: "Scanning", Tags: []string{"ball"},
 			Progressions: []session.PlacementProgression{{Title: "Harder", ContentMarkdown: "Add pressure."}},
 		}}}},
@@ -224,13 +225,67 @@ func TestSessionDetailRendersPlacementSnapshotWithoutLibraryLookup(t *testing.T)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	body := response.Body.String()
-	for _, wanted := range []string{"Snapshot plan", "Copied activity", "Saved summary", "75 seconds", "Arrival", "Scanning", "ball", "<strong>cones</strong>", "Harder", "Add pressure."} {
+	for _, wanted := range []string{"Snapshot plan", "Copied activity", "Saved summary", "Plan duration:</strong> 1 minute", "Recommended duration: 75 seconds", "Plan-local notes:</strong> Watch the defensive line", "Arrival", "Scanning", "ball", "<strong>cones</strong>", "Harder", "Add pressure."} {
 		if response.Code != http.StatusOK || !strings.Contains(body, wanted) {
 			t.Fatalf("snapshot detail omitted %q: status %d body %q", wanted, response.Code, body)
 		}
 	}
 	if library.calls != 0 || strings.Contains(body, "<script>unsafe</script>") {
 		t.Fatalf("snapshot detail used library or rendered unsafe HTML: calls=%d body=%q", library.calls, body)
+	}
+}
+
+func TestSessionEditorSelectsAndChangesPlacementsWithoutLosingEnteredData(t *testing.T) {
+	t.Parallel()
+	const (
+		sessionID   = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+		blockID     = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+		placementID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+		activityID  = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+	)
+	planner := &fakeSessionPlanner{item: session.Session{ID: sessionID, OwnerID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", Title: "Plan", Revision: 6, Blocks: []session.Block{{ID: blockID, Name: "Warmup", Placements: []session.Placement{{ID: placementID, Title: "Old snapshot", LocalNotes: "Watch feet"}}}}}}
+	library := &fakeActivityLibrary{items: []activity.Summary{{ID: activityID, Title: "Evasion game", Summary: "Find space"}}}
+	policy, err := authorization.NewPolicy(authorization.ExternalIdentity{Issuer: "https://issuer.example/tenant", Subject: "coach-123"}, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), func() bool { return true }, fakeAuthenticator{}, policy, library, planner, BrowserConfig{PublicOrigin: "https://curu.example"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	edit := httptest.NewRequest(http.MethodGet, "/sessions/"+sessionID+"/edit", nil)
+	edit.Header.Set("Authorization", "Bearer owner")
+	shown := httptest.NewRecorder()
+	handler.ServeHTTP(shown, edit)
+	for _, wanted := range []string{"Old snapshot", "Watch feet", "Evasion game", "Find an activity", "retaining plan-local notes and duration", "event.submitter", "submitter.formAction"} {
+		if shown.Code != http.StatusOK || !strings.Contains(shown.Body.String(), wanted) {
+			t.Fatalf("editor omitted %q: status=%d body=%q", wanted, shown.Code, shown.Body.String())
+		}
+	}
+	cookie := csrfCookie(t, handler)
+	values := "title=Unsaved+title&date=&group_context=U14&intent=Scan&revision=6&block_id=" + blockID + "&block_name=Warmup+edited&block_intent=Move&block_notes=Keep&block_observation_lens=Space&placement_id_" + blockID + "=" + placementID + "&placement_notes_" + blockID + "=Unsaved+placement+note&placement_id=" + placementID + "&activity_id=" + activityID + "&target_block_id=" + blockID + "&placement_action=replace&csrf_token=" + cookie.Value
+	request := httptest.NewRequest(http.MethodPost, "/sessions/"+sessionID+"/placements", strings.NewReader(values))
+	request.Header.Set("Authorization", "Bearer owner")
+	request.Header.Set("Origin", "https://curu.example")
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.AddCookie(cookie)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/sessions/"+sessionID+"/edit?placement=replaced" || planner.action.Kind != session.ReplacePlacementAction || planner.action.ActivityID != activityID || planner.input.Title != "Unsaved title" || planner.input.Blocks[0].Placements[0].LocalNotes != "Unsaved placement note" {
+		t.Fatalf("placement action response=%d location=%q planner=%+v", response.Code, response.Header().Get("Location"), planner)
+	}
+	planner.err = session.ErrConflict
+	conflict := httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodPost, "/sessions/"+sessionID+"/placements", strings.NewReader(values))
+	request.Header.Set("Authorization", "Bearer owner")
+	request.Header.Set("Origin", "https://curu.example")
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.AddCookie(cookie)
+	handler.ServeHTTP(conflict, request)
+	for _, wanted := range []string{"Unsaved title", "Warmup edited", "Unsaved placement note", "no structural action was applied"} {
+		if conflict.Code != http.StatusConflict || !strings.Contains(conflict.Body.String(), wanted) {
+			t.Fatalf("conflict omitted %q: status=%d body=%q", wanted, conflict.Code, conflict.Body.String())
+		}
 	}
 }
 
@@ -1047,6 +1102,7 @@ type fakeSessionPlanner struct {
 	principal     authorization.Principal
 	revision      int64
 	input         session.Input
+	action        session.PlacementAction
 }
 
 func (p *fakeSessionPlanner) List(_ context.Context, principal authorization.Principal, archived bool) ([]session.Summary, error) {
@@ -1085,6 +1141,10 @@ func (p *fakeSessionPlanner) Archive(_ context.Context, principal authorization.
 	if p.archiveErr != nil {
 		return session.Session{}, p.archiveErr
 	}
+	return p.item, p.err
+}
+func (p *fakeSessionPlanner) ApplyPlacementAction(_ context.Context, principal authorization.Principal, id string, revision int64, input session.Input, action session.PlacementAction) (session.Session, error) {
+	p.operation, p.principal, p.id, p.revision, p.input, p.action = "placement", principal, id, revision, input, action
 	return p.item, p.err
 }
 

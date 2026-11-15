@@ -13,9 +13,10 @@ import (
 )
 
 const (
-	MaxTitleBytes = 200
-	MaxTextBytes  = 10000
-	MaxBlocks     = 50
+	MaxTitleBytes         = 200
+	MaxTextBytes          = 10000
+	MaxBlocks             = 50
+	MaxPlacementsPerBlock = 100
 )
 
 var (
@@ -48,6 +49,8 @@ type Placement struct {
 	SourceActivityRevision               int64
 	Title, Summary, ContentMarkdown      string
 	RecommendedDurationSeconds           *int
+	DurationSeconds                      *int
+	LocalNotes                           string
 	Phase, Theme                         string
 	Tags                                 []string
 	Progressions                         []PlacementProgression
@@ -62,7 +65,26 @@ type Input struct {
 	Date                        *time.Time
 	Blocks                      []BlockInput
 }
-type BlockInput struct{ ID, Name, Intent, Notes, ObservationLens string }
+type BlockInput struct {
+	ID, Name, Intent, Notes, ObservationLens string
+	Placements                               []PlacementInput
+}
+type PlacementInput struct{ ID, LocalNotes string }
+
+type PlacementActionKind string
+
+const (
+	AddPlacementAction     PlacementActionKind = "add"
+	ReplacePlacementAction PlacementActionKind = "replace"
+	MovePlacementAction    PlacementActionKind = "move"
+	RemovePlacementAction  PlacementActionKind = "remove"
+)
+
+type PlacementAction struct {
+	Kind                       PlacementActionKind
+	PlacementID, TargetBlockID string
+	ActivityID                 string
+}
 
 type ValidationErrors map[string]string
 
@@ -76,6 +98,7 @@ type Store interface {
 	Update(context.Context, string, string, int64, Input) (Session, error)
 	Archive(context.Context, string, string, int64, bool) (Session, error)
 	AddPlacement(context.Context, string, string, string, int64, string) (Session, error)
+	ApplyPlacementAction(context.Context, string, string, int64, Input, PlacementAction) (Session, error)
 }
 
 type Planner struct {
@@ -176,6 +199,59 @@ func (p *Planner) AddPlacement(ctx context.Context, principal authorization.Prin
 	return p.store.AddPlacement(ctx, principal.OwnerID, sessionID, blockID, revision, activityID)
 }
 
+// ApplyPlacementAction saves the submitted editor aggregate and applies one
+// structural placement action in the same revision-checked transaction.
+func (p *Planner) ApplyPlacementAction(ctx context.Context, principal authorization.Principal, sessionID string, revision int64, input Input, action PlacementAction) (Session, error) {
+	var err error
+	if sessionID, err = authorization.NormalizeUUID(sessionID); err != nil {
+		return Session{}, ErrNotFound
+	}
+	if err := p.policy.Authorize(principal, authorization.Mutate, principal.OwnerID); err != nil {
+		return Session{}, err
+	}
+	input, err = validate(input)
+	if err != nil {
+		return Session{}, err
+	}
+	if revision < 1 {
+		return Session{}, ValidationErrors{"revision": "Reload this session before changing its activities."}
+	}
+	normalize := func(value string) (string, bool) {
+		id, normalizeErr := authorization.NormalizeUUID(value)
+		return id, normalizeErr == nil
+	}
+	switch action.Kind {
+	case AddPlacementAction:
+		if action.TargetBlockID, _ = normalize(action.TargetBlockID); action.TargetBlockID == "" {
+			return Session{}, ValidationErrors{"placement_action": "Choose a saved target block."}
+		}
+		if action.ActivityID, _ = normalize(action.ActivityID); action.ActivityID == "" {
+			return Session{}, ValidationErrors{"placement_action": "Choose an activity."}
+		}
+	case ReplacePlacementAction:
+		if action.PlacementID, _ = normalize(action.PlacementID); action.PlacementID == "" {
+			return Session{}, ValidationErrors{"placement_action": "Choose a placed activity."}
+		}
+		if action.ActivityID, _ = normalize(action.ActivityID); action.ActivityID == "" {
+			return Session{}, ValidationErrors{"placement_action": "Choose a replacement activity."}
+		}
+	case MovePlacementAction:
+		if action.PlacementID, _ = normalize(action.PlacementID); action.PlacementID == "" {
+			return Session{}, ValidationErrors{"placement_action": "Choose a placed activity."}
+		}
+		if action.TargetBlockID, _ = normalize(action.TargetBlockID); action.TargetBlockID == "" {
+			return Session{}, ValidationErrors{"placement_action": "Choose a saved target block."}
+		}
+	case RemovePlacementAction:
+		if action.PlacementID, _ = normalize(action.PlacementID); action.PlacementID == "" {
+			return Session{}, ValidationErrors{"placement_action": "Choose a placed activity."}
+		}
+	default:
+		return Session{}, ValidationErrors{"placement_action": "Choose a supported activity action."}
+	}
+	return p.store.ApplyPlacementAction(ctx, principal.OwnerID, sessionID, revision, input, action)
+}
+
 func validate(input Input) (Input, error) {
 	input.Title = strings.TrimSpace(input.Title)
 	input.GroupContext = strings.TrimSpace(input.GroupContext)
@@ -210,6 +286,25 @@ func validate(input Input) (Input, error) {
 		check("block_intent", block.Intent, MaxTextBytes, false)
 		check("block_notes", block.Notes, MaxTextBytes, false)
 		check("block_observation_lens", block.ObservationLens, MaxTextBytes, false)
+		if len(block.Placements) > MaxPlacementsPerBlock {
+			errs["placements"] = "A block can contain at most 100 activities."
+		}
+		if block.ID == "" && len(block.Placements) > 0 {
+			errs["placements"] = "Save a new block before adding activities to it."
+		}
+		seenPlacements := make(map[string]bool, len(block.Placements))
+		for j := range block.Placements {
+			placement := &block.Placements[j]
+			id, err := authorization.NormalizeUUID(placement.ID)
+			if err != nil || seenPlacements[id] {
+				errs["placements"] = "Reload this session before saving its activities."
+			} else {
+				placement.ID = id
+				seenPlacements[id] = true
+			}
+			placement.LocalNotes = strings.TrimSpace(placement.LocalNotes)
+			check("placement_notes", placement.LocalNotes, MaxTextBytes, false)
+		}
 	}
 	if input.Date != nil {
 		day := time.Date(input.Date.Year(), input.Date.Month(), input.Date.Day(), 0, 0, 0, 0, time.UTC)

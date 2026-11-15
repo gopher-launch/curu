@@ -47,6 +47,8 @@ type sessionPlacementRow struct {
 	SourceActivityRevision          int64
 	Title, Summary, ContentMarkdown string
 	RecommendedDurationSeconds      *int
+	DurationSeconds                 *int
+	LocalNotes                      string
 	Phase, Theme                    string
 	Tags                            pq.StringArray                   `gorm:"type:text[]"`
 	Progressions                    []sessionPlacementProgressionRow `gorm:"foreignKey:PlacementID"`
@@ -100,7 +102,7 @@ func (r *SessionRepository) Find(ctx context.Context, owner, id string, archived
 	for i, b := range row.Blocks {
 		block := session.Block{ID: b.ID, Position: b.Position, Name: b.Name, Intent: b.Intent, Notes: b.Notes, ObservationLens: b.ObservationLens, Placements: make([]session.Placement, len(b.Placements))}
 		for j, p := range b.Placements {
-			placement := session.Placement{ID: p.ID, Position: p.Position, SourceActivityID: p.SourceActivityID, SourceActivityRevision: p.SourceActivityRevision, Title: p.Title, Summary: p.Summary, ContentMarkdown: p.ContentMarkdown, RecommendedDurationSeconds: p.RecommendedDurationSeconds, Phase: p.Phase, Theme: p.Theme, Tags: []string(p.Tags), Progressions: make([]session.PlacementProgression, len(p.Progressions))}
+			placement := session.Placement{ID: p.ID, Position: p.Position, SourceActivityID: p.SourceActivityID, SourceActivityRevision: p.SourceActivityRevision, Title: p.Title, Summary: p.Summary, ContentMarkdown: p.ContentMarkdown, RecommendedDurationSeconds: p.RecommendedDurationSeconds, DurationSeconds: p.DurationSeconds, LocalNotes: p.LocalNotes, Phase: p.Phase, Theme: p.Theme, Tags: []string(p.Tags), Progressions: make([]session.PlacementProgression, len(p.Progressions))}
 			if p.SourceIdentity != nil {
 				placement.SourceIdentity = *p.SourceIdentity
 			}
@@ -131,19 +133,23 @@ func (r *SessionRepository) Create(ctx context.Context, owner string, input sess
 }
 func (r *SessionRepository) Update(ctx context.Context, owner, id string, revision int64, input session.Input) (session.Session, error) {
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		result := tx.Exec(`UPDATE curu.sessions SET title=?, session_date=?, group_context=?, intent=?, revision=revision+1, updated_at=? WHERE id=? AND owner_id=? AND archived_at IS NULL AND revision=?`, input.Title, input.Date, input.GroupContext, input.Intent, time.Now().UTC(), id, owner, revision)
-		if result.Error != nil {
-			return fmt.Errorf("update session: %w", result.Error)
-		}
-		if result.RowsAffected == 0 {
-			return resolveSessionUpdate(tx, owner, id)
-		}
-		return reconcileSessionBlocks(tx, id, input.Blocks)
+		return updateSessionAggregate(tx, owner, id, revision, input)
 	})
 	if err != nil {
 		return session.Session{}, err
 	}
 	return r.Find(ctx, owner, id, false)
+}
+
+func updateSessionAggregate(tx *gorm.DB, owner, id string, revision int64, input session.Input) error {
+	result := tx.Exec(`UPDATE curu.sessions SET title=?, session_date=?, group_context=?, intent=?, revision=revision+1, updated_at=? WHERE id=? AND owner_id=? AND archived_at IS NULL AND revision=?`, input.Title, input.Date, input.GroupContext, input.Intent, time.Now().UTC(), id, owner, revision)
+	if result.Error != nil {
+		return fmt.Errorf("update session: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return resolveSessionUpdate(tx, owner, id)
+	}
+	return reconcileSessionBlocks(tx, id, input.Blocks)
 }
 
 func resolveSessionUpdate(db *gorm.DB, owner, id string) error {
@@ -245,6 +251,15 @@ func reconcileSessionBlocks(tx *gorm.DB, sessionID string, blocks []session.Bloc
 			return fmt.Errorf("update session block: %w", err)
 		}
 		delete(available, block.ID)
+		for _, placement := range block.Placements {
+			result := tx.Exec(`UPDATE curu.session_activity_placements SET local_notes=?, updated_at=? WHERE id=? AND block_id=?`, placement.LocalNotes, time.Now().UTC(), placement.ID, block.ID)
+			if result.Error != nil {
+				return fmt.Errorf("update placement notes: %w", result.Error)
+			}
+			if result.RowsAffected == 0 {
+				return session.ValidationErrors{"placements": "A submitted activity does not belong to its block."}
+			}
+		}
 	}
 	for id := range available {
 		if err := tx.Exec("DELETE FROM curu.session_blocks WHERE id = ? AND session_id = ?", id, sessionID).Error; err != nil {
@@ -256,16 +271,6 @@ func reconcileSessionBlocks(tx *gorm.DB, sessionID string, blocks []session.Bloc
 
 func (r *SessionRepository) AddPlacement(ctx context.Context, owner, sessionID, blockID string, revision int64, activityID string) (session.Session, error) {
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var source activityRow
-		err := tx.Clauses(clause.Locking{Strength: "SHARE"}).
-			Preload("Progressions", func(db *gorm.DB) *gorm.DB { return db.Order("position, id") }).
-			Where("id = ? AND owner_id = ? AND archived_at IS NULL", activityID, owner).First(&source).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return activity.ErrNotFound
-		}
-		if err != nil {
-			return fmt.Errorf("read source activity snapshot: %w", err)
-		}
 		result := tx.Exec(`UPDATE curu.sessions SET revision=revision+1, updated_at=? WHERE id=? AND owner_id=? AND archived_at IS NULL AND revision=?`, time.Now().UTC(), sessionID, owner, revision)
 		if result.Error != nil {
 			return fmt.Errorf("advance session for placement: %w", result.Error)
@@ -273,41 +278,140 @@ func (r *SessionRepository) AddPlacement(ctx context.Context, owner, sessionID, 
 		if result.RowsAffected == 0 {
 			return resolveSessionUpdate(tx, owner, sessionID)
 		}
-		var blockCount int64
-		if err := tx.Table("curu.session_blocks").Where("id = ? AND session_id = ?", blockID, sessionID).Count(&blockCount).Error; err != nil {
-			return fmt.Errorf("resolve placement block: %w", err)
-		}
-		if blockCount == 0 {
-			return session.ErrNotFound
-		}
-		var position int
-		if err := tx.Raw("SELECT COALESCE(max(position) + 1, 0) FROM curu.session_activity_placements WHERE block_id = ?", blockID).Scan(&position).Error; err != nil {
-			return fmt.Errorf("choose placement position: %w", err)
-		}
-		placementID, err := newUUID()
-		if err != nil {
-			return err
-		}
-		if err := tx.Exec(`INSERT INTO curu.session_activity_placements
-			(id, block_id, position, source_activity_id, source_activity_revision, source_identity, title, summary, content_markdown, recommended_duration_seconds, phase, theme, tags)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, placementID, blockID, position, source.ID, source.Revision, source.SourceIdentity, source.Title, source.Summary, source.ContentMarkdown, source.DurationSeconds, source.Phase, source.Theme, pq.Array(source.Tags)).Error; err != nil {
-			return fmt.Errorf("insert activity placement snapshot: %w", err)
-		}
-		for _, progression := range source.Progressions {
-			id, err := newUUID()
-			if err != nil {
-				return err
-			}
-			if err := tx.Exec(`INSERT INTO curu.session_placement_progressions
-				(id, placement_id, position, title, content_markdown, recommended_duration_seconds)
-				VALUES (?, ?, ?, ?, ?, ?)`, id, placementID, progression.Position, progression.Title, progression.ContentMarkdown, progression.DurationSeconds).Error; err != nil {
-				return fmt.Errorf("insert placement progression snapshot: %w", err)
-			}
-		}
-		return nil
+		return insertPlacementSnapshot(tx, owner, sessionID, blockID, activityID)
 	})
 	if err != nil {
 		return session.Session{}, err
 	}
 	return r.Find(ctx, owner, sessionID, false)
+}
+
+func (r *SessionRepository) ApplyPlacementAction(ctx context.Context, owner, sessionID string, revision int64, input session.Input, action session.PlacementAction) (session.Session, error) {
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := updateSessionAggregate(tx, owner, sessionID, revision, input); err != nil {
+			return err
+		}
+		switch action.Kind {
+		case session.AddPlacementAction:
+			return insertPlacementSnapshot(tx, owner, sessionID, action.TargetBlockID, action.ActivityID)
+		case session.ReplacePlacementAction:
+			return replacePlacementSnapshot(tx, owner, sessionID, action.PlacementID, action.ActivityID)
+		case session.MovePlacementAction:
+			return movePlacement(tx, sessionID, action.PlacementID, action.TargetBlockID)
+		case session.RemovePlacementAction:
+			result := tx.Exec(`DELETE FROM curu.session_activity_placements p USING curu.session_blocks b WHERE p.id=? AND p.block_id=b.id AND b.session_id=?`, action.PlacementID, sessionID)
+			if result.Error != nil {
+				return fmt.Errorf("remove placement: %w", result.Error)
+			}
+			if result.RowsAffected == 0 {
+				return session.ErrNotFound
+			}
+			return nil
+		default:
+			return session.ValidationErrors{"placement_action": "Choose a supported activity action."}
+		}
+	})
+	if err != nil {
+		return session.Session{}, err
+	}
+	return r.Find(ctx, owner, sessionID, false)
+}
+
+func readSnapshotSource(tx *gorm.DB, owner, activityID string) (activityRow, error) {
+	var source activityRow
+	err := tx.Clauses(clause.Locking{Strength: "SHARE"}).
+		Preload("Progressions", func(db *gorm.DB) *gorm.DB { return db.Order("position, id") }).
+		Where("id = ? AND owner_id = ? AND archived_at IS NULL", activityID, owner).First(&source).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return activityRow{}, activity.ErrNotFound
+	}
+	if err != nil {
+		return activityRow{}, fmt.Errorf("read source activity snapshot: %w", err)
+	}
+	return source, nil
+}
+
+func insertPlacementSnapshot(tx *gorm.DB, owner, sessionID, blockID, activityID string) error {
+	source, err := readSnapshotSource(tx, owner, activityID)
+	if err != nil {
+		return err
+	}
+	var blockCount int64
+	if err := tx.Table("curu.session_blocks").Where("id = ? AND session_id = ?", blockID, sessionID).Count(&blockCount).Error; err != nil {
+		return fmt.Errorf("resolve placement block: %w", err)
+	}
+	if blockCount == 0 {
+		return session.ErrNotFound
+	}
+	var position int
+	if err := tx.Raw("SELECT COALESCE(max(position) + 1, 0) FROM curu.session_activity_placements WHERE block_id = ?", blockID).Scan(&position).Error; err != nil {
+		return fmt.Errorf("choose placement position: %w", err)
+	}
+	placementID, err := newUUID()
+	if err != nil {
+		return err
+	}
+	if err := tx.Exec(`INSERT INTO curu.session_activity_placements
+		(id, block_id, position, source_activity_id, source_activity_revision, source_identity, title, summary, content_markdown, recommended_duration_seconds, phase, theme, tags)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, placementID, blockID, position, source.ID, source.Revision, source.SourceIdentity, source.Title, source.Summary, source.ContentMarkdown, source.DurationSeconds, source.Phase, source.Theme, pq.Array(source.Tags)).Error; err != nil {
+		return fmt.Errorf("insert activity placement snapshot: %w", err)
+	}
+	return insertPlacementProgressions(tx, placementID, source.Progressions)
+}
+
+func insertPlacementProgressions(tx *gorm.DB, placementID string, progressions []progressionRow) error {
+	for _, progression := range progressions {
+		id, err := newUUID()
+		if err != nil {
+			return err
+		}
+		if err := tx.Exec(`INSERT INTO curu.session_placement_progressions
+			(id, placement_id, position, title, content_markdown, recommended_duration_seconds)
+			VALUES (?, ?, ?, ?, ?, ?)`, id, placementID, progression.Position, progression.Title, progression.ContentMarkdown, progression.DurationSeconds).Error; err != nil {
+			return fmt.Errorf("insert placement progression snapshot: %w", err)
+		}
+	}
+	return nil
+}
+
+func replacePlacementSnapshot(tx *gorm.DB, owner, sessionID, placementID, activityID string) error {
+	source, err := readSnapshotSource(tx, owner, activityID)
+	if err != nil {
+		return err
+	}
+	result := tx.Exec(`UPDATE curu.session_activity_placements p SET
+		source_activity_id=?, source_activity_revision=?, source_identity=?, title=?, summary=?, content_markdown=?, recommended_duration_seconds=?, phase=?, theme=?, tags=?, updated_at=?
+		FROM curu.session_blocks b WHERE p.id=? AND p.block_id=b.id AND b.session_id=?`, source.ID, source.Revision, source.SourceIdentity, source.Title, source.Summary, source.ContentMarkdown, source.DurationSeconds, source.Phase, source.Theme, pq.Array(source.Tags), time.Now().UTC(), placementID, sessionID)
+	if result.Error != nil {
+		return fmt.Errorf("replace placement snapshot: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return session.ErrNotFound
+	}
+	if err := tx.Exec("DELETE FROM curu.session_placement_progressions WHERE placement_id = ?", placementID).Error; err != nil {
+		return fmt.Errorf("replace placement progressions: %w", err)
+	}
+	return insertPlacementProgressions(tx, placementID, source.Progressions)
+}
+
+func movePlacement(tx *gorm.DB, sessionID, placementID, targetBlockID string) error {
+	var targetCount int64
+	if err := tx.Table("curu.session_blocks").Where("id=? AND session_id=?", targetBlockID, sessionID).Count(&targetCount).Error; err != nil {
+		return fmt.Errorf("resolve target block: %w", err)
+	}
+	if targetCount == 0 {
+		return session.ErrNotFound
+	}
+	var position int
+	if err := tx.Raw("SELECT COALESCE(max(position) + 1, 0) FROM curu.session_activity_placements WHERE block_id = ?", targetBlockID).Scan(&position).Error; err != nil {
+		return fmt.Errorf("choose moved placement position: %w", err)
+	}
+	result := tx.Exec(`UPDATE curu.session_activity_placements p SET block_id=?, position=?, updated_at=? FROM curu.session_blocks b WHERE p.id=? AND p.block_id=b.id AND b.session_id=? AND p.block_id<>?`, targetBlockID, position, time.Now().UTC(), placementID, sessionID, targetBlockID)
+	if result.Error != nil {
+		return fmt.Errorf("move placement: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return session.ValidationErrors{"placement_action": "Choose a different target block."}
+	}
+	return nil
 }

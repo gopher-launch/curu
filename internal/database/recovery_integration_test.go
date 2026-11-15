@@ -136,6 +136,9 @@ func TestPostgresBackupRestoreRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("save recovery placement fixture: %v", err)
 	}
+	if err := source.Exec("UPDATE curu.session_activity_placements SET local_notes='Retained recovery note', duration_seconds=75 WHERE id=?", savedSession.Blocks[0].Placements[0].ID).Error; err != nil {
+		t.Fatalf("set recovery placement properties: %v", err)
+	}
 	if _, err := sessionRepository.Archive(ctx, ownerID, savedSession.ID, savedSession.Revision, true); err != nil {
 		t.Fatalf("archive recovery session fixture: %v", err)
 	}

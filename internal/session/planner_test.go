@@ -18,6 +18,7 @@ type fakeStore struct {
 	revision int64
 	archived bool
 	err      error
+	action   PlacementAction
 }
 
 func (s *fakeStore) List(context.Context, string, bool) ([]Summary, error) { return nil, s.err }
@@ -38,6 +39,10 @@ func (s *fakeStore) Archive(_ context.Context, _, _ string, revision int64, arch
 }
 func (s *fakeStore) AddPlacement(_ context.Context, _, _, _ string, revision int64, _ string) (Session, error) {
 	s.revision = revision
+	return s.item, s.err
+}
+func (s *fakeStore) ApplyPlacementAction(_ context.Context, _, _ string, revision int64, input Input, action PlacementAction) (Session, error) {
+	s.input, s.revision, s.action = input, revision, action
 	return s.item, s.err
 }
 
@@ -106,6 +111,32 @@ func TestAddPlacementValidatesIdentityRevisionAndOwnerPolicy(t *testing.T) {
 	stranger := authorization.Principal{OwnerID: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"}
 	if _, err := planner.AddPlacement(context.Background(), stranger, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "cccccccc-cccc-4ccc-8ccc-cccccccccccc", 4, "dddddddd-dddd-4ddd-8ddd-dddddddddddd"); !errors.Is(err, authorization.ErrDenied) {
 		t.Fatalf("AddPlacement() other-owner error = %v", err)
+	}
+}
+
+func TestPlacementActionsValidateAndPreserveSubmittedAggregate(t *testing.T) {
+	store := &fakeStore{item: Session{ID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"}}
+	planner := testPlanner(t, store)
+	input := Input{Title: " Edited plan ", Blocks: []BlockInput{{
+		ID: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", Name: " Warmup ",
+		Placements: []PlacementInput{{ID: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", LocalNotes: " Review spacing "}},
+	}}}
+	_, err := planner.ApplyPlacementAction(context.Background(), owner, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", 7, input, PlacementAction{
+		Kind: ReplacePlacementAction, PlacementID: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", ActivityID: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+	})
+	if err != nil || store.revision != 7 || store.input.Title != "Edited plan" || store.input.Blocks[0].Placements[0].LocalNotes != "Review spacing" || store.action.Kind != ReplacePlacementAction {
+		t.Fatalf("ApplyPlacementAction() error=%v store=%+v", err, store)
+	}
+	for _, test := range []PlacementAction{
+		{Kind: AddPlacementAction, TargetBlockID: "bad", ActivityID: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"},
+		{Kind: ReplacePlacementAction, PlacementID: "dddddddd-dddd-4ddd-8ddd-dddddddddddd"},
+		{Kind: MovePlacementAction, PlacementID: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", TargetBlockID: "bad"},
+		{Kind: RemovePlacementAction},
+		{Kind: "unknown"},
+	} {
+		if _, err := planner.ApplyPlacementAction(context.Background(), owner, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", 7, input, test); !errors.Is(err, ErrInvalidInput) {
+			t.Errorf("action %+v error=%v, want invalid input", test, err)
+		}
 	}
 }
 

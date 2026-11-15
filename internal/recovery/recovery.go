@@ -124,7 +124,7 @@ func captureSnapshot(ctx context.Context, db *gorm.DB) (Manifest, error) {
 			FROM curu.session_blocks ORDER BY id`},
 		{"session_activity_placements", `SELECT jsonb_build_array(id, block_id, position, source_activity_id,
 			source_activity_revision, source_identity, title, summary, content_markdown, recommended_duration_seconds,
-			phase, theme, tags,
+			phase, theme, tags, local_notes, duration_seconds,
 			to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
 			to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))::text AS value
 			FROM curu.session_activity_placements ORDER BY id`},

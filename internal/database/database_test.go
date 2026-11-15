@@ -383,6 +383,51 @@ func TestPostgresMigrationAndRuntimeRestrictions(t *testing.T) {
 	if err != nil || retained.Revision != 5 || len(retained.Blocks[0].Placements) != 2 || retained.Blocks[0].Placements[0].Title != "Plan-local adaptation" {
 		t.Fatalf("session save retained placements = %+v, error = %v", retained, err)
 	}
+	// Structural editor actions save entered aggregate fields and placement
+	// notes atomically while preserving plan-owned duration and source data.
+	replacementSource, err := repository.Create(ctx, ownerID, activity.Input{Title: "Replacement source", ContentMarkdown: "Fresh source content"})
+	if err != nil {
+		t.Fatalf("create replacement source: %v", err)
+	}
+	actionSession, err := sessions.Create(ctx, ownerID, session.Input{Title: "Action plan", Blocks: []session.BlockInput{{Name: "Arrival"}, {Name: "Warmup"}}})
+	if err != nil {
+		t.Fatalf("create action session: %v", err)
+	}
+	actionSession, err = sessions.AddPlacement(ctx, ownerID, actionSession.ID, actionSession.Blocks[0].ID, actionSession.Revision, snapshotSource.ID)
+	if err != nil {
+		t.Fatalf("add action placement: %v", err)
+	}
+	actionPlacement := actionSession.Blocks[0].Placements[0]
+	if err := runtime.Exec("UPDATE curu.session_activity_placements SET local_notes='Retain this note', duration_seconds=45 WHERE id=?", actionPlacement.ID).Error; err != nil {
+		t.Fatalf("set plan-local placement properties: %v", err)
+	}
+	actionInput := session.Input{Title: "Action plan edited", Blocks: []session.BlockInput{
+		{ID: actionSession.Blocks[0].ID, Name: "Arrival edited", Placements: []session.PlacementInput{{ID: actionPlacement.ID, LocalNotes: "Unsaved note saved"}}},
+		{ID: actionSession.Blocks[1].ID, Name: "Warmup edited"},
+	}}
+	actionSession, err = sessions.ApplyPlacementAction(ctx, ownerID, actionSession.ID, actionSession.Revision, actionInput, session.PlacementAction{Kind: session.ReplacePlacementAction, PlacementID: actionPlacement.ID, ActivityID: replacementSource.ID})
+	if err != nil || actionSession.Title != "Action plan edited" || actionSession.Blocks[0].Name != "Arrival edited" || len(actionSession.Blocks[0].Placements) != 1 {
+		t.Fatalf("replace placement action = %+v, error = %v", actionSession, err)
+	}
+	replacedPlacement := actionSession.Blocks[0].Placements[0]
+	if replacedPlacement.SourceActivityID != replacementSource.ID || replacedPlacement.ContentMarkdown != replacementSource.ContentMarkdown || replacedPlacement.LocalNotes != "Unsaved note saved" || replacedPlacement.DurationSeconds == nil || *replacedPlacement.DurationSeconds != 45 {
+		t.Fatalf("replaced placement did not preserve local properties: %+v", replacedPlacement)
+	}
+	actionInput.Blocks[0].Placements[0].LocalNotes = replacedPlacement.LocalNotes
+	actionSession, err = sessions.ApplyPlacementAction(ctx, ownerID, actionSession.ID, actionSession.Revision, actionInput, session.PlacementAction{Kind: session.MovePlacementAction, PlacementID: replacedPlacement.ID, TargetBlockID: actionSession.Blocks[1].ID})
+	if err != nil || len(actionSession.Blocks[0].Placements) != 0 || len(actionSession.Blocks[1].Placements) != 1 || actionSession.Blocks[1].Placements[0].LocalNotes != "Unsaved note saved" || actionSession.Blocks[1].Placements[0].DurationSeconds == nil || *actionSession.Blocks[1].Placements[0].DurationSeconds != 45 {
+		t.Fatalf("move placement action = %+v, error = %v", actionSession, err)
+	}
+	moved := actionSession.Blocks[1].Placements[0]
+	actionInput.Blocks[0].Placements = nil
+	actionInput.Blocks[1].Placements = []session.PlacementInput{{ID: moved.ID, LocalNotes: moved.LocalNotes}}
+	actionSession, err = sessions.ApplyPlacementAction(ctx, ownerID, actionSession.ID, actionSession.Revision, actionInput, session.PlacementAction{Kind: session.RemovePlacementAction, PlacementID: moved.ID})
+	if err != nil || len(actionSession.Blocks[1].Placements) != 0 {
+		t.Fatalf("remove placement action = %+v, error = %v", actionSession, err)
+	}
+	if sourceAfterRemoval, findErr := repository.FindCurrent(ctx, ownerID, replacementSource.ID); findErr != nil || sourceAfterRemoval.Title != replacementSource.Title {
+		t.Fatalf("library source after plan removal = %+v, error = %v", sourceAfterRemoval, findErr)
+	}
 	beforeRollback := retained
 	if _, err := sessions.AddPlacement(ctx, ownerID, retained.ID, "77777777-7777-4777-8777-777777777777", retained.Revision, snapshotSource.ID); !errors.Is(err, session.ErrNotFound) {
 		t.Fatalf("AddPlacement() invalid block error = %v, want not found", err)
