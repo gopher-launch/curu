@@ -308,7 +308,7 @@ func TestSessionEditorReordersWithBoundaryControlsAndFocusedRedirect(t *testing.
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	body := response.Body.String()
-	for _, wanted := range []string{"move_block_up", "move_block_down", "move_placement_up", "move_placement_down", "id=\"item-" + placeOne + "\"", "location.hash", "getElementById(location.hash.slice(1))", "focus({preventScroll:true})", "submitter.disabled=true", "submitter.disabled=false"} {
+	for _, wanted := range []string{"move_block_up", "move_block_down", "move_placement_up", "move_placement_down", "id=\"item-" + placeOne + "\"", "location.hash", "getElementById(location.hash.slice(1))", "focus({preventScroll:true})", "redirectHash", "redirectURL.hash=redirectHash", "submitter.disabled=true", "submitter.disabled=false"} {
 		if response.Code != http.StatusOK || !strings.Contains(body, wanted) {
 			t.Fatalf("reorder editor omitted %q: status=%d body=%q", wanted, response.Code, body)
 		}
