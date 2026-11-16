@@ -68,6 +68,7 @@ type sessionFormData struct {
 	TimingComplete                                                                                                    bool
 	TimingWarnings                                                                                                    []string
 	Conflict                                                                                                          bool
+	RecoveryArchived                                                                                                  bool
 	CurrentURL                                                                                                        string
 	RecoverySnapshot, RecoveryAction, RecoveryBlockID, RecoveryPlacementID, RecoveryTargetBlockID, RecoveryActivityID string
 	Blocks                                                                                                            []sessionBlockFormView
@@ -81,7 +82,7 @@ type sessionRecoveryDraftListData struct {
 type sessionRecoveryDraftSummaryView struct{ ID, Title, Updated string }
 type sessionRecoveryDraftData struct {
 	sessionDetailData
-	DraftID, ActionDescription string
+	DraftID, ActionDescription, CurrentURL string
 }
 
 func (h *handler) listSessions(w http.ResponseWriter, r *http.Request) {
@@ -287,6 +288,7 @@ func (h *handler) updateSession(w http.ResponseWriter, r *http.Request) {
 		data.Conflict = true
 		data.CurrentURL = "/sessions/" + id + "/archived"
 		data.RecoveryAction = ""
+		data.RecoveryArchived = true
 		h.renderStatus(w, "session-form", data, http.StatusConflict)
 		return
 	}
@@ -374,6 +376,7 @@ func (h *handler) changeSessionPlacements(w http.ResponseWriter, r *http.Request
 		data.ErrorSummary = "This session was archived after you opened the editor. Your entered session, blocks, and activity notes remain below."
 		data.Conflict, data.CurrentURL = true, "/sessions/"+id+"/archived"
 		setRecoveryAction(&data, action)
+		data.RecoveryArchived = true
 		h.renderStatus(w, "session-form", data, http.StatusConflict)
 		return
 	}
@@ -579,18 +582,29 @@ func (h *handler) saveSessionRecoveryDraft(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	data.ID, data.Conflict = id, true
+	currentArchived := r.PostForm.Get("recovery_archived") == "true"
+	data.RecoveryArchived = currentArchived
+	data.CurrentURL = "/sessions/" + id + "/edit"
+	if currentArchived {
+		data.CurrentURL = "/sessions/" + id + "/archived"
+	}
 	revision, err := strconv.ParseInt(data.Revision, 10, 64)
 	var snapshot session.Session
 	encoded := r.PostForm.Get("recovery_snapshot")
 	decoded, decodeErr := base64.RawURLEncoding.DecodeString(encoded)
-	if err != nil || revision < 1 || decodeErr != nil || len(decoded) > 1<<20 || json.Unmarshal(decoded, &snapshot) != nil {
+	if len(decoded) > 1<<20 {
+		data.ErrorSummary = "This recovery copy exceeds the 1 MiB limit and was not saved. Your entered work remains below."
+		h.renderStatus(w, "session-form", data, http.StatusUnprocessableEntity)
+		return
+	}
+	if err != nil || revision < 1 || decodeErr != nil || json.Unmarshal(decoded, &snapshot) != nil {
 		data.ErrorSummary = "This recovery copy cannot be verified from the conflicting editor. Your entered work remains below."
 		h.renderStatus(w, "session-form", data, http.StatusUnprocessableEntity)
 		return
 	}
 	action := recoveryActionFromForm(r)
 	setRecoveryAction(&data, action)
-	draft, err := h.sessions.SaveRecoveryDraft(r.Context(), principal, id, revision, snapshot, input, action)
+	draft, err := h.sessions.SaveRecoveryDraft(r.Context(), principal, id, revision, snapshot, input, action, currentArchived)
 	if errors.Is(err, session.ErrInvalidInput) {
 		data.ErrorSummary = "The recovery copy is invalid or too large. Your entered work remains below."
 		h.renderStatus(w, "session-form", data, http.StatusUnprocessableEntity)
@@ -661,11 +675,41 @@ func (h *handler) sessionRecoveryDraft(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	detail.PageTitle = "Session recovery copy · Curu"
-	action := string(draft.Action.Kind)
-	if action == "" {
-		action = "save"
+	currentURL := "/sessions/" + draft.SessionID + "/edit"
+	if draft.CurrentArchived {
+		currentURL = "/sessions/" + draft.SessionID + "/archived"
 	}
-	h.render(w, "session-recovery-draft", sessionRecoveryDraftData{sessionDetailData: detail, DraftID: draft.ID, ActionDescription: action})
+	h.render(w, "session-recovery-draft", sessionRecoveryDraftData{sessionDetailData: detail, DraftID: draft.ID, ActionDescription: describeRecoveryAction(draft), CurrentURL: currentURL})
+}
+
+func describeRecoveryAction(draft session.RecoveryDraft) string {
+	action := draft.Action
+	if action.Kind == "" {
+		return "save"
+	}
+	placementTitle, blockName := action.PlacementID, action.TargetBlockID
+	for _, block := range draft.Plan.Blocks {
+		if block.ID == action.TargetBlockID {
+			blockName = block.Name
+		}
+		for _, placement := range block.Placements {
+			if placement.ID == action.PlacementID {
+				placementTitle = placement.Title
+			}
+		}
+	}
+	switch action.Kind {
+	case session.AddPlacementAction:
+		return "add of library activity " + action.ActivityID + " to " + blockName
+	case session.ReplacePlacementAction:
+		return "replacement of " + placementTitle + " with library activity " + action.ActivityID
+	case session.MovePlacementAction:
+		return "move of " + placementTitle + " to " + blockName
+	case session.RemovePlacementAction:
+		return "removal of " + placementTitle
+	default:
+		return string(action.Kind)
+	}
 }
 
 func (h *handler) discardSessionRecoveryDraft(w http.ResponseWriter, r *http.Request) {

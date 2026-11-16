@@ -45,9 +45,9 @@ func (s *fakeStore) ApplyPlacementAction(_ context.Context, _, _ string, revisio
 	s.input, s.revision, s.action = input, revision, action
 	return s.item, s.err
 }
-func (s *fakeStore) SaveRecoveryDraft(_ context.Context, owner, id string, revision int64, plan Session, action PlacementAction) (RecoveryDraft, error) {
+func (s *fakeStore) SaveRecoveryDraft(_ context.Context, owner, id string, revision int64, plan Session, action PlacementAction, currentArchived bool) (RecoveryDraft, error) {
 	s.item, s.revision, s.action = plan, revision, action
-	return RecoveryDraft{ID: "ffffffff-ffff-4fff-8fff-ffffffffffff", OwnerID: owner, SessionID: id, Plan: plan, Action: action}, s.err
+	return RecoveryDraft{ID: "ffffffff-ffff-4fff-8fff-ffffffffffff", OwnerID: owner, SessionID: id, Plan: plan, Action: action, CurrentArchived: currentArchived}, s.err
 }
 func (s *fakeStore) ListRecoveryDrafts(context.Context, string) ([]RecoveryDraftSummary, error) {
 	return nil, s.err
@@ -185,7 +185,7 @@ func TestRecoveryDraftPreservesSnapshotsAndAppliesSubmittedMove(t *testing.T) {
 		{ID: blockOne, Name: "Arrival edited", Placements: []PlacementInput{{ID: placementID, LocalNotes: "Submitted note", DurationSeconds: &duration}}},
 		{ID: blockTwo, Name: "Warmup edited"},
 	}}
-	draft, err := planner.SaveRecoveryDraft(context.Background(), owner, snapshot.ID, 4, snapshot, input, PlacementAction{Kind: MovePlacementAction, PlacementID: placementID, TargetBlockID: blockTwo})
+	draft, err := planner.SaveRecoveryDraft(context.Background(), owner, snapshot.ID, 4, snapshot, input, PlacementAction{Kind: MovePlacementAction, PlacementID: placementID, TargetBlockID: blockTwo}, false)
 	if err != nil {
 		t.Fatalf("SaveRecoveryDraft() error = %v", err)
 	}
@@ -195,6 +195,35 @@ func TestRecoveryDraftPreservesSnapshotsAndAppliesSubmittedMove(t *testing.T) {
 	got := store.item.Blocks[1].Placements[0]
 	if got.Title != "Copied title" || got.ContentMarkdown != "Exact copied instructions" || got.LocalNotes != "Submitted note" || got.DurationSeconds == nil || *got.DurationSeconds != 75 || len(got.Progressions) != 1 || got.Progressions[0].ContentMarkdown != "Exact progression" {
 		t.Fatalf("recovered placement = %+v", got)
+	}
+}
+
+func TestRecoveryDraftMoveToRemovedTargetRetainsPlacement(t *testing.T) {
+	store := &fakeStore{err: ErrConflict}
+	planner := testPlanner(t, store)
+	blockOne, removedTarget := "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+	placementID := "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+	snapshot := Session{ID: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", OwnerID: ownerID, Revision: 8, Title: "Original", Blocks: []Block{
+		{ID: blockOne, Name: "Arrival", Placements: []Placement{{ID: placementID, Title: "Copied title", ContentMarkdown: "Exact copied instructions", LocalNotes: "Original note", Progressions: []PlacementProgression{{Title: "Harder", ContentMarkdown: "Exact progression"}}}}},
+		{ID: removedTarget, Name: "Removed target"},
+	}}
+	duration := 45
+	input := Input{Title: "Submitted title", Blocks: []BlockInput{{ID: blockOne, Name: "Arrival", Placements: []PlacementInput{{ID: placementID, LocalNotes: "Submitted note", DurationSeconds: &duration}}}}}
+	action := PlacementAction{Kind: MovePlacementAction, PlacementID: placementID, TargetBlockID: removedTarget}
+	if _, err := planner.ApplyPlacementAction(context.Background(), owner, snapshot.ID, 8, input, action); !errors.Is(err, ErrConflict) {
+		t.Fatalf("stale move error = %v, want conflict", err)
+	}
+	store.err = nil
+	_, err := planner.SaveRecoveryDraft(context.Background(), owner, snapshot.ID, 8, snapshot, input, action, false)
+	if err != nil {
+		t.Fatalf("SaveRecoveryDraft() error = %v", err)
+	}
+	if len(store.item.Blocks) != 1 || len(store.item.Blocks[0].Placements) != 1 {
+		t.Fatalf("recovered plan lost placement: %+v", store.item)
+	}
+	got := store.item.Blocks[0].Placements[0]
+	if got.ID != placementID || got.ContentMarkdown != "Exact copied instructions" || got.LocalNotes != "Submitted note" || got.DurationSeconds == nil || *got.DurationSeconds != 45 || len(got.Progressions) != 1 {
+		t.Fatalf("retained placement = %+v", got)
 	}
 }
 

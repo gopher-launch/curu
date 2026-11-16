@@ -2,9 +2,11 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -83,6 +85,54 @@ func TestSessionReorderRetainsBrowserFocusAndViewport(t *testing.T) {
 	}
 	if planner.action.Kind != session.MovePlacementUpAction || planner.action.PlacementID != targetID {
 		t.Fatalf("reorder action = %+v", planner.action)
+	}
+}
+
+func TestLargeSessionConflictTransfersRecoverySnapshotWithoutPostingItOrdinarily(t *testing.T) {
+	browserPath := findChrome(t)
+	const sessionID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+	const blockID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+	placements := make([]session.Placement, 8)
+	for i := range placements {
+		placements[i] = session.Placement{ID: fmt.Sprintf("dddddddd-dddd-4ddd-8ddd-%012d", i), Title: fmt.Sprintf("Large snapshot %d", i), ContentMarkdown: strings.Repeat("x", 100000)}
+	}
+	planner := &fakeSessionPlanner{item: session.Session{ID: sessionID, OwnerID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", Title: "Large conflict plan", Revision: 7, Blocks: []session.Block{{ID: blockID, Name: "Warmup", Placements: placements}}}, updateErr: session.ErrConflict}
+	application := newTestHandlerWithSessions(t, planner)
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Header.Set("Authorization", "Bearer owner")
+		if r.Method == http.MethodPost {
+			r.Header.Set("Origin", "https://curu.example")
+		}
+		application.ServeHTTP(w, r)
+	}))
+	defer server.Close()
+
+	allocatorOptions := append(chromedp.DefaultExecAllocatorOptions[:], chromedp.ExecPath(browserPath), chromedp.Flag("ignore-certificate-errors", true))
+	allocator, cancelAllocator := chromedp.NewExecAllocator(context.Background(), allocatorOptions...)
+	defer cancelAllocator()
+	browser, cancelBrowser := chromedp.NewContext(allocator)
+	defer cancelBrowser()
+	ctx, cancel := context.WithTimeout(browser, 20*time.Second)
+	defer cancel()
+
+	if err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/sessions/"+sessionID+"/edit"),
+		chromedp.WaitVisible(`button[type="submit"]:not([formaction])`, chromedp.ByQuery),
+		chromedp.Click(`button[type="submit"]:not([formaction])`, chromedp.ByQuery),
+		chromedp.Sleep(3*time.Second),
+	); err != nil {
+		t.Fatalf("submit large stale editor: %v", err)
+	}
+	var name string
+	var valueLength int
+	if err := chromedp.Run(ctx,
+		chromedp.Evaluate(`document.getElementById("recovery-snapshot").name`, &name),
+		chromedp.Evaluate(`document.getElementById("recovery-snapshot").value.length`, &valueLength),
+	); err != nil {
+		t.Fatalf("inspect transferred recovery snapshot: %v", err)
+	}
+	if planner.operation != "update" || name != "recovery_snapshot" || valueLength <= maxRequestBody {
+		t.Fatalf("large conflict transfer operation=%q name=%q length=%d", planner.operation, name, valueLength)
 	}
 }
 

@@ -12,9 +12,10 @@ import (
 )
 
 type sessionRecoveryDraftPayload struct {
-	Format int                     `json:"format"`
-	Plan   session.Session         `json:"plan"`
-	Action session.PlacementAction `json:"action,omitempty"`
+	Format          int                     `json:"format"`
+	Plan            session.Session         `json:"plan"`
+	Action          session.PlacementAction `json:"action,omitempty"`
+	CurrentArchived bool                    `json:"current_archived,omitempty"`
 }
 
 type sessionRecoveryDraftRow struct {
@@ -26,8 +27,8 @@ type sessionRecoveryDraftRow struct {
 
 func (sessionRecoveryDraftRow) TableName() string { return "curu.session_recovery_drafts" }
 
-func (r *SessionRepository) SaveRecoveryDraft(ctx context.Context, ownerID, sessionID string, baseRevision int64, plan session.Session, action session.PlacementAction) (session.RecoveryDraft, error) {
-	payload, err := json.Marshal(sessionRecoveryDraftPayload{Format: 1, Plan: plan, Action: action})
+func (r *SessionRepository) SaveRecoveryDraft(ctx context.Context, ownerID, sessionID string, baseRevision int64, plan session.Session, action session.PlacementAction, currentArchived bool) (session.RecoveryDraft, error) {
+	payload, err := json.Marshal(sessionRecoveryDraftPayload{Format: 1, Plan: plan, Action: action, CurrentArchived: currentArchived})
 	if err != nil {
 		return session.RecoveryDraft{}, fmt.Errorf("encode session recovery draft: %w", err)
 	}
@@ -113,5 +114,5 @@ func sessionRecoveryDraftFromRow(row sessionRecoveryDraftRow) (session.RecoveryD
 	if err := json.Unmarshal(row.Payload, &payload); err != nil || payload.Format != 1 {
 		return session.RecoveryDraft{}, fmt.Errorf("decode session recovery draft: unsupported or invalid payload")
 	}
-	return session.RecoveryDraft{ID: row.ID, OwnerID: row.OwnerID, SessionID: row.SessionID, BaseRevision: row.BaseRevision, Plan: payload.Plan, Action: payload.Action, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}, nil
+	return session.RecoveryDraft{ID: row.ID, OwnerID: row.OwnerID, SessionID: row.SessionID, BaseRevision: row.BaseRevision, Plan: payload.Plan, Action: payload.Action, CurrentArchived: payload.CurrentArchived, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}, nil
 }

@@ -61,7 +61,7 @@ type sessionPlanner interface {
 	Update(context.Context, authorization.Principal, string, int64, session.Input) (session.Session, error)
 	Archive(context.Context, authorization.Principal, string, int64, bool) (session.Session, error)
 	ApplyPlacementAction(context.Context, authorization.Principal, string, int64, session.Input, session.PlacementAction) (session.Session, error)
-	SaveRecoveryDraft(context.Context, authorization.Principal, string, int64, session.Session, session.Input, session.PlacementAction) (session.RecoveryDraft, error)
+	SaveRecoveryDraft(context.Context, authorization.Principal, string, int64, session.Session, session.Input, session.PlacementAction, bool) (session.RecoveryDraft, error)
 	ListRecoveryDrafts(context.Context, authorization.Principal) ([]session.RecoveryDraftSummary, error)
 	RecoveryDraft(context.Context, authorization.Principal, string) (session.RecoveryDraft, error)
 	DiscardRecoveryDraft(context.Context, authorization.Principal, string) error

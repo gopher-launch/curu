@@ -141,7 +141,7 @@ func TestPostgresBackupRestoreRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("set recovery timing properties: %v", err)
 	}
-	if _, err := sessionRepository.SaveRecoveryDraft(ctx, ownerID, savedSession.ID, savedSession.Revision-1, savedSession, session.PlacementAction{Kind: session.MovePlacementAction, PlacementID: savedSession.Blocks[0].Placements[0].ID, TargetBlockID: savedSession.Blocks[0].ID}); err != nil {
+	if _, err := sessionRepository.SaveRecoveryDraft(ctx, ownerID, savedSession.ID, savedSession.Revision-1, savedSession, session.PlacementAction{Kind: session.MovePlacementAction, PlacementID: savedSession.Blocks[0].Placements[0].ID, TargetBlockID: savedSession.Blocks[0].ID}, false); err != nil {
 		t.Fatalf("save session recovery draft fixture: %v", err)
 	}
 	if _, err := sessionRepository.Archive(ctx, ownerID, savedSession.ID, savedSession.Revision, true); err != nil {

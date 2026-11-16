@@ -435,17 +435,17 @@ func TestPostgresMigrationAndRuntimeRestrictions(t *testing.T) {
 	if sourceAfterRemoval, findErr := repository.FindCurrent(ctx, ownerID, replacementSource.ID); findErr != nil || sourceAfterRemoval.Title != replacementSource.Title {
 		t.Fatalf("library source after plan removal = %+v, error = %v", sourceAfterRemoval, findErr)
 	}
-	sessionDraft, err := sessions.SaveRecoveryDraft(ctx, ownerID, actionSession.ID, actionSession.Revision-1, actionSession, session.PlacementAction{Kind: session.RemovePlacementAction, PlacementID: moved.ID})
+	sessionDraft, err := sessions.SaveRecoveryDraft(ctx, ownerID, actionSession.ID, actionSession.Revision-1, actionSession, session.PlacementAction{Kind: session.RemovePlacementAction, PlacementID: moved.ID}, false)
 	if err != nil || sessionDraft.Plan.Title != actionSession.Title || sessionDraft.Action.Kind != session.RemovePlacementAction {
 		t.Fatalf("SaveRecoveryDraft() = %+v, error = %v", sessionDraft, err)
 	}
-	replacedSessionDraft, err := sessions.SaveRecoveryDraft(ctx, ownerID, actionSession.ID, actionSession.Revision, actionSession, session.PlacementAction{Kind: session.MovePlacementAction, PlacementID: moved.ID, TargetBlockID: actionSession.Blocks[0].ID})
-	if err != nil || replacedSessionDraft.ID != sessionDraft.ID || replacedSessionDraft.BaseRevision != actionSession.Revision || replacedSessionDraft.Action.Kind != session.MovePlacementAction {
+	replacedSessionDraft, err := sessions.SaveRecoveryDraft(ctx, ownerID, actionSession.ID, actionSession.Revision, actionSession, session.PlacementAction{Kind: session.MovePlacementAction, PlacementID: moved.ID, TargetBlockID: actionSession.Blocks[0].ID}, true)
+	if err != nil || replacedSessionDraft.ID != sessionDraft.ID || replacedSessionDraft.BaseRevision != actionSession.Revision || replacedSessionDraft.Action.Kind != session.MovePlacementAction || !replacedSessionDraft.CurrentArchived {
 		t.Fatalf("replacement SaveRecoveryDraft() = %+v, error = %v", replacedSessionDraft, err)
 	}
 	sessionDraft = replacedSessionDraft
 	loadedSessionDraft, err := sessions.FindRecoveryDraft(ctx, ownerID, sessionDraft.ID)
-	if err != nil || loadedSessionDraft.ID != sessionDraft.ID || loadedSessionDraft.Plan.Title != actionSession.Title {
+	if err != nil || loadedSessionDraft.ID != sessionDraft.ID || loadedSessionDraft.Plan.Title != actionSession.Title || !loadedSessionDraft.CurrentArchived {
 		t.Fatalf("FindRecoveryDraft() = %+v, error = %v", loadedSessionDraft, err)
 	}
 	if _, err := sessions.FindRecoveryDraft(ctx, "55555555-5555-4555-8555-555555555555", sessionDraft.ID); !errors.Is(err, session.ErrNotFound) {

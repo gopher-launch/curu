@@ -174,6 +174,7 @@ type RecoveryDraft struct {
 	BaseRevision           int64
 	Plan                   Session
 	Action                 PlacementAction
+	CurrentArchived        bool
 	CreatedAt, UpdatedAt   time.Time
 }
 
@@ -195,13 +196,13 @@ type Store interface {
 	Archive(context.Context, string, string, int64, bool) (Session, error)
 	AddPlacement(context.Context, string, string, string, int64, string) (Session, error)
 	ApplyPlacementAction(context.Context, string, string, int64, Input, PlacementAction) (Session, error)
-	SaveRecoveryDraft(context.Context, string, string, int64, Session, PlacementAction) (RecoveryDraft, error)
+	SaveRecoveryDraft(context.Context, string, string, int64, Session, PlacementAction, bool) (RecoveryDraft, error)
 	ListRecoveryDrafts(context.Context, string) ([]RecoveryDraftSummary, error)
 	FindRecoveryDraft(context.Context, string, string) (RecoveryDraft, error)
 	DiscardRecoveryDraft(context.Context, string, string) error
 }
 
-func (p *Planner) SaveRecoveryDraft(ctx context.Context, principal authorization.Principal, sessionID string, baseRevision int64, snapshot Session, input Input, action PlacementAction) (RecoveryDraft, error) {
+func (p *Planner) SaveRecoveryDraft(ctx context.Context, principal authorization.Principal, sessionID string, baseRevision int64, snapshot Session, input Input, action PlacementAction, currentArchived bool) (RecoveryDraft, error) {
 	var err error
 	if sessionID, err = authorization.NormalizeUUID(sessionID); err != nil {
 		return RecoveryDraft{}, ErrNotFound
@@ -224,7 +225,7 @@ func (p *Planner) SaveRecoveryDraft(ctx context.Context, principal authorization
 	if err != nil {
 		return RecoveryDraft{}, err
 	}
-	return p.store.SaveRecoveryDraft(ctx, principal.OwnerID, sessionID, baseRevision, plan, action)
+	return p.store.SaveRecoveryDraft(ctx, principal.OwnerID, sessionID, baseRevision, plan, action, currentArchived)
 }
 
 func normalizeRecoveryAction(action PlacementAction) (PlacementAction, error) {
@@ -372,6 +373,10 @@ func recoverSubmittedPlan(snapshot Session, input Input, action PlacementAction)
 			}
 		}
 	case MovePlacementAction:
+		targetBlock := blockIndex(plan.Blocks, action.TargetBlockID)
+		if targetBlock < 0 {
+			break
+		}
 		var moved Placement
 		found := false
 		for i := range plan.Blocks {
@@ -383,9 +388,7 @@ func recoverSubmittedPlan(snapshot Session, input Input, action PlacementAction)
 			}
 		}
 		if found {
-			if index := blockIndex(plan.Blocks, action.TargetBlockID); index >= 0 {
-				plan.Blocks[index].Placements = append(plan.Blocks[index].Placements, moved)
-			}
+			plan.Blocks[targetBlock].Placements = append(plan.Blocks[targetBlock].Placements, moved)
 		}
 	case RemovePlacementAction:
 		for i := range plan.Blocks {

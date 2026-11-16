@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"io"
 	"log/slog"
@@ -408,6 +409,88 @@ func TestSessionConflictRecoveryCopySaveAndFailureRetention(t *testing.T) {
 	for _, wanted := range []string{"not saved", "Submitted plan", "Entered notes", "Local note", "recovery_snapshot"} {
 		if response.Code != http.StatusInternalServerError || !strings.Contains(response.Body.String(), wanted) {
 			t.Fatalf("failure omitted %q: status=%d body=%q", wanted, response.Code, response.Body.String())
+		}
+	}
+}
+
+func TestLargeValidSessionSnapshotDoesNotEnterOrdinaryMutationRequest(t *testing.T) {
+	const (
+		sessionID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+		blockID   = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+	)
+	placements := make([]session.Placement, 8)
+	for i := range placements {
+		placements[i] = session.Placement{ID: fmt.Sprintf("dddddddd-dddd-4ddd-8ddd-%012d", i), Title: fmt.Sprintf("Large snapshot %d", i), ContentMarkdown: strings.Repeat("x", 100000)}
+	}
+	planner := &fakeSessionPlanner{item: session.Session{ID: sessionID, OwnerID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", Title: "Large valid plan", Revision: 6, Blocks: []session.Block{{ID: blockID, Name: "Warmup", Placements: placements}}}}
+	handler := newTestHandlerWithSessions(t, planner)
+	request := httptest.NewRequest(http.MethodGet, "/sessions/"+sessionID+"/edit", nil)
+	request.Header.Set("Authorization", "Bearer owner")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || response.Body.Len() <= maxRequestBody || !strings.Contains(response.Body.String(), `id="recovery-snapshot"`) || strings.Contains(response.Body.String(), `id="recovery-snapshot" name="recovery_snapshot"`) {
+		t.Fatalf("large editor snapshot transport status=%d size=%d", response.Code, response.Body.Len())
+	}
+
+	cookie := csrfCookie(t, handler)
+	var values strings.Builder
+	values.WriteString("title=Large+valid+plan&date=&group_context=&intent=&revision=6&block_id=" + blockID + "&block_name=Warmup&block_intent=&block_notes=&block_observation_lens=")
+	for _, placement := range placements {
+		values.WriteString("&placement_id_" + blockID + "=" + placement.ID + "&placement_notes_" + blockID + "=")
+	}
+	values.WriteString("&csrf_token=" + cookie.Value)
+	planner.err = session.ErrConflict
+	request = newOwnerMutation(t, cookie, "/sessions/"+sessionID, values.String())
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusConflict || planner.operation != "update" || !strings.Contains(response.Body.String(), "newer revision exists") || !strings.Contains(response.Body.String(), "DOMParser") {
+		t.Fatalf("large ordinary mutation did not reach conflict handling: status=%d operation=%q body=%q", response.Code, planner.operation, response.Body.String())
+	}
+}
+
+func TestOversizeSessionRecoveryCopyFailsWithEditorRetained(t *testing.T) {
+	const sessionID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+	snapshot := session.Session{ID: sessionID, OwnerID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", Title: "Oversize snapshot", Revision: 4, Intent: strings.Repeat("x", (1<<20)+1)}
+	raw, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	planner := &fakeSessionPlanner{item: snapshot}
+	handler := newTestHandlerWithSessions(t, planner)
+	cookie := csrfCookie(t, handler)
+	values := "title=Entered+oversize+plan&date=&group_context=&intent=Retained+intent&revision=4&recovery_snapshot=" + base64.RawURLEncoding.EncodeToString(raw) + "&csrf_token=" + cookie.Value
+	request := newOwnerMutation(t, cookie, "/sessions/"+sessionID+"/recovery-draft", values)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	for _, wanted := range []string{"exceeds the 1 MiB limit", "Entered oversize plan", "Retained intent", "recovery_snapshot"} {
+		if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), wanted) {
+			t.Fatalf("oversize recovery omitted %q: status=%d body-size=%d", wanted, response.Code, response.Body.Len())
+		}
+	}
+	if planner.operation == "save-session-draft" {
+		t.Fatal("oversize recovery reached persistence")
+	}
+}
+
+func TestSessionRecoveryDetailShowsTimingArchivedTruthAndActionIntent(t *testing.T) {
+	const (
+		draftID     = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+		sessionID   = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+		blockID     = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+		placementID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+		activityID  = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+	)
+	sessionAllocation, blockAllocation, placementDuration := 900, 300, 400
+	planner := &fakeSessionPlanner{draft: session.RecoveryDraft{ID: draftID, SessionID: sessionID, OwnerID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", CurrentArchived: true, Action: session.PlacementAction{Kind: session.ReplacePlacementAction, PlacementID: placementID, ActivityID: activityID}, Plan: session.Session{ID: sessionID, Title: "Timed recovery", AllocationSeconds: &sessionAllocation, Blocks: []session.Block{{ID: blockID, Name: "Warmup", AllocationSeconds: &blockAllocation, Placements: []session.Placement{{ID: placementID, Title: "Retained snapshot", DurationSeconds: &placementDuration}}}}}}}
+	handler := newTestHandlerWithSessions(t, planner)
+	request := httptest.NewRequest(http.MethodGet, "/session-recovery-drafts/"+draftID, nil)
+	request.Header.Set("Authorization", "Bearer owner")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	body := response.Body.String()
+	for _, wanted := range []string{"Session allocation:</strong> 15 minutes", "Block allocation:</strong> 5 minutes", "Plan duration:</strong> 400 seconds", "Timing warnings", "replacement of Retained snapshot with library activity " + activityID, `href="/sessions/` + sessionID + `/archived"`} {
+		if response.Code != http.StatusOK || !strings.Contains(body, wanted) {
+			t.Fatalf("recovery detail omitted %q: status=%d body=%q", wanted, response.Code, body)
 		}
 	}
 }
@@ -1219,7 +1302,9 @@ func (l *fakeActivityLibrary) Restore(_ context.Context, principal authorization
 type fakeSessionPlanner struct {
 	items         []session.Summary
 	item          session.Session
+	draft         session.RecoveryDraft
 	err           error
+	updateErr     error
 	archiveErr    error
 	operation, id string
 	principal     authorization.Principal
@@ -1254,6 +1339,9 @@ func (p *fakeSessionPlanner) Create(_ context.Context, principal authorization.P
 }
 func (p *fakeSessionPlanner) Update(_ context.Context, principal authorization.Principal, id string, revision int64, input session.Input) (session.Session, error) {
 	p.operation, p.principal, p.id, p.revision, p.input = "update", principal, id, revision, input
+	if p.updateErr != nil {
+		return p.item, p.updateErr
+	}
 	return p.item, p.err
 }
 func (p *fakeSessionPlanner) Archive(_ context.Context, principal authorization.Principal, id string, revision int64, archived bool) (session.Session, error) {
@@ -1270,9 +1358,9 @@ func (p *fakeSessionPlanner) ApplyPlacementAction(_ context.Context, principal a
 	p.operation, p.principal, p.id, p.revision, p.input, p.action = "placement", principal, id, revision, input, action
 	return p.item, p.err
 }
-func (p *fakeSessionPlanner) SaveRecoveryDraft(_ context.Context, principal authorization.Principal, id string, revision int64, snapshot session.Session, input session.Input, action session.PlacementAction) (session.RecoveryDraft, error) {
+func (p *fakeSessionPlanner) SaveRecoveryDraft(_ context.Context, principal authorization.Principal, id string, revision int64, snapshot session.Session, input session.Input, action session.PlacementAction, currentArchived bool) (session.RecoveryDraft, error) {
 	p.operation, p.principal, p.id, p.revision, p.input, p.action = "save-session-draft", principal, id, revision, input, action
-	return session.RecoveryDraft{ID: "ffffffff-ffff-4fff-8fff-ffffffffffff", OwnerID: principal.OwnerID, SessionID: id, Plan: snapshot, Action: action}, p.err
+	return session.RecoveryDraft{ID: "ffffffff-ffff-4fff-8fff-ffffffffffff", OwnerID: principal.OwnerID, SessionID: id, Plan: snapshot, Action: action, CurrentArchived: currentArchived}, p.err
 }
 func (p *fakeSessionPlanner) ListRecoveryDrafts(_ context.Context, principal authorization.Principal) ([]session.RecoveryDraftSummary, error) {
 	p.principal = principal
@@ -1280,7 +1368,7 @@ func (p *fakeSessionPlanner) ListRecoveryDrafts(_ context.Context, principal aut
 }
 func (p *fakeSessionPlanner) RecoveryDraft(_ context.Context, principal authorization.Principal, id string) (session.RecoveryDraft, error) {
 	p.principal, p.id = principal, id
-	return session.RecoveryDraft{}, p.err
+	return p.draft, p.err
 }
 func (p *fakeSessionPlanner) DiscardRecoveryDraft(_ context.Context, principal authorization.Principal, id string) error {
 	p.principal, p.id = principal, id

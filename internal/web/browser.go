@@ -14,12 +14,13 @@ import (
 )
 
 const (
-	csrfCookieName        = "__Host-curu_csrf"
-	csrfFormField         = "csrf_token"
-	csrfHeaderName        = "X-CSRF-Token"
-	maxRequestBody        = 1 << 20
-	htmxAuthEventName     = "curu:authentication-required"
-	htmxRejectedEventName = "curu:save-rejected"
+	csrfCookieName         = "__Host-curu_csrf"
+	csrfFormField          = "csrf_token"
+	csrfHeaderName         = "X-CSRF-Token"
+	maxRequestBody         = 1 << 20
+	maxRecoveryRequestBody = 4 << 20
+	htmxAuthEventName      = "curu:authentication-required"
+	htmxRejectedEventName  = "curu:save-rejected"
 )
 
 // BrowserConfig supplies the explicit public and trusted-gateway boundary.
@@ -49,7 +50,11 @@ func ClientAddressFromRequest(r *http.Request) (netip.Addr, bool) {
 
 func (h *handler) protectBrowserRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
+		limit := int64(maxRequestBody)
+		if r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/sessions/") && strings.HasSuffix(r.URL.Path, "/recovery-draft") {
+			limit = maxRecoveryRequestBody
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, limit)
 		if r.URL.Path == "/health/live" || r.URL.Path == "/health/ready" {
 			next.ServeHTTP(w, r)
 			return
