@@ -30,7 +30,7 @@
   </style>
 </head>
 <body>
-  <header><nav aria-label="Primary"><a href="/activities">Curu</a> · <a href="/sessions">Sessions</a> · <a href="/recovery-drafts">Recovery drafts</a>{{if .LogoutURL}} · <a href="{{.LogoutURL}}">Sign out</a>{{end}}</nav></header>
+  <header><nav aria-label="Primary"><a href="/activities">Curu</a> · <a href="/sessions">Sessions</a> · <a href="/recovery-drafts">Activity recovery drafts</a> · <a href="/session-recovery-drafts">Session recovery copies</a>{{if .LogoutURL}} · <a href="{{.LogoutURL}}">Sign out</a>{{end}}</nav></header>
   <aside id="authentication-required" hidden role="alert">
     Your session expired. Your unsaved changes remain on this page.
     {{if .LoginURL}}<a href="{{.LoginURL}}" target="_blank" rel="noopener">Sign in again in a new tab</a>{{else}}Sign in again through the application gateway in a new tab.{{end}}

@@ -27,6 +27,7 @@ type Manifest struct {
 	ActivityOwners         int64  `json:"activity_owners"`
 	ActivityProgressions   int64  `json:"activity_progressions"`
 	ActivityRecoveryDrafts int64  `json:"activity_recovery_drafts"`
+	SessionRecoveryDrafts  int64  `json:"session_recovery_drafts"`
 	Sessions               int64  `json:"sessions"`
 	ArchivedSessions       int64  `json:"archived_sessions"`
 	SessionOwners          int64  `json:"session_owners"`
@@ -77,6 +78,7 @@ func captureSnapshot(ctx context.Context, db *gorm.DB) (Manifest, error) {
 		{&manifest.ActivityOwners, "SELECT count(DISTINCT owner_id) FROM curu.activities"},
 		{&manifest.ActivityProgressions, "SELECT count(*) FROM curu.activity_progressions"},
 		{&manifest.ActivityRecoveryDrafts, "SELECT count(*) FROM curu.activity_recovery_drafts"},
+		{&manifest.SessionRecoveryDrafts, "SELECT count(*) FROM curu.session_recovery_drafts"},
 		{&manifest.Sessions, "SELECT count(*) FROM curu.sessions"},
 		{&manifest.ArchivedSessions, "SELECT count(*) FROM curu.sessions WHERE archived_at IS NOT NULL"},
 		{&manifest.SessionOwners, "SELECT count(DISTINCT owner_id) FROM curu.sessions"},
@@ -113,6 +115,10 @@ func captureSnapshot(ctx context.Context, db *gorm.DB) (Manifest, error) {
 			to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
 			to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))::text AS value
 			FROM curu.activity_recovery_drafts ORDER BY id`},
+		{"session_recovery_drafts", `SELECT jsonb_build_array(id, owner_id, session_id, base_revision, payload,
+			to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
+			to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))::text AS value
+			FROM curu.session_recovery_drafts ORDER BY id`},
 		{"sessions", `SELECT jsonb_build_array(id, owner_id, title, session_date, group_context, intent, allocation_seconds, revision,
 			to_char(archived_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
 			to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),

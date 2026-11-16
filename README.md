@@ -1,6 +1,6 @@
 # Curu
 
-Curu is a greenfield Go application for maintaining activities and planning practical coaching sessions. The current runtime exposes the protected activity library and protected session planning with explicit revision-checked saves, multi-activity block editing, optional timing with non-blocking feedback, and non-destructive archive/restore. It requires a compatible migrated PostgreSQL schema and never mutates that schema at startup.
+Curu is a greenfield Go application for maintaining activities and planning practical coaching sessions. The current runtime exposes the protected activity library and protected session planning with explicit revision-checked saves, multi-activity block editing, optional timing with non-blocking feedback, non-destructive archive/restore, and durable recovery copies for conflicting session edits. It requires a compatible migrated PostgreSQL schema and never mutates that schema at startup.
 
 ## Requirements
 
@@ -94,4 +94,4 @@ docker run --rm \
   -p 127.0.0.1:8080:8080 curu:local
 ```
 
-This runtime implements explicit PostgreSQL migrations, read-only startup compatibility checks, separate explicit dataset initialization, RFC 9068 JWT validation, deny-by-default single-owner authorization, shared browser/HTMX protections, protected activity browsing/search and authoring, explicit activity recovery drafts, and revision-checked session planning/archive with ordered freeform blocks, independently editable activity snapshots, safe block/placement move-up/down controls, and optional timing with partial totals and non-blocking warnings. The bounded coaching-library asset is documented in [`doc/seed-library.md`](doc/seed-library.md); the gateway boundary is documented in [`doc/gateway.md`](doc/gateway.md). Session conflict drafts, phone reading, and template behavior remain with their owning roadmap tasks.
+This runtime implements explicit PostgreSQL migrations, read-only startup compatibility checks, separate explicit dataset initialization, RFC 9068 JWT validation, deny-by-default single-owner authorization, shared browser/HTMX protections, protected activity browsing/search and authoring, explicit activity recovery drafts, and revision-checked session planning/archive with ordered freeform blocks, independently editable activity snapshots, safe block/placement move-up/down controls, optional timing with partial totals and non-blocking warnings, and bounded session conflict recovery copies. The bounded coaching-library asset is documented in [`doc/seed-library.md`](doc/seed-library.md); the gateway boundary is documented in [`doc/gateway.md`](doc/gateway.md). Phone reading and template behavior remain with their owning roadmap tasks.

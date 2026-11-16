@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"html/template"
@@ -376,6 +377,38 @@ func TestSessionEditorReordersWithBoundaryControlsAndFocusedRedirect(t *testing.
 	wantLocation := "/sessions/" + sessionID + "/edit?placement=reordered#item-" + placeOne
 	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != wantLocation || planner.action.Kind != session.MovePlacementDownAction || planner.action.PlacementID != placeOne || planner.input.Title != "Unsaved title" || planner.input.Blocks[0].Placements[1].LocalNotes != "Second note" {
 		t.Fatalf("reorder response=%d location=%q planner=%+v", response.Code, response.Header().Get("Location"), planner)
+	}
+}
+
+func TestSessionConflictRecoveryCopySaveAndFailureRetention(t *testing.T) {
+	const (
+		sessionID   = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+		blockID     = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+		placementID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+	)
+	snapshot := session.Session{ID: sessionID, OwnerID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", Title: "Original", Revision: 5, Blocks: []session.Block{{ID: blockID, Name: "Warmup", Placements: []session.Placement{{ID: placementID, Title: "Copied snapshot", ContentMarkdown: "Exact instructions"}}}}}
+	raw, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	planner := &fakeSessionPlanner{item: snapshot}
+	handler := newTestHandlerWithSessions(t, planner)
+	cookie := csrfCookie(t, handler)
+	values := "title=Submitted+plan&date=&group_context=U12&intent=Support&revision=5&recovery_snapshot=" + base64.RawURLEncoding.EncodeToString(raw) + "&recovery_action=move&recovery_placement_id=" + placementID + "&recovery_target_block_id=" + blockID + "&block_id=" + blockID + "&block_name=Warmup&block_intent=&block_notes=Entered+notes&block_observation_lens=&placement_id_" + blockID + "=" + placementID + "&placement_notes_" + blockID + "=Local+note&csrf_token=" + cookie.Value
+	request := newOwnerMutation(t, cookie, "/sessions/"+sessionID+"/recovery-draft", values)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/session-recovery-drafts/ffffffff-ffff-4fff-8fff-ffffffffffff?saved=1" || planner.operation != "save-session-draft" || planner.input.Title != "Submitted plan" || planner.action.Kind != session.MovePlacementAction {
+		t.Fatalf("save response=%d location=%q planner=%+v body=%q", response.Code, response.Header().Get("Location"), planner, response.Body.String())
+	}
+	planner.err = errors.New("database unavailable")
+	request = newOwnerMutation(t, cookie, "/sessions/"+sessionID+"/recovery-draft", values)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	for _, wanted := range []string{"not saved", "Submitted plan", "Entered notes", "Local note", "recovery_snapshot"} {
+		if response.Code != http.StatusInternalServerError || !strings.Contains(response.Body.String(), wanted) {
+			t.Fatalf("failure omitted %q: status=%d body=%q", wanted, response.Code, response.Body.String())
+		}
 	}
 }
 
@@ -1236,6 +1269,22 @@ func (p *fakeSessionPlanner) Archive(_ context.Context, principal authorization.
 func (p *fakeSessionPlanner) ApplyPlacementAction(_ context.Context, principal authorization.Principal, id string, revision int64, input session.Input, action session.PlacementAction) (session.Session, error) {
 	p.operation, p.principal, p.id, p.revision, p.input, p.action = "placement", principal, id, revision, input, action
 	return p.item, p.err
+}
+func (p *fakeSessionPlanner) SaveRecoveryDraft(_ context.Context, principal authorization.Principal, id string, revision int64, snapshot session.Session, input session.Input, action session.PlacementAction) (session.RecoveryDraft, error) {
+	p.operation, p.principal, p.id, p.revision, p.input, p.action = "save-session-draft", principal, id, revision, input, action
+	return session.RecoveryDraft{ID: "ffffffff-ffff-4fff-8fff-ffffffffffff", OwnerID: principal.OwnerID, SessionID: id, Plan: snapshot, Action: action}, p.err
+}
+func (p *fakeSessionPlanner) ListRecoveryDrafts(_ context.Context, principal authorization.Principal) ([]session.RecoveryDraftSummary, error) {
+	p.principal = principal
+	return nil, p.err
+}
+func (p *fakeSessionPlanner) RecoveryDraft(_ context.Context, principal authorization.Principal, id string) (session.RecoveryDraft, error) {
+	p.principal, p.id = principal, id
+	return session.RecoveryDraft{}, p.err
+}
+func (p *fakeSessionPlanner) DiscardRecoveryDraft(_ context.Context, principal authorization.Principal, id string) error {
+	p.principal, p.id = principal, id
+	return p.err
 }
 
 func newTestHandlerWithSessions(t *testing.T, planner sessionPlanner) http.Handler {

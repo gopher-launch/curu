@@ -141,6 +141,9 @@ func TestPostgresBackupRestoreRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("set recovery timing properties: %v", err)
 	}
+	if _, err := sessionRepository.SaveRecoveryDraft(ctx, ownerID, savedSession.ID, savedSession.Revision-1, savedSession, session.PlacementAction{Kind: session.MovePlacementAction, PlacementID: savedSession.Blocks[0].Placements[0].ID, TargetBlockID: savedSession.Blocks[0].ID}); err != nil {
+		t.Fatalf("save session recovery draft fixture: %v", err)
+	}
 	if _, err := sessionRepository.Archive(ctx, ownerID, savedSession.ID, savedSession.Revision, true); err != nil {
 		t.Fatalf("archive recovery session fixture: %v", err)
 	}
@@ -152,7 +155,7 @@ func TestPostgresBackupRestoreRecovery(t *testing.T) {
 		t.Fatalf("close recovery source: %v", err)
 	}
 	if expected.Activities != seed.ExpectedActivities || expected.ActivityProgressions != seed.ExpectedProgressions ||
-		expected.ActivityRecoveryDrafts != 1 || expected.DatasetInitializations != 1 || expected.ArchivedActivities != 1 || expected.ActivityOwners != 1 {
+		expected.ActivityRecoveryDrafts != 1 || expected.SessionRecoveryDrafts != 1 || expected.DatasetInitializations != 1 || expected.ArchivedActivities != 1 || expected.ActivityOwners != 1 {
 		t.Fatalf("source manifest = %+v, want complete edited seed fixture", expected)
 	}
 	if expected.Sessions != 1 || expected.ArchivedSessions != 1 || expected.SessionOwners != 1 || expected.SessionBlocks != 1 || expected.SessionPlacements != 1 || expected.PlacementProgressions != int64(len(library.Activities[0].Progressions)) {

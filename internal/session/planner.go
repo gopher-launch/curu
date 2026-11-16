@@ -166,6 +166,22 @@ type PlacementAction struct {
 	ActivityID                          string
 }
 
+// RecoveryDraft is a durable, owner-scoped copy of a conflicting editor.
+// Plan contains the submitted aggregate with its copied activity snapshots;
+// Action records the structural intent that lost the revision race.
+type RecoveryDraft struct {
+	ID, OwnerID, SessionID string
+	BaseRevision           int64
+	Plan                   Session
+	Action                 PlacementAction
+	CreatedAt, UpdatedAt   time.Time
+}
+
+type RecoveryDraftSummary struct {
+	ID, SessionID, Title string
+	UpdatedAt            time.Time
+}
+
 type ValidationErrors map[string]string
 
 func (e ValidationErrors) Error() string        { return ErrInvalidInput.Error() }
@@ -179,6 +195,230 @@ type Store interface {
 	Archive(context.Context, string, string, int64, bool) (Session, error)
 	AddPlacement(context.Context, string, string, string, int64, string) (Session, error)
 	ApplyPlacementAction(context.Context, string, string, int64, Input, PlacementAction) (Session, error)
+	SaveRecoveryDraft(context.Context, string, string, int64, Session, PlacementAction) (RecoveryDraft, error)
+	ListRecoveryDrafts(context.Context, string) ([]RecoveryDraftSummary, error)
+	FindRecoveryDraft(context.Context, string, string) (RecoveryDraft, error)
+	DiscardRecoveryDraft(context.Context, string, string) error
+}
+
+func (p *Planner) SaveRecoveryDraft(ctx context.Context, principal authorization.Principal, sessionID string, baseRevision int64, snapshot Session, input Input, action PlacementAction) (RecoveryDraft, error) {
+	var err error
+	if sessionID, err = authorization.NormalizeUUID(sessionID); err != nil {
+		return RecoveryDraft{}, ErrNotFound
+	}
+	if err := p.policy.Authorize(principal, authorization.Recovery, principal.OwnerID); err != nil {
+		return RecoveryDraft{}, err
+	}
+	if baseRevision < 1 || snapshot.ID != sessionID || snapshot.OwnerID != principal.OwnerID {
+		return RecoveryDraft{}, ValidationErrors{"revision": "Reload the conflicting session before saving its recovery copy."}
+	}
+	input, err = validate(input)
+	if err != nil {
+		return RecoveryDraft{}, err
+	}
+	action, err = normalizeRecoveryAction(action)
+	if err != nil {
+		return RecoveryDraft{}, err
+	}
+	plan, err := recoverSubmittedPlan(snapshot, input, action)
+	if err != nil {
+		return RecoveryDraft{}, err
+	}
+	return p.store.SaveRecoveryDraft(ctx, principal.OwnerID, sessionID, baseRevision, plan, action)
+}
+
+func normalizeRecoveryAction(action PlacementAction) (PlacementAction, error) {
+	normalize := func(value string) (string, error) {
+		if value == "" {
+			return "", nil
+		}
+		id, err := authorization.NormalizeUUID(value)
+		if err != nil {
+			return "", ValidationErrors{"recovery_action": "The attempted session action is invalid."}
+		}
+		return id, nil
+	}
+	var err error
+	if action.BlockID, err = normalize(action.BlockID); err != nil {
+		return PlacementAction{}, err
+	}
+	if action.PlacementID, err = normalize(action.PlacementID); err != nil {
+		return PlacementAction{}, err
+	}
+	if action.TargetBlockID, err = normalize(action.TargetBlockID); err != nil {
+		return PlacementAction{}, err
+	}
+	if action.ActivityID, err = normalize(action.ActivityID); err != nil {
+		return PlacementAction{}, err
+	}
+	switch action.Kind {
+	case "":
+		if action.BlockID != "" || action.PlacementID != "" || action.TargetBlockID != "" || action.ActivityID != "" {
+			return PlacementAction{}, ValidationErrors{"recovery_action": "The attempted session action is invalid."}
+		}
+	case AddPlacementAction:
+		if action.TargetBlockID == "" || action.ActivityID == "" {
+			return PlacementAction{}, ValidationErrors{"recovery_action": "The attempted add action is incomplete."}
+		}
+	case ReplacePlacementAction:
+		if action.PlacementID == "" || action.ActivityID == "" {
+			return PlacementAction{}, ValidationErrors{"recovery_action": "The attempted replacement is incomplete."}
+		}
+	case MovePlacementAction:
+		if action.PlacementID == "" || action.TargetBlockID == "" {
+			return PlacementAction{}, ValidationErrors{"recovery_action": "The attempted move is incomplete."}
+		}
+	case RemovePlacementAction, MovePlacementUpAction, MovePlacementDownAction:
+		if action.PlacementID == "" {
+			return PlacementAction{}, ValidationErrors{"recovery_action": "The attempted activity action is incomplete."}
+		}
+	case MoveBlockUpAction, MoveBlockDownAction:
+		if action.BlockID == "" {
+			return PlacementAction{}, ValidationErrors{"recovery_action": "The attempted block action is incomplete."}
+		}
+	default:
+		return PlacementAction{}, ValidationErrors{"recovery_action": "The attempted session action is invalid."}
+	}
+	return action, nil
+}
+
+func (p *Planner) ListRecoveryDrafts(ctx context.Context, principal authorization.Principal) ([]RecoveryDraftSummary, error) {
+	if err := p.policy.Authorize(principal, authorization.Recovery, principal.OwnerID); err != nil {
+		return nil, err
+	}
+	return p.store.ListRecoveryDrafts(ctx, principal.OwnerID)
+}
+
+func (p *Planner) RecoveryDraft(ctx context.Context, principal authorization.Principal, id string) (RecoveryDraft, error) {
+	id, err := authorization.NormalizeUUID(id)
+	if err != nil {
+		return RecoveryDraft{}, ErrNotFound
+	}
+	if err := p.policy.Authorize(principal, authorization.Recovery, principal.OwnerID); err != nil {
+		return RecoveryDraft{}, err
+	}
+	draft, err := p.store.FindRecoveryDraft(ctx, principal.OwnerID, id)
+	if err != nil {
+		return RecoveryDraft{}, err
+	}
+	if err := p.policy.Authorize(principal, authorization.Recovery, draft.OwnerID); err != nil {
+		return RecoveryDraft{}, err
+	}
+	return draft, nil
+}
+
+func (p *Planner) DiscardRecoveryDraft(ctx context.Context, principal authorization.Principal, id string) error {
+	id, err := authorization.NormalizeUUID(id)
+	if err != nil {
+		return ErrNotFound
+	}
+	if err := p.policy.Authorize(principal, authorization.Recovery, principal.OwnerID); err != nil {
+		return err
+	}
+	return p.store.DiscardRecoveryDraft(ctx, principal.OwnerID, id)
+}
+
+func recoverSubmittedPlan(snapshot Session, input Input, action PlacementAction) (Session, error) {
+	byBlock := make(map[string]Block, len(snapshot.Blocks))
+	for _, block := range snapshot.Blocks {
+		byBlock[block.ID] = block
+	}
+	plan := snapshot
+	plan.Title, plan.Date, plan.GroupContext, plan.Intent, plan.AllocationSeconds = input.Title, input.Date, input.GroupContext, input.Intent, input.AllocationSeconds
+	plan.Blocks = make([]Block, 0, len(input.Blocks))
+	for position, submitted := range input.Blocks {
+		block := byBlock[submitted.ID]
+		block.ID, block.Position, block.Name, block.Intent, block.Notes, block.ObservationLens, block.AllocationSeconds = submitted.ID, position, submitted.Name, submitted.Intent, submitted.Notes, submitted.ObservationLens, submitted.AllocationSeconds
+		byPlacement := make(map[string]Placement, len(block.Placements))
+		for _, placement := range block.Placements {
+			byPlacement[placement.ID] = placement
+		}
+		block.Placements = make([]Placement, 0, len(submitted.Placements))
+		for p, entered := range submitted.Placements {
+			placement, ok := byPlacement[entered.ID]
+			if !ok {
+				return Session{}, ValidationErrors{"placements": "The recovery snapshot no longer matches the submitted activities."}
+			}
+			placement.Position, placement.LocalNotes, placement.DurationSeconds = p, entered.LocalNotes, entered.DurationSeconds
+			block.Placements = append(block.Placements, placement)
+		}
+		plan.Blocks = append(plan.Blocks, block)
+	}
+	// Actions that only rearrange or remove already-copied content can be
+	// represented exactly. Add/replace retain their explicit intent alongside
+	// the complete pre-action submitted plan because no stale action is replayed.
+	switch action.Kind {
+	case MoveBlockUpAction, MoveBlockDownAction:
+		delta := -1
+		if action.Kind == MoveBlockDownAction {
+			delta = 1
+		}
+		index := blockIndex(plan.Blocks, action.BlockID)
+		target := index + delta
+		if index >= 0 && target >= 0 && target < len(plan.Blocks) {
+			plan.Blocks[index], plan.Blocks[target] = plan.Blocks[target], plan.Blocks[index]
+		}
+	case MovePlacementUpAction, MovePlacementDownAction:
+		delta := -1
+		if action.Kind == MovePlacementDownAction {
+			delta = 1
+		}
+		for i := range plan.Blocks {
+			index := placementIndex(plan.Blocks[i].Placements, action.PlacementID)
+			target := index + delta
+			if index >= 0 && target >= 0 && target < len(plan.Blocks[i].Placements) {
+				plan.Blocks[i].Placements[index], plan.Blocks[i].Placements[target] = plan.Blocks[i].Placements[target], plan.Blocks[i].Placements[index]
+				break
+			}
+		}
+	case MovePlacementAction:
+		var moved Placement
+		found := false
+		for i := range plan.Blocks {
+			if index := placementIndex(plan.Blocks[i].Placements, action.PlacementID); index >= 0 {
+				moved = plan.Blocks[i].Placements[index]
+				plan.Blocks[i].Placements = append(plan.Blocks[i].Placements[:index], plan.Blocks[i].Placements[index+1:]...)
+				found = true
+				break
+			}
+		}
+		if found {
+			if index := blockIndex(plan.Blocks, action.TargetBlockID); index >= 0 {
+				plan.Blocks[index].Placements = append(plan.Blocks[index].Placements, moved)
+			}
+		}
+	case RemovePlacementAction:
+		for i := range plan.Blocks {
+			if index := placementIndex(plan.Blocks[i].Placements, action.PlacementID); index >= 0 {
+				plan.Blocks[i].Placements = append(plan.Blocks[i].Placements[:index], plan.Blocks[i].Placements[index+1:]...)
+				break
+			}
+		}
+	}
+	for i := range plan.Blocks {
+		plan.Blocks[i].Position = i
+		for j := range plan.Blocks[i].Placements {
+			plan.Blocks[i].Placements[j].Position = j
+		}
+	}
+	return plan, nil
+}
+
+func blockIndex(blocks []Block, id string) int {
+	for i := range blocks {
+		if blocks[i].ID == id {
+			return i
+		}
+	}
+	return -1
+}
+func placementIndex(items []Placement, id string) int {
+	for i := range items {
+		if items[i].ID == id {
+			return i
+		}
+	}
+	return -1
 }
 
 type Planner struct {

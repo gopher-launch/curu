@@ -419,6 +419,13 @@ func TestPostgresMigrationAndRuntimeRestrictions(t *testing.T) {
 		t.Fatalf("move placement action = %+v, error = %v", actionSession, err)
 	}
 	moved := actionSession.Blocks[1].Placements[0]
+	if _, err := sessions.ApplyPlacementAction(ctx, ownerID, actionSession.ID, actionSession.Revision-1, actionInput, session.PlacementAction{Kind: session.MovePlacementAction, PlacementID: moved.ID, TargetBlockID: actionSession.Blocks[0].ID}); !errors.Is(err, session.ErrConflict) {
+		t.Fatalf("stale move error = %v, want conflict", err)
+	}
+	moveTruth, err := sessions.Find(ctx, ownerID, actionSession.ID, false)
+	if err != nil || len(moveTruth.Blocks[0].Placements) != 0 || len(moveTruth.Blocks[1].Placements) != 1 || moveTruth.Revision != actionSession.Revision {
+		t.Fatalf("truth after stale move = %+v, error = %v", moveTruth, err)
+	}
 	actionInput.Blocks[0].Placements = nil
 	actionInput.Blocks[1].Placements = []session.PlacementInput{{ID: moved.ID, LocalNotes: moved.LocalNotes}}
 	actionSession, err = sessions.ApplyPlacementAction(ctx, ownerID, actionSession.ID, actionSession.Revision, actionInput, session.PlacementAction{Kind: session.RemovePlacementAction, PlacementID: moved.ID})
@@ -427,6 +434,28 @@ func TestPostgresMigrationAndRuntimeRestrictions(t *testing.T) {
 	}
 	if sourceAfterRemoval, findErr := repository.FindCurrent(ctx, ownerID, replacementSource.ID); findErr != nil || sourceAfterRemoval.Title != replacementSource.Title {
 		t.Fatalf("library source after plan removal = %+v, error = %v", sourceAfterRemoval, findErr)
+	}
+	sessionDraft, err := sessions.SaveRecoveryDraft(ctx, ownerID, actionSession.ID, actionSession.Revision-1, actionSession, session.PlacementAction{Kind: session.RemovePlacementAction, PlacementID: moved.ID})
+	if err != nil || sessionDraft.Plan.Title != actionSession.Title || sessionDraft.Action.Kind != session.RemovePlacementAction {
+		t.Fatalf("SaveRecoveryDraft() = %+v, error = %v", sessionDraft, err)
+	}
+	replacedSessionDraft, err := sessions.SaveRecoveryDraft(ctx, ownerID, actionSession.ID, actionSession.Revision, actionSession, session.PlacementAction{Kind: session.MovePlacementAction, PlacementID: moved.ID, TargetBlockID: actionSession.Blocks[0].ID})
+	if err != nil || replacedSessionDraft.ID != sessionDraft.ID || replacedSessionDraft.BaseRevision != actionSession.Revision || replacedSessionDraft.Action.Kind != session.MovePlacementAction {
+		t.Fatalf("replacement SaveRecoveryDraft() = %+v, error = %v", replacedSessionDraft, err)
+	}
+	sessionDraft = replacedSessionDraft
+	loadedSessionDraft, err := sessions.FindRecoveryDraft(ctx, ownerID, sessionDraft.ID)
+	if err != nil || loadedSessionDraft.ID != sessionDraft.ID || loadedSessionDraft.Plan.Title != actionSession.Title {
+		t.Fatalf("FindRecoveryDraft() = %+v, error = %v", loadedSessionDraft, err)
+	}
+	if _, err := sessions.FindRecoveryDraft(ctx, "55555555-5555-4555-8555-555555555555", sessionDraft.ID); !errors.Is(err, session.ErrNotFound) {
+		t.Fatalf("other-owner FindRecoveryDraft() error = %v", err)
+	}
+	if drafts, err := sessions.ListRecoveryDrafts(ctx, ownerID); err != nil || len(drafts) != 1 || drafts[0].ID != sessionDraft.ID {
+		t.Fatalf("ListRecoveryDrafts() = %+v, error = %v", drafts, err)
+	}
+	if err := sessions.DiscardRecoveryDraft(ctx, ownerID, sessionDraft.ID); err != nil {
+		t.Fatalf("DiscardRecoveryDraft() error = %v", err)
 	}
 	// Reordering uses the same aggregate revision and transaction as entered
 	// editor fields. Boundaries reject without advancing the revision, and a

@@ -1,0 +1,5 @@
+{{define "session-recovery-draft-list"}}{{template "layout-start" .}}
+  <h1>Session recovery copies</h1>
+  <p class="muted">Each copy preserves a conflicting submitted plan separately. It has not overwritten the current session.</p>
+  {{if .Drafts}}<ul>{{range .Drafts}}<li><a href="/session-recovery-drafts/{{.ID}}">{{.Title}}</a> <span class="muted">saved {{.Updated}}</span></li>{{end}}</ul>{{else}}<p>No session recovery copies are saved.</p>{{end}}
+{{template "layout-end" .}}{{end}}

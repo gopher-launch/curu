@@ -2,6 +2,8 @@ package web
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"html/template"
 	"mime"
@@ -61,14 +63,25 @@ type sessionBlockFormView struct {
 }
 type sessionFormData struct {
 	pageData
-	Heading, Action, SaveLabel, Status, ErrorSummary, ID, Title, Date, GroupContext, Intent, Revision string
-	Allocation, Timing                                                                                string
-	TimingComplete                                                                                    bool
-	TimingWarnings                                                                                    []string
-	Conflict                                                                                          bool
-	CurrentURL                                                                                        string
-	Blocks                                                                                            []sessionBlockFormView
-	Activities                                                                                        []activitySummaryView
+	Heading, Action, SaveLabel, Status, ErrorSummary, ID, Title, Date, GroupContext, Intent, Revision                 string
+	Allocation, Timing                                                                                                string
+	TimingComplete                                                                                                    bool
+	TimingWarnings                                                                                                    []string
+	Conflict                                                                                                          bool
+	CurrentURL                                                                                                        string
+	RecoverySnapshot, RecoveryAction, RecoveryBlockID, RecoveryPlacementID, RecoveryTargetBlockID, RecoveryActivityID string
+	Blocks                                                                                                            []sessionBlockFormView
+	Activities                                                                                                        []activitySummaryView
+}
+
+type sessionRecoveryDraftListData struct {
+	pageData
+	Drafts []sessionRecoveryDraftSummaryView
+}
+type sessionRecoveryDraftSummaryView struct{ ID, Title, Updated string }
+type sessionRecoveryDraftData struct {
+	sessionDetailData
+	DraftID, ActionDescription string
 }
 
 func (h *handler) listSessions(w http.ResponseWriter, r *http.Request) {
@@ -130,6 +143,15 @@ func (h *handler) sessionDetailState(w http.ResponseWriter, r *http.Request, arc
 		h.serverError(w, "read session", err)
 		return
 	}
+	data, err := h.sessionDetailDataFromItem(r, item, archived)
+	if err != nil {
+		h.serverError(w, "render session snapshot", err)
+		return
+	}
+	h.render(w, "session-detail", data)
+}
+
+func (h *handler) sessionDetailDataFromItem(r *http.Request, item session.Session, archived bool) (sessionDetailData, error) {
 	timing := session.SummarizeTiming(item)
 	data := sessionDetailData{pageData: h.page(r, item.Title+" · Curu"), ID: item.ID, Title: item.Title, GroupContext: item.GroupContext, Intent: item.Intent, Allocation: formatDuration(item.AllocationSeconds), Revision: item.Revision, Archived: archived, Timing: formatTimingTotal(timing), TimingComplete: timing.Complete, TimingWarnings: timing.Warnings, Blocks: make([]sessionBlockView, len(item.Blocks))}
 	if item.Date != nil {
@@ -141,15 +163,13 @@ func (h *handler) sessionDetailState(w http.ResponseWriter, r *http.Request, arc
 		for j, placement := range block.Placements {
 			content, renderErr := RenderMarkdown(placement.ContentMarkdown)
 			if renderErr != nil {
-				h.serverError(w, "render placement snapshot", renderErr)
-				return
+				return sessionDetailData{}, renderErr
 			}
 			placementView := sessionPlacementView{Position: j + 1, Title: placement.Title, Summary: placement.Summary, Content: content, RecommendedDuration: formatDuration(placement.RecommendedDurationSeconds), Duration: formatDuration(placement.DurationSeconds), LocalNotes: placement.LocalNotes, Phase: placement.Phase, Theme: placement.Theme, Tags: placement.Tags, Progressions: make([]progressionView, len(placement.Progressions))}
 			for k, progression := range placement.Progressions {
 				rendered, renderErr := RenderMarkdown(progression.ContentMarkdown)
 				if renderErr != nil {
-					h.serverError(w, "render placement progression snapshot", renderErr)
-					return
+					return sessionDetailData{}, renderErr
 				}
 				placementView.Progressions[k] = progressionView{Position: k + 1, Title: progression.Title, Content: rendered, Duration: formatDuration(progression.RecommendedDurationSeconds)}
 			}
@@ -157,7 +177,7 @@ func (h *handler) sessionDetailState(w http.ResponseWriter, r *http.Request, arc
 		}
 		data.Blocks[i] = view
 	}
-	h.render(w, "session-detail", data)
+	return data, nil
 }
 func (h *handler) newSession(w http.ResponseWriter, r *http.Request) {
 	h.render(w, "session-form", sessionFormData{pageData: h.page(r, "New session · Curu"), Heading: "New session", Action: "/sessions", SaveLabel: "Create session"})
@@ -266,6 +286,7 @@ func (h *handler) updateSession(w http.ResponseWriter, r *http.Request) {
 		data.ErrorSummary = "This session was archived after you opened the editor. Your submitted session and blocks remain below. Open the archived session in a new tab before deciding what to copy."
 		data.Conflict = true
 		data.CurrentURL = "/sessions/" + id + "/archived"
+		data.RecoveryAction = ""
 		h.renderStatus(w, "session-form", data, http.StatusConflict)
 		return
 	}
@@ -273,6 +294,7 @@ func (h *handler) updateSession(w http.ResponseWriter, r *http.Request) {
 		data.ErrorSummary = "A newer revision exists. Your submitted session and blocks remain below. Open the latest session in a new tab before deciding what to copy."
 		data.Conflict = true
 		data.CurrentURL = "/sessions/" + id + "/edit"
+		data.RecoveryAction = ""
 		h.renderStatus(w, "session-form", data, http.StatusConflict)
 		return
 	}
@@ -351,12 +373,14 @@ func (h *handler) changeSessionPlacements(w http.ResponseWriter, r *http.Request
 	if errors.Is(err, session.ErrArchivedConflict) {
 		data.ErrorSummary = "This session was archived after you opened the editor. Your entered session, blocks, and activity notes remain below."
 		data.Conflict, data.CurrentURL = true, "/sessions/"+id+"/archived"
+		setRecoveryAction(&data, action)
 		h.renderStatus(w, "session-form", data, http.StatusConflict)
 		return
 	}
 	if errors.Is(err, session.ErrConflict) {
 		data.ErrorSummary = "A newer revision exists. Your entered session, blocks, and activity notes remain below; no structural action was applied."
 		data.Conflict, data.CurrentURL = true, "/sessions/"+id+"/edit"
+		setRecoveryAction(&data, action)
 		h.renderStatus(w, "session-form", data, http.StatusConflict)
 		return
 	}
@@ -455,7 +479,7 @@ func (h *handler) parseSessionForm(w http.ResponseWriter, r *http.Request, headi
 		h.rejectInput(w, http.StatusBadRequest)
 		return session.Input{}, sessionFormData{}, false
 	}
-	data := sessionFormData{pageData: h.page(r, heading+" · Curu"), Heading: heading, Action: action, SaveLabel: label, Title: r.PostForm.Get("title"), Date: r.PostForm.Get("date"), GroupContext: r.PostForm.Get("group_context"), Intent: r.PostForm.Get("intent"), Revision: r.PostForm.Get("revision"), Allocation: r.PostForm.Get("allocation_seconds")}
+	data := sessionFormData{pageData: h.page(r, heading+" · Curu"), Heading: heading, Action: action, SaveLabel: label, Title: r.PostForm.Get("title"), Date: r.PostForm.Get("date"), GroupContext: r.PostForm.Get("group_context"), Intent: r.PostForm.Get("intent"), Revision: r.PostForm.Get("revision"), Allocation: r.PostForm.Get("allocation_seconds"), RecoverySnapshot: r.PostForm.Get("recovery_snapshot")}
 	ids, names, intents, notes, lenses, allocations := r.PostForm["block_id"], r.PostForm["block_name"], r.PostForm["block_intent"], r.PostForm["block_notes"], r.PostForm["block_observation_lens"], r.PostForm["block_allocation_seconds"]
 	// Empty IDs are valid for newly added blocks, but an edit must submit one ID
 	// field per block. Otherwise an old or malformed editor could replace stable
@@ -525,7 +549,150 @@ func sessionFormFromItem(page pageData, item session.Session) sessionFormData {
 	}
 	applyTimingFormItemSummary(&data, item)
 	annotateSessionFormOrder(data.Blocks)
+	if payload, err := json.Marshal(item); err == nil {
+		data.RecoverySnapshot = base64.RawURLEncoding.EncodeToString(payload)
+	}
 	return data
+}
+
+func setRecoveryAction(data *sessionFormData, action session.PlacementAction) {
+	data.RecoveryAction = string(action.Kind)
+	data.RecoveryBlockID = action.BlockID
+	data.RecoveryPlacementID = action.PlacementID
+	data.RecoveryTargetBlockID = action.TargetBlockID
+	data.RecoveryActivityID = action.ActivityID
+}
+
+func recoveryActionFromForm(r *http.Request) session.PlacementAction {
+	return session.PlacementAction{Kind: session.PlacementActionKind(r.PostForm.Get("recovery_action")), BlockID: r.PostForm.Get("recovery_block_id"), PlacementID: r.PostForm.Get("recovery_placement_id"), TargetBlockID: r.PostForm.Get("recovery_target_block_id"), ActivityID: r.PostForm.Get("recovery_activity_id")}
+}
+
+func (h *handler) saveSessionRecoveryDraft(w http.ResponseWriter, r *http.Request) {
+	principal, ok := PrincipalFromContext(r.Context())
+	if !ok {
+		h.deny(w, r, http.StatusForbidden, "authorization_denied")
+		return
+	}
+	id := r.PathValue("id")
+	input, data, ok := h.parseSessionForm(w, r, "Conflicting session", "/sessions/"+id+"/recovery-draft", "Save recovery copy")
+	if !ok {
+		return
+	}
+	data.ID, data.Conflict = id, true
+	revision, err := strconv.ParseInt(data.Revision, 10, 64)
+	var snapshot session.Session
+	encoded := r.PostForm.Get("recovery_snapshot")
+	decoded, decodeErr := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil || revision < 1 || decodeErr != nil || len(decoded) > 1<<20 || json.Unmarshal(decoded, &snapshot) != nil {
+		data.ErrorSummary = "This recovery copy cannot be verified from the conflicting editor. Your entered work remains below."
+		h.renderStatus(w, "session-form", data, http.StatusUnprocessableEntity)
+		return
+	}
+	action := recoveryActionFromForm(r)
+	setRecoveryAction(&data, action)
+	draft, err := h.sessions.SaveRecoveryDraft(r.Context(), principal, id, revision, snapshot, input, action)
+	if errors.Is(err, session.ErrInvalidInput) {
+		data.ErrorSummary = "The recovery copy is invalid or too large. Your entered work remains below."
+		h.renderStatus(w, "session-form", data, http.StatusUnprocessableEntity)
+		return
+	}
+	if errors.Is(err, session.ErrNotFound) {
+		h.notFound(w, r)
+		return
+	}
+	if errors.Is(err, authorization.ErrDenied) {
+		h.deny(w, r, http.StatusForbidden, "authorization_denied")
+		return
+	}
+	if err != nil {
+		h.logger.Error("request failed", "operation", "save session recovery draft", "error", err)
+		data.ErrorSummary = "The recovery copy was not saved. Your entered work remains below; retry deliberately."
+		h.renderStatus(w, "session-form", data, http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	http.Redirect(w, r, "/session-recovery-drafts/"+draft.ID+"?saved=1", http.StatusSeeOther)
+}
+
+func (h *handler) listSessionRecoveryDrafts(w http.ResponseWriter, r *http.Request) {
+	principal, ok := PrincipalFromContext(r.Context())
+	if !ok {
+		h.deny(w, r, http.StatusForbidden, "authorization_denied")
+		return
+	}
+	items, err := h.sessions.ListRecoveryDrafts(r.Context(), principal)
+	if err != nil {
+		if errors.Is(err, authorization.ErrDenied) {
+			h.deny(w, r, http.StatusForbidden, "authorization_denied")
+		} else {
+			h.serverError(w, "list session recovery drafts", err)
+		}
+		return
+	}
+	views := make([]sessionRecoveryDraftSummaryView, len(items))
+	for i, item := range items {
+		views[i] = sessionRecoveryDraftSummaryView{ID: item.ID, Title: item.Title, Updated: item.UpdatedAt.Format("2006-01-02 15:04 UTC")}
+	}
+	h.render(w, "session-recovery-draft-list", sessionRecoveryDraftListData{pageData: h.page(r, "Session recovery copies · Curu"), Drafts: views})
+}
+
+func (h *handler) sessionRecoveryDraft(w http.ResponseWriter, r *http.Request) {
+	principal, ok := PrincipalFromContext(r.Context())
+	if !ok {
+		h.deny(w, r, http.StatusForbidden, "authorization_denied")
+		return
+	}
+	draft, err := h.sessions.RecoveryDraft(r.Context(), principal, r.PathValue("id"))
+	if errors.Is(err, session.ErrNotFound) {
+		h.notFound(w, r)
+		return
+	}
+	if err != nil {
+		if errors.Is(err, authorization.ErrDenied) {
+			h.deny(w, r, http.StatusForbidden, "authorization_denied")
+		} else {
+			h.serverError(w, "read session recovery draft", err)
+		}
+		return
+	}
+	detail, err := h.sessionDetailDataFromItem(r, draft.Plan, false)
+	if err != nil {
+		h.serverError(w, "render session recovery draft", err)
+		return
+	}
+	detail.PageTitle = "Session recovery copy · Curu"
+	action := string(draft.Action.Kind)
+	if action == "" {
+		action = "save"
+	}
+	h.render(w, "session-recovery-draft", sessionRecoveryDraftData{sessionDetailData: detail, DraftID: draft.ID, ActionDescription: action})
+}
+
+func (h *handler) discardSessionRecoveryDraft(w http.ResponseWriter, r *http.Request) {
+	principal, ok := PrincipalFromContext(r.Context())
+	if !ok {
+		h.deny(w, r, http.StatusForbidden, "authorization_denied")
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		h.rejectInput(w, http.StatusBadRequest)
+		return
+	}
+	err := h.sessions.DiscardRecoveryDraft(r.Context(), principal, r.PathValue("id"))
+	if errors.Is(err, session.ErrNotFound) {
+		h.notFound(w, r)
+		return
+	}
+	if err != nil {
+		if errors.Is(err, authorization.ErrDenied) {
+			h.deny(w, r, http.StatusForbidden, "authorization_denied")
+		} else {
+			h.serverError(w, "discard session recovery draft", err)
+		}
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	http.Redirect(w, r, "/session-recovery-drafts", http.StatusSeeOther)
 }
 
 func parseOptionalTiming(raw, label string, errorSummary *string) *int {

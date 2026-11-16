@@ -61,6 +61,10 @@ type sessionPlanner interface {
 	Update(context.Context, authorization.Principal, string, int64, session.Input) (session.Session, error)
 	Archive(context.Context, authorization.Principal, string, int64, bool) (session.Session, error)
 	ApplyPlacementAction(context.Context, authorization.Principal, string, int64, session.Input, session.PlacementAction) (session.Session, error)
+	SaveRecoveryDraft(context.Context, authorization.Principal, string, int64, session.Session, session.Input, session.PlacementAction) (session.RecoveryDraft, error)
+	ListRecoveryDrafts(context.Context, authorization.Principal) ([]session.RecoveryDraftSummary, error)
+	RecoveryDraft(context.Context, authorization.Principal, string) (session.RecoveryDraft, error)
+	DiscardRecoveryDraft(context.Context, authorization.Principal, string) error
 }
 
 type principalContextKey struct{}
@@ -122,6 +126,10 @@ func NewHandler(logger *slog.Logger, ready func() bool, authenticator requestAut
 	mux.HandleFunc("GET /sessions/{id}/edit", h.editSession)
 	mux.HandleFunc("POST /sessions/{id}", h.updateSession)
 	mux.HandleFunc("POST /sessions/{id}/placements", h.changeSessionPlacements)
+	mux.HandleFunc("POST /sessions/{id}/recovery-draft", h.saveSessionRecoveryDraft)
+	mux.HandleFunc("GET /session-recovery-drafts", h.listSessionRecoveryDrafts)
+	mux.HandleFunc("GET /session-recovery-drafts/{id}", h.sessionRecoveryDraft)
+	mux.HandleFunc("POST /session-recovery-drafts/{id}/discard", h.discardSessionRecoveryDraft)
 	mux.HandleFunc("POST /sessions/{id}/archive", h.archiveSession)
 	mux.HandleFunc("POST /sessions/{id}/restore", h.restoreSession)
 	mux.HandleFunc("GET /sessions/{id}/archived", h.archivedSessionDetail)
