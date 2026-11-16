@@ -1311,6 +1311,7 @@ type fakeSessionPlanner struct {
 	revision      int64
 	input         session.Input
 	action        session.PlacementAction
+	savedSnapshot session.Session
 }
 
 func (p *fakeSessionPlanner) List(_ context.Context, principal authorization.Principal, archived bool) ([]session.Summary, error) {
@@ -1360,7 +1361,9 @@ func (p *fakeSessionPlanner) ApplyPlacementAction(_ context.Context, principal a
 }
 func (p *fakeSessionPlanner) SaveRecoveryDraft(_ context.Context, principal authorization.Principal, id string, revision int64, snapshot session.Session, input session.Input, action session.PlacementAction, currentArchived bool) (session.RecoveryDraft, error) {
 	p.operation, p.principal, p.id, p.revision, p.input, p.action = "save-session-draft", principal, id, revision, input, action
-	return session.RecoveryDraft{ID: "ffffffff-ffff-4fff-8fff-ffffffffffff", OwnerID: principal.OwnerID, SessionID: id, Plan: snapshot, Action: action, CurrentArchived: currentArchived}, p.err
+	p.savedSnapshot = snapshot
+	p.draft = session.RecoveryDraft{ID: "ffffffff-ffff-4fff-8fff-ffffffffffff", OwnerID: principal.OwnerID, SessionID: id, Plan: snapshot, Action: action, CurrentArchived: currentArchived}
+	return p.draft, p.err
 }
 func (p *fakeSessionPlanner) ListRecoveryDrafts(_ context.Context, principal authorization.Principal) ([]session.RecoveryDraftSummary, error) {
 	p.principal = principal

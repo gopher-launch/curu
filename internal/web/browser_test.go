@@ -136,6 +136,83 @@ func TestLargeSessionConflictTransfersRecoverySnapshotWithoutPostingItOrdinarily
 	}
 }
 
+func TestSessionValidationThenConflictSavesCompleteRecoveryCopy(t *testing.T) {
+	browserPath := findChrome(t)
+	const (
+		sessionID   = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+		blockID     = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+		placementID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+	)
+	duration := 75
+	planner := &fakeSessionPlanner{
+		item: session.Session{
+			ID: sessionID, OwnerID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", Title: "Validation race", Revision: 7,
+			Blocks: []session.Block{{ID: blockID, Name: "Warmup", Placements: []session.Placement{{
+				ID: placementID, Title: "Copied activity", ContentMarkdown: "Exact copied instructions", DurationSeconds: &duration, LocalNotes: "Original note",
+				Progressions: []session.PlacementProgression{{Title: "Harder", ContentMarkdown: "Exact progression"}},
+			}}}},
+		},
+		updateErr: session.ErrConflict,
+	}
+	application := newTestHandlerWithSessions(t, planner)
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Header.Set("Authorization", "Bearer owner")
+		if r.Method == http.MethodPost {
+			r.Header.Set("Origin", "https://curu.example")
+		}
+		application.ServeHTTP(w, r)
+	}))
+	defer server.Close()
+
+	allocatorOptions := append(chromedp.DefaultExecAllocatorOptions[:], chromedp.ExecPath(browserPath), chromedp.Flag("ignore-certificate-errors", true))
+	allocator, cancelAllocator := chromedp.NewExecAllocator(context.Background(), allocatorOptions...)
+	defer cancelAllocator()
+	browser, cancelBrowser := chromedp.NewContext(allocator)
+	defer cancelBrowser()
+	ctx, cancel := context.WithTimeout(browser, 20*time.Second)
+	defer cancel()
+
+	const saveButton = `button[type="submit"]:not([formaction])`
+	if err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/sessions/"+sessionID+"/edit"),
+		chromedp.WaitVisible(saveButton, chromedp.ByQuery),
+		chromedp.Evaluate(`(function(){var input=document.getElementById("session-allocation");input.removeAttribute("max");input.value="86401"})()`, nil),
+		chromedp.Click(saveButton, chromedp.ByQuery),
+		chromedp.WaitVisible(`p.error`, chromedp.ByQuery),
+	); err != nil {
+		t.Fatalf("submit invalid editor: %v", err)
+	}
+	var validationSnapshotName, validationSnapshotValue string
+	if err := chromedp.Run(ctx,
+		chromedp.Evaluate(`document.getElementById("recovery-snapshot").name`, &validationSnapshotName),
+		chromedp.Evaluate(`document.getElementById("recovery-snapshot").value`, &validationSnapshotValue),
+		chromedp.SetValue(`#session-allocation`, "900", chromedp.ByQuery),
+		chromedp.Click(saveButton, chromedp.ByQuery),
+		chromedp.WaitVisible(`button[formaction$="/recovery-draft"]`, chromedp.ByQuery),
+	); err != nil {
+		t.Fatalf("correct invalid editor and submit stale revision: %v", err)
+	}
+	if validationSnapshotName != "" || validationSnapshotValue == "" {
+		t.Fatalf("validation editor snapshot name=%q empty=%t", validationSnapshotName, validationSnapshotValue == "")
+	}
+	if err := chromedp.Run(ctx,
+		chromedp.Click(`button[formaction$="/recovery-draft"]`, chromedp.ByQuery),
+		chromedp.WaitVisible(`form[action^="/session-recovery-drafts/"]`, chromedp.ByQuery),
+	); err != nil {
+		t.Fatalf("save recovery after validation and conflict: %v", err)
+	}
+	if planner.operation != "save-session-draft" || len(planner.savedSnapshot.Blocks) != 1 || len(planner.savedSnapshot.Blocks[0].Placements) != 1 {
+		t.Fatalf("saved recovery operation=%q snapshot=%+v", planner.operation, planner.savedSnapshot)
+	}
+	if planner.input.AllocationSeconds == nil || *planner.input.AllocationSeconds != 900 {
+		t.Fatalf("saved recovery allocation = %v", planner.input.AllocationSeconds)
+	}
+	got := planner.savedSnapshot.Blocks[0].Placements[0]
+	if got.ContentMarkdown != "Exact copied instructions" || got.DurationSeconds == nil || *got.DurationSeconds != duration || len(got.Progressions) != 1 || got.Progressions[0].ContentMarkdown != "Exact progression" {
+		t.Fatalf("saved recovery placement = %+v", got)
+	}
+}
+
 func waitForBrowserHash(ctx context.Context, wanted string) error {
 	deadline := time.NewTimer(10 * time.Second)
 	defer deadline.Stop()
