@@ -1,7 +1,7 @@
 ---
 version: 1
 project: curu-deploy
-updated: 2026-11-09
+updated: 2026-11-17
 ---
 
 # Curu deployment roadmap
@@ -26,6 +26,7 @@ The deployment baseline and implemented operator interfaces are documented in [R
 
 - Select one bounded `Kind: task` entry from this roadmap. Do not infer deployment task selection from the root roadmap or assume a runner selects this file automatically.
 - CDP-001 through CDP-008 delivered the owned chart, reproducible kind/trust inputs, persistent separated data authority, explicit data sequencing, repeatable identity, the HTTPS browser-authentication path, the repeatable operator lifecycle/integration validation, and target-laptop browser acceptance. No core deployment Task remains ready in D1. Optional/follow-up Tasks require deliberate selection; they never become a gate on the core milestone merely because their prerequisites are delivered.
+- CDP-011 is a bounded chart naming maintenance Task requested after D1. It does not alter the application or expand the optional recovery and isolation Tasks.
 - `Depends on` references are confined to this roadmap. Existing application capabilities are source/contract prerequisites, not duplicated Tasks or unresolved cross-roadmap dependency IDs. Application changes need explicitly bounded scope in their owning workstream.
 - Preserve IDs. Reconcile affected templates, README interfaces, guidance, and roadmap readiness in the same candidate. Split oversized Tasks before widening execution scope. No task is delivered because it appears here or because manifests render.
 - Use disposable resources for destructive tests. Routine validation needs no paid provider or real retained-data reset. Keep operational progress, review verdicts, and pending integration notes in external records.
@@ -82,6 +83,24 @@ D1 includes actual target-browser acceptance, distinct from automated disposable
 
 **Verification:** Real permitted/denied connection tests and exposure/private-hop evidence on the selected environment. This Task is outside D1 and is not required to deliver or accept the initial kind installation.
 
+## CDP-011 — Remove duplicate chart name from local resource names
+
+- Kind: task
+- Status: implemented
+- Priority: medium
+- Parent: none
+- Depends on: none
+
+**Objective:** For release `curu`, render one `curu` prefix on chart-owned workload and Service names in fresh local installations.
+
+**Acceptance criteria:**
+
+- Preserve distinct resource names for other Helm releases and keep the edge's established `curu-edge` name.
+- Use the shortened names consistently for the new workload, Service, PVC, and generated Secret resources without legacy-adoption logic.
+- Document that existing disposable local installations should be recreated from clean test storage, not upgraded in place.
+
+**Verification:** Helm lint/render and configuration checks plus a focused disposable-cluster install with the shortened names. No target laptop recreation is implied by source verification.
+
 ## Next task boundary
 
-D1 has no remaining core deployment Task. CDP-001 delivered chart/configuration/render interfaces, CDP-002 delivered the local cluster boundary, CDP-003 delivered the persistent data service and role boundary, CDP-004 delivered explicit migration and initialization sequencing, CDP-005 delivered repeatable identity plus accepted/rejected real-token evidence, CDP-006 delivered the browser-authenticated HTTPS path, CDP-007 delivered the scoped operator lifecycle plus aggregate disposable validation, and CDP-008 delivered the target-laptop acceptance procedure and evidence-gated milestone reconciliation. CDP-009 and CDP-010 are optional/follow-up work and stay planned. Application readiness continues to be managed independently in the root roadmap.
+D1 has no remaining core deployment Task. CDP-001 delivered chart/configuration/render interfaces, CDP-002 delivered the local cluster boundary, CDP-003 delivered the persistent data service and role boundary, CDP-004 delivered explicit migration and initialization sequencing, CDP-005 delivered repeatable identity plus accepted/rejected real-token evidence, CDP-006 delivered the browser-authenticated HTTPS path, CDP-007 delivered the scoped operator lifecycle plus aggregate disposable validation, and CDP-008 delivered the target-laptop acceptance procedure and evidence-gated milestone reconciliation. CDP-009 and CDP-010 are optional/follow-up work and stay planned. CDP-011 is the selected naming maintenance Task. Application readiness continues to be managed independently in the root roadmap.

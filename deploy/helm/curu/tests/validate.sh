@@ -14,6 +14,10 @@ fi
 helm lint "${chart_dir}" --strict -f "${fixture_dir}/bundled-values.yaml"
 helm lint "${chart_dir}" --strict -f "${fixture_dir}/external-values.yaml"
 bundled_render="$(helm template curu-bundled "${chart_dir}" -f "${fixture_dir}/bundled-values.yaml")"
+short_name_render="$(helm template curu "${chart_dir}" -f "${fixture_dir}/bundled-values.yaml" \
+  --set-string database.bundled.credentialsSecret.existingName= \
+  --set-string identity.bundled.credentialsSecret.existingName= \
+  --set-string browserAuth.sessionSecret.existingName=)"
 external_render="$(helm template curu-external "${chart_dir}" -f "${fixture_dir}/external-values.yaml")"
 lifecycle_render="$(helm template curu-lifecycle "${chart_dir}" -f "${fixture_dir}/bundled-values.yaml" \
   --set edge.enabled=false --set runtime.enabled=false --set dataLifecycle.migrate=true --set-string dataLifecycle.initialize=seed)"
@@ -33,6 +37,16 @@ assert_contains() {
 }
 
 assert_contains "${bundled_render}" 'automountServiceAccountToken: false' 'service-account token mount is disabled'
+assert_contains "${short_name_render}" 'name: curu-postgres' 'matching release and chart names use one curu prefix'
+assert_contains "${short_name_render}" 'name: curu-keycloak' 'Keycloak uses the short release name'
+assert_contains "${short_name_render}" 'name: curu-oauth2-proxy' 'OAuth2 Proxy uses the short release name'
+assert_contains "${short_name_render}" 'name: curu-postgres-credentials' 'generated PostgreSQL Secret uses the short name'
+assert_contains "${short_name_render}" 'name: curu-keycloak-credentials' 'generated Keycloak Secret uses the short name'
+assert_contains "${short_name_render}" 'name: curu-oauth2-proxy-session' 'generated browser session Secret uses the short name'
+if grep -Fq 'name: curu-curu' <<<"${short_name_render}"; then
+  echo 'matching release and chart names must not duplicate curu' >&2
+  exit 1
+fi
 assert_contains "${bundled_render}" 'runAsNonRoot: true' 'pod runs as non-root'
 assert_contains "${bundled_render}" 'readOnlyRootFilesystem: true' 'container root filesystem is read-only'
 assert_contains "${bundled_render}" 'type: ClusterIP' 'Curu Service remains internal'

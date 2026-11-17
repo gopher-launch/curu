@@ -2,7 +2,11 @@
 {{- .Chart.Name | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 {{- define "curu.fullname" -}}
+{{- if contains (include "curu.name" .) .Release.Name -}}
+{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
 {{- printf "%s-%s" .Release.Name (include "curu.name" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
 {{- end -}}
 
 {{- define "curu.labels" -}}

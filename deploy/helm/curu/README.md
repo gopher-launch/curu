@@ -15,6 +15,16 @@ CA, and browser-client inputs. Pinned NGINX and OAuth2 Proxy workloads provide
 the runnable authorization-code/PKCE path. PostgreSQL and identity readiness
 do not mean the Curu schema exists or the dataset is initialized.
 
+## Resource names
+
+For release `curu`, the chart now names workloads and Services `curu`,
+`curu-postgres`, `curu-keycloak`, and `curu-oauth2-proxy`; the edge remains
+`curu-edge`. Other release names still include the chart name when needed to
+avoid a collision in the namespace. Fresh installations use the corresponding
+short PVC and generated Secret names. Existing disposable local installations
+with `curu-curu-*` resources should be recreated from clean test storage;
+their old PVC and generated Secrets are not adopted by the new names.
+
 ## Identity modes
 
 Exactly one of `identity.bundled.enabled` and `identity.external.enabled` is
@@ -178,7 +188,8 @@ both tag- and digest-pinned. Its private service/server port is fixed at `5432`;
 configure resources, claim size, storage class, and PV selector under
 `database.bundled`.
 
-By default, Helm creates `<release>-curu-postgres-credentials`. A `lookup`
+By default, Helm creates `<fullname>-postgres-credentials` (for release `curu`,
+`curu-postgres-credentials`). A `lookup`
 preserves its generated values on upgrade, and `helm.sh/resource-policy: keep`
 retains it and the PVC on release removal. Set
 `database.bundled.credentialsSecret.existingName` to use an operator-created

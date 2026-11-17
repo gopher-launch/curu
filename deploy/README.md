@@ -10,17 +10,17 @@ This deployment lives beside Curu so application/image/configuration changes can
 
 ## Accepted component choices
 
-| Component | Local deployment | External integration boundary |
-| --- | --- | --- |
-| Cluster | Single-node kind on Ubuntu | A conforming hosted Kubernetes cluster is a future target |
-| Packaging | Owned Helm chart at `deploy/helm/curu/` | Release values describe environment inputs |
-| Edge | Plain NGINX Deployment, TLS termination and explicit proxy configuration | Cluster exposure and certificate delivery can change by environment |
-| Browser authentication | OAuth2 Proxy, OIDC Authorization Code flow with PKCE | Configured issuer, client credentials, callbacks, and session policy |
-| Identity provider | Single-replica Keycloak with persisted state | Bundled identity can be disabled for a compatible external issuer |
-| Application | Existing non-root Curu OCI image | Explicit image version, runtime configuration, and Secret references |
-| Database | One Postgres instance with separate Curu and Keycloak databases and credentials | Bundled Postgres can be disabled for explicitly supplied external connections and trust |
-| Persistence | PVCs backed by explicitly selected laptop storage | Storage class and volume configuration are environment inputs |
-| Recovery | Optional manual export and isolated restore | Scheduled retention and off-host backup services are deferred |
+| Component              | Local deployment                                                                | External integration boundary                                                           |
+| ---------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Cluster                | Single-node kind on Ubuntu                                                      | A conforming hosted Kubernetes cluster is a future target                               |
+| Packaging              | Owned Helm chart at `deploy/helm/curu/`                                         | Release values describe environment inputs                                              |
+| Edge                   | Plain NGINX Deployment, TLS termination and explicit proxy configuration        | Cluster exposure and certificate delivery can change by environment                     |
+| Browser authentication | OAuth2 Proxy, OIDC Authorization Code flow with PKCE                            | Configured issuer, client credentials, callbacks, and session policy                    |
+| Identity provider      | Single-replica Keycloak with persisted state                                    | Bundled identity can be disabled for a compatible external issuer                       |
+| Application            | Existing non-root Curu OCI image                                                | Explicit image version, runtime configuration, and Secret references                    |
+| Database               | One Postgres instance with separate Curu and Keycloak databases and credentials | Bundled Postgres can be disabled for explicitly supplied external connections and trust |
+| Persistence            | PVCs backed by explicitly selected laptop storage                               | Storage class and volume configuration are environment inputs                           |
+| Recovery               | Optional manual export and isolated restore                                     | Scheduled retention and off-host backup services are deferred                           |
 
 NGINX is an ordinary chart-owned reverse proxy, not the community ingress-nginx controller. Envoy Gateway, Gateway API controllers, service meshes, and database/identity operators are outside this initial design.
 
@@ -94,7 +94,7 @@ For example, from the repository root:
 
 ```sh
 deploy/scripts/bootstrap-kind.sh \
-  --storage-dir /srv/curu-kind \
+  --storage-dir /tmp/curu-kind \
   --storage-capacity 20Gi \
   --cpus 4 \
   --memory 6g \
@@ -137,7 +137,7 @@ Keep local PKI outside the repository and retained workload directory:
 
 ```sh
 deploy/scripts/prepare-local-tls.sh \
-  --pki-dir /home/chris/.local/share/curu/pki
+  --pki-dir ${HOME}/.local/share/curu/pki
 ```
 
 The command creates the CA once and reuses complete existing material. It
@@ -153,7 +153,7 @@ names and CA in Ubuntu's system trust store:
 
 ```sh
 deploy/scripts/configure-host-trust.sh install \
-  --ca-cert /home/chris/.local/share/curu/pki/ca.crt
+  --ca-cert ${HOME}/.local/share/curu/pki/ca.crt
 ```
 
 This is the only bootstrap operation that invokes `sudo`; it reports that it
@@ -163,7 +163,7 @@ import. With the edge on the default port, verify host resolution and trust with
 
 ```sh
 deploy/scripts/configure-host-trust.sh check \
-  --ca-cert /home/chris/.local/share/curu/pki/ca.crt \
+  --ca-cert ${HOME}/.local/share/curu/pki/ca.crt \
   --https-port 8443
 ```
 
@@ -181,12 +181,12 @@ and the `curu-local-data` PV at stable node path
 `/var/local-path-provisioner/curu-data`, with reclaim policy `Retain`. CDP-003's
 database claim binds to that PV.
 
-| Event | Retention and reattachment |
-| --- | --- |
-| Pod restart or replacement | The same bound claim and host directory remain. |
-| Helm release removal | The retained PV/host data are not an instruction to delete data; claim ownership and keep policy are completed by the owning component Task. |
-| `delete-kind-cluster.sh` | Kubernetes objects disappear with the node, but the marked host directory and PKI remain. Rerunning bootstrap with the same host directory recreates the PV; the later component claim must bind the same stable PV/path. |
-| Host failure or disk loss | Not covered. Local persistence is not a backup. |
+| Event                      | Retention and reattachment                                                                                                                                                                                                |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pod restart or replacement | The same bound claim and host directory remain.                                                                                                                                                                           |
+| Helm release removal       | The retained PV/host data are not an instruction to delete data; claim ownership and keep policy are completed by the owning component Task.                                                                              |
+| `delete-kind-cluster.sh`   | Kubernetes objects disappear with the node, but the marked host directory and PKI remain. Rerunning bootstrap with the same host directory recreates the PV; the later component claim must bind the same stable PV/path. |
+| Host failure or disk loss  | Not covered. Local persistence is not a backup.                                                                                                                                                                           |
 
 Ordinary teardown is deliberately non-destructive:
 
@@ -199,7 +199,7 @@ named and confirmed operation:
 
 ```sh
 deploy/scripts/reset-kind-storage.sh \
-  --storage-dir /srv/curu-kind \
+  --storage-dir /tmp/curu-kind \
   --confirm-curu-local-data-loss
 ```
 
@@ -233,8 +233,8 @@ Copy the local example outside the repository, bind it to the loaded source
 image, and choose a record directory that contains no secrets:
 
 ```sh
-site_values=/home/chris/.config/curu/curu-local-values.yaml
-record_dir=/home/chris/.local/state/curu/deployment
+site_values=${HOME}/.config/curu/curu-local-values.yaml
+record_dir=${HOME}/.local/state/curu/deployment
 install -d -m 0750 "$(dirname "$site_values")" "$record_dir"
 cp deploy/helm/curu/examples/curu-local-values.yaml "$site_values"
 source_revision=$(git rev-parse HEAD)
@@ -303,6 +303,12 @@ deploy/scripts/curu-local.sh backout \
   --confirm-schema-compatible --timeout 10m
 ```
 
+Chart `0.6.0` shortens the `curu` release's names. For an existing disposable
+installation using `curu-curu-*` names, recreate the test cluster and its
+retained test storage with the teardown/reset commands below, then run a fresh
+`install`. An in-place upgrade does not transfer the old PVC or generated
+Secrets to the new names.
+
 Routine release removal retains chart-marked PVCs and generated Secrets:
 
 ```sh
@@ -317,7 +323,7 @@ cluster and exact marked host storage target:
 ```sh
 deploy/scripts/delete-kind-cluster.sh
 deploy/scripts/reset-kind-storage.sh \
-  --storage-dir /srv/curu-kind --confirm-curu-local-data-loss
+  --storage-dir /tmp/curu-kind --confirm-curu-local-data-loss
 ```
 
 Failed Helm operations report their exit status, scoped resources, warning
@@ -335,7 +341,7 @@ external record directory, without copying credentials or tokens into it.
    is no certificate warning. If the browser has its own trust store, import
    the selected public CA there first.
 2. Retrieve the generated owner password privately with
-   `kubectl --context kind-curu-local --namespace curu-system get secret curu-curu-keycloak-credentials -o jsonpath='{.data.owner-password}' | base64 -d`.
+   `kubectl --context kind-curu-local --namespace curu-system get secret curu-keycloak-credentials -o jsonpath='{.data.owner-password}' | base64 -d`.
    Sign in as `owner` through the browser. Inspect the library, search by title
    or instruction, and open a complete detail page with progressions. Compare
    the expected 44 activities and 110 progressions with a source-bound data
@@ -465,17 +471,17 @@ the disposable host directories for inspection/removal by the operator. Its
 temporary TLS edge proves bootstrap inputs only; it is not the integrated
 gateway check and makes no login or library claim.
 
-| Interface | Owning Tasks | Delivered result |
-| --- | --- | --- |
-| Validate/render chart | CDP-001, extended by later chart Tasks | Lint, render, reject inconsistent inputs, and check bundled/external configurations |
-| Prepare local cluster and trust | CDP-002 | Implemented versioned kind, port/storage configuration, certificates, trust steps, and disposable checks |
-| Prepare data service | CDP-003 | Implemented ready Postgres, retained storage, stable scoped credentials, and separated database authority |
-| Migrate and initialize | CDP-004 | Explicit, bounded Jobs with safe retry/refusal behavior |
-| Configure identity | CDP-005 | Repeatable realm/client/owner setup and compatible tokens |
-| Authenticate browser traffic | CDP-006 | HTTPS, owner access, refresh/expiry/logout, safe header handling |
-| Install, inspect, restart, upgrade, remove | CDP-007 | Implemented scoped lifecycle, deployment record, diagnostics, retained-state upgrade/restart, and external-mode evidence |
-| Verify target acceptance | CDP-008 | Source-bound laptop walkthrough and external operator evidence, distinct from disposable checks and optional phone results |
-| Export and verify an isolated restore | CDP-009, optional | Application manifest comparison without overwriting a retained target |
+| Interface                                  | Owning Tasks                           | Delivered result                                                                                                           |
+| ------------------------------------------ | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Validate/render chart                      | CDP-001, extended by later chart Tasks | Lint, render, reject inconsistent inputs, and check bundled/external configurations                                        |
+| Prepare local cluster and trust            | CDP-002                                | Implemented versioned kind, port/storage configuration, certificates, trust steps, and disposable checks                   |
+| Prepare data service                       | CDP-003                                | Implemented ready Postgres, retained storage, stable scoped credentials, and separated database authority                  |
+| Migrate and initialize                     | CDP-004                                | Explicit, bounded Jobs with safe retry/refusal behavior                                                                    |
+| Configure identity                         | CDP-005                                | Repeatable realm/client/owner setup and compatible tokens                                                                  |
+| Authenticate browser traffic               | CDP-006                                | HTTPS, owner access, refresh/expiry/logout, safe header handling                                                           |
+| Install, inspect, restart, upgrade, remove | CDP-007                                | Implemented scoped lifecycle, deployment record, diagnostics, retained-state upgrade/restart, and external-mode evidence   |
+| Verify target acceptance                   | CDP-008                                | Source-bound laptop walkthrough and external operator evidence, distinct from disposable checks and optional phone results |
+| Export and verify an isolated restore      | CDP-009, optional                      | Application manifest comparison without overwriting a retained target                                                      |
 
 Application build/test and data-operation commands already exist in the root [README](../README.md) and [database operations guide](../doc/database-operations.md). Their existence does not mean a Kubernetes deployment has been tested.
 
